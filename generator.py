@@ -139,8 +139,6 @@ def multiply_polynomials(poly1, poly2, n):
 
 polyns, all_monomials = generate_random_polynomials(5,6,4)
 
-# print(polyn)
-
 for polyn in polyns:
     sym_expr = vector_to_sympy(polyn, all_monomials)
     print(sym_expr)
