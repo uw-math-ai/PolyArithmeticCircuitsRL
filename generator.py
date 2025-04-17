@@ -2,6 +2,9 @@ import random
 from itertools import combinations_with_replacement
 import sympy as sp
 
+# ——— Modification: cache SymPy symbols to avoid recreating them on every call ———
+SYMBOL_CACHE = {}
+
 def vector_to_sympy(vector, monomial_list, variable_names=None):
     """
     Input:
@@ -16,7 +19,13 @@ def vector_to_sympy(vector, monomial_list, variable_names=None):
     if variable_names is None:
         variable_names = [f'x{i}' for i in range(m)]
 
-    vars = sp.symbols(variable_names)
+    # ——— Modification: look up or create symbols only once per variable_names tuple ———
+    key = tuple(variable_names)
+    vars = SYMBOL_CACHE.get(key)
+    if vars is None:
+        vars = sp.symbols(variable_names)
+        SYMBOL_CACHE[key] = vars
+
     expr = 0
     for coef, exponents in zip(vector, monomial_list):
         if coef == 0:
@@ -25,7 +34,8 @@ def vector_to_sympy(vector, monomial_list, variable_names=None):
         for var, power in zip(vars, exponents):
             term *= var ** power
         expr += term
-    return sp.simplify(expr)
+    # ——— Modification: drop the expensive simplify() call ———
+    return expr
 
 
 def generate_random_polynomials(n, m, C, num_polynomials=10000):
