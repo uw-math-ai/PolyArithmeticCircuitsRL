@@ -753,6 +753,12 @@ def index_to_action(idx, num_terms):
         # Reverse the pair indexing using quadratic formula
         term1_idx = int((1 + math.sqrt(1 + 8 * pair_idx)) / 2)
         term2_idx = pair_idx - (term1_idx * (term1_idx - 1)) // 2 + term1_idx
+
+        if term1_idx >= num_terms:
+            term1_idx = num_terms - 1
+        
+        if term2_idx >= num_terms:
+            term2_idx = num_terms - 1
         
     else:
         # asymmetric operation (subtract)
