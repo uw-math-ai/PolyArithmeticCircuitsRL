@@ -4,7 +4,7 @@ import sympy as sp
 from converter import vector_to_sympy, sympy_to_vector
 
 
-def generate_random_polynomials(n, m, C, i, num_polynomials=10000):
+def generate_random_polynomials(n, m, C, num_polynomials=10000, mod=5):
     """
     Generate random polynomials by multiplying polynomials of specific degrees.
     
@@ -19,8 +19,7 @@ def generate_random_polynomials(n, m, C, i, num_polynomials=10000):
     index_to_monomial - dictionary mapping indices to monomials
     all_polynomials - list of polynomial vectors
     """
-    if i > C:
-        return "error"
+
     
     # Generate all possible monomials up to degree n
     all_monomials = []
@@ -44,13 +43,19 @@ def generate_random_polynomials(n, m, C, i, num_polynomials=10000):
     
     for _ in range(num_polynomials):
         # Generate first polynomial of degree i
-        first_poly = generate_random_polynomial(n, m, i)
-                
-        # Generate second polynomial of degree C-1-i
-        second_poly = generate_random_polynomial(n, m, C-1-i)
-                
-        # Convert back to dictionary form
-        poly_dict = multiply_polynomials(first_poly, second_poly, n)
+
+        if C==1:
+            poly_dict = generate_random_polynomial(n,m,C,mod)
+
+        else:
+            i = random.randint(1, C)
+            first_poly = generate_random_polynomial(n, m, C-i-1, mod)
+                    
+            # Generate second polynomial of degree i
+            second_poly = generate_random_polynomials_recursive(n, m, i, mod)
+                    
+            # Convert back to dictionary form
+            poly_dict = multiply_polynomials(first_poly, second_poly, n, mod)
         
         # Convert to vector
         vector = [0] * len(all_monomials)
@@ -62,7 +67,42 @@ def generate_random_polynomials(n, m, C, i, num_polynomials=10000):
     
     return index_to_monomial, all_polynomials
 
-def generate_random_polynomial(n, m, C):
+def generate_random_polynomials_recursive(n, m, C, mod):
+    """
+    Generate random polynomials by multiplying polynomials of specific degrees.
+    
+    Parameters:
+    n - maximum degree
+    m - number of variables
+    C - complexity parameter
+    i - degree of first polynomial
+    num_polynomials - number of polynomials to generate
+    
+    Returns:
+    index_to_monomial - dictionary mapping indices to monomials
+    all_polynomials - list of polynomial vectors
+    """
+    
+    
+    # Generate first polynomial of degree i
+
+    if C ==1:
+        first_poly = generate_random_polynomial(n, m, 1, mod)
+        return first_poly
+    else:
+        i = random.randint(1, C)
+
+        first_poly = generate_random_polynomial(n, m, C-i-1, mod)
+
+        second_poly = generate_random_polynomials_recursive(n, m, i, mod)
+            
+        # Convert back to dictionary form
+        poly_dict = multiply_polynomials(first_poly, second_poly, n, mod)
+    
+
+    return poly_dict
+
+def generate_random_polynomial(n, m, C, mod):
     """
     Generate a random polynomial with specific constraints.
     
@@ -74,12 +114,12 @@ def generate_random_polynomial(n, m, C):
     Returns:
     A dictionary representing the polynomial
     """
-    if random.choice([True, False]):
-        # Start with 1
+
+    # Start with a single variable
+    var_idx = random.randint(0, m)
+    if var_idx == m:
         poly = {(0,) * m: 1}
     else:
-        # Start with a single variable
-        var_idx = random.randint(0, m - 1)
         exponents = [0] * m
         exponents[var_idx] = 1
         poly = {tuple(exponents): 1}
@@ -87,27 +127,28 @@ def generate_random_polynomial(n, m, C):
     # Perform C successive operations
     for _ in range(C):
         # Choose between addition and multiplication
-        operation = random.choice(["add", "multiply"])
+        operation = random.randint(0, 2)
         
         # Generate a simple term
-        if random.choice([True, False]):
-            # Use 1
-            new_poly = {(0,) * m: 1}
+        var_idx = random.randint(0, m)
+        if var_idx == m:
+            poly = {(0,) * m: 1}
         else:
-            # Use a single variable
-            var_idx = random.randint(0, m - 1)
             exponents = [0] * m
             exponents[var_idx] = 1
-            new_poly = {tuple(exponents): 1}
+            poly = {tuple(exponents): 1}
         
-        if operation == "add":
-            poly = add_polynomials(poly, new_poly, n)
-        else:  # multiply
-            poly = multiply_polynomials(poly, new_poly, n)
+        if operation == 0:
+            poly = add_polynomials(poly, new_poly, n, mod)
+        elif operation == 1:  # multiply
+            poly = multiply_polynomials(poly, new_poly, n, mod)
+        else:
+            poly = subtract_polynomials(poly, new_poly, n, mod)
+
     
     return poly
 
-def add_polynomials(poly1, poly2, n):
+def add_polynomials(poly1, poly2, n, mod):
     """Add two polynomials, restricting to terms of degree <= n"""
     result = poly1.copy()
     
@@ -116,7 +157,7 @@ def add_polynomials(poly1, poly2, n):
             continue  # Skip terms with degree > n
         
         if monomial in result:
-            result[monomial] = (result[monomial] + coef) % 2 #mod2
+            result[monomial] = (result[monomial] + coef) % mod #mod2
             if result[monomial] == 0:
                 del result[monomial]
         else:
@@ -124,7 +165,7 @@ def add_polynomials(poly1, poly2, n):
     
     return result
 
-def multiply_polynomials(poly1, poly2, n):
+def multiply_polynomials(poly1, poly2, n, mod):
     """Multiply two polynomials, restricting to terms of degree <= n"""
     result = {}
     
@@ -142,7 +183,7 @@ def multiply_polynomials(poly1, poly2, n):
             
             # Add to the result
             if new_mon in result:
-                result[new_mon] = (result[new_mon] + new_coef) % 2
+                result[new_mon] = (result[new_mon] + new_coef) % mod
                 if result[new_mon] == 0:
                     del result[new_mon]
             else:
@@ -150,14 +191,16 @@ def multiply_polynomials(poly1, poly2, n):
     
     return result
 
-# Example usage
-if __name__ == "__main__":
-    index_to_monomial, polynomials = generate_random_polynomials(2, 2, 4, 2, num_polynomials=20)
-    print(f"Generated {len(polynomials)} polynomials")
-    for i in (polynomials):
-        print(f"polynomial: {i}")
-
-    print(f"Index to monomial mapping:")
-    for idx, monomial in list(index_to_monomial.items()):
-        print(f"  {idx}: {monomial}")
-    print("  ...")
+def subtract_polynomials(poly1, poly2, mod):
+    """Subtract poly2 from poly1"""
+    max_len = max(len(poly1), len(poly2))
+    result = [0] * max_len
+    
+    # Copy poly1
+    for i in range(len(poly1)):
+        result[i] = poly1[i]
+    
+    for i in range(len(poly2)):
+        result[i] = (result[i] + poly2[i]) % mod  
+    
+    return result
