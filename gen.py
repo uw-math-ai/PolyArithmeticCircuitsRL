@@ -132,11 +132,11 @@ def generate_random_polynomial(n, m, C, mod):
         # Generate a simple term
         var_idx = random.randint(0, m)
         if var_idx == m:
-            new_poly = {(0,) * m: 1}
+            new_poly = {(0,) * m: 1} # changed poly to new_poly
         else:
             exponents = [0] * m
             exponents[var_idx] = 1
-            new_poly = {tuple(exponents): 1}
+            new_poly = {tuple(exponents): 1} # changed poly to new_poly
         
         if operation == 0:
             poly = add_polynomials(poly, new_poly, n, mod)
@@ -201,6 +201,6 @@ def subtract_polynomials(poly1, poly2, mod):
         result[i] = poly1[i]
     
     for i in range(len(poly2)):
-        result[i] = (result[i] + poly2[i]) % mod  
+        result[i] = (result[i] - poly2[i]) % mod  # changed + to -
     
     return result
