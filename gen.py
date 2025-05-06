@@ -3,25 +3,49 @@ from itertools import combinations_with_replacement
 import sympy as sp
 from converter import vector_to_sympy, sympy_to_vector
 
-def generate_monomials(n,d):
-    all_monomials = []
+def generate_monomials_with_additive_indices(n, d):
+    """
+    Generate monomials with an indexing scheme where:
+    index(A) + index(B) = index(A+B) when adding monomial exponents
+    
+    Args:
+        n: Number of variables
+        d: Maximum degree
+        
+    Returns:
+        index_to_monomial, monomial_to_index, and all_monomials
+    """
+    # Calculate the base for our number system
+    base = d + 1
+    
+    # Create all possible monomials up to the max degree
+    all_possible_monomials = []
     for total_degree in range(d + 1):
         for combo in combinations_with_replacement(range(n), total_degree):
             exponents = [0] * n
             for var_idx in combo:
                 exponents[var_idx] += 1
-            
-            all_monomials.append(tuple(exponents))
+            all_possible_monomials.append(tuple(exponents))
     
-    all_monomials.sort()
+    # Create the indexing using a number system with base (d+1)
+    index_to_monomial = {}
+    monomial_to_index = {}
     
-    # Create index_to_monomial dictionary (mapping indices to monomials)
-    index_to_monomial = {idx: monomial for idx, monomial in enumerate(all_monomials)}
+    for monomial in all_possible_monomials:
+        # Calculate the index: the key insight is to use a positional number system
+        # where each position uses base (d+1)
+        index = 0
+        for i, exp in enumerate(monomial):
+            # Use base^position weighting
+            index += exp * (base ** i)
+        
+        index_to_monomial[index] = monomial
+        monomial_to_index[monomial] = index
     
-    # Also create the reverse mapping for internal use
-    monomial_to_index = {monomial: idx for idx, monomial in enumerate(all_monomials)}
+    # Sort by index for cleaner output
+    all_monomials = [index_to_monomial[idx] for idx in sorted(index_to_monomial.keys())]
+    
     return index_to_monomial, monomial_to_index, all_monomials
-
 
 def generate_random_polynomials(n, d, C, num_polynomials=10000, mod=5):
     """
@@ -38,8 +62,10 @@ def generate_random_polynomials(n, d, C, num_polynomials=10000, mod=5):
     all_polynomials - list of polynomial vectors
     """
 
-    index_to_monomial, monomial_to_index, all_monomials = generate_monomials(n,d)
+    index_to_monomial, monomial_to_index, all_monomials = generate_monomials_with_additive_indices(n,d)
 
+    print(index_to_monomial)
+    print(all_monomials)
     all_polynomials = []
     
     for _ in range(num_polynomials):
@@ -59,7 +85,12 @@ def generate_random_polynomials(n, d, C, num_polynomials=10000, mod=5):
             poly_dict = multiply_polynomials(first_poly, second_poly, d, mod)
         
         # Convert to vector
-        vector = [0] * len(all_monomials)
+        maxim=0
+        for ind in index_to_monomial:
+            if ind > maxim:
+                maxim = ind
+        
+        vector = [0] * (maxim+1)
         for monomial, coef in poly_dict.items():
             if monomial in monomial_to_index:
                 vector[monomial_to_index[monomial]] = coef
@@ -151,5 +182,43 @@ def multiply_polynomials(poly1, poly2, d, mod):
                     del result[new_mon]
             else:
                 result[new_mon] = new_coef
+    
+    return result
+
+
+# Helper functions for working with polynomials and actions
+def add_polynomials_vector(poly1, poly2, mod):
+    """Add two polynomial vectors (binary coefficients)"""
+    if (len(poly1)!=len(poly2)):
+        return "error"
+
+    max_len = max(len(poly1), len(poly2))
+    
+    result = [0] * max_len
+    
+    # Copy poly1
+    for i in range(len(poly1)):
+        result[i] = poly1[i]
+    
+    # Add poly2
+    for i in range(len(poly2)):
+        result[i] = (result[i] + poly2[i]) % mod
+    
+    return result
+
+def multiply_polynomials_vector(poly1, poly2, mod):
+    if (len(poly1)!=len(poly2)):
+        return "error"
+
+    result = [0] * len(poly1)
+    
+    for i in range(len(poly1)):
+        for j in range(len(poly2)):
+            if poly1[i] == 0 or poly2[j] == 0: #since most entries are 0, this speeds up the algo
+                continue
+            
+            #thanks to our indexing, index(monomial1 * monomial2) = index(monomial1) + index(monomial2) 
+            # this offers enormous speed improvement instead of looking up the indices
+            result[i+j] = (result[i+j] + (poly1[i] * poly2[j])) % mod  
     
     return result
