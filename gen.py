@@ -1,7 +1,25 @@
+
 import random
 from itertools import combinations_with_replacement
 import sympy as sp
 from converter import vector_to_sympy, sympy_to_vector
+
+# Define a class to represent nodes in our arithmetic circuit
+class CircuitNode:
+    def __init__(self, node_type, inputs=None, value=None, operation=None):
+        self.node_type = node_type  # "input", "constant", "add", or "multiply"
+        self.inputs = inputs or []  # List of input nodes
+        self.value = value          # Used for constants and input variables
+        self.operation = operation  # Operation type ("add" or "multiply")
+    
+    def __repr__(self):
+        if self.node_type == "input":
+            return f"Input(x_{self.value})"
+        elif self.node_type == "constant":
+            return f"Constant({self.value})"
+        elif self.node_type == "operation":
+            return f"Operation({self.operation}, inputs={len(self.inputs)})"
+        return f"Node({self.node_type})"
 
 def generate_monomials_with_additive_indices(n, d):
     """
@@ -56,36 +74,62 @@ def generate_random_polynomials(n, d, C, num_polynomials=10000, mod=5):
     d - maximum degree
     C - complexity parameter
     num_polynomials - number of polynomials to generate
+    mod - modulo for coefficients
     
     Returns:
     index_to_monomial - dictionary mapping indices to monomials
+    monomial_to_index - dictionary mapping monomials to indices 
     all_polynomials - list of polynomial vectors
+    all_circuits - list of arithmetic circuits for each polynomial
     """
+    index_to_monomial, monomial_to_index, all_monomials = generate_monomials_with_additive_indices(n, d)
 
-    index_to_monomial, monomial_to_index, all_monomials = generate_monomials_with_additive_indices(n,d)
-
-    print(index_to_monomial)
-    print(all_monomials)
     all_polynomials = []
+    all_circuits = []  # Store the arithmetic circuits
     
     for _ in range(num_polynomials):
-        # Generate first polynomial of degree i
+        # Generate polynomial of complexity C
+        if C == 1:
+            operation = random.choice(["add", "multiply"])
 
-        i = random.randint(1, C-1)
+            first_poly, first_circuit = generate_random_polynomials_recursive(n, d, 1, mod)
+            second_poly, second_circuit = generate_random_polynomials_recursive(n, d, 1, mod)
 
-        operation = random.choice(["add", "multiply"])
+            # Create circuit node for this operation
+            circuit_node = CircuitNode(
+                node_type="operation",
+                inputs=[first_circuit, second_circuit],
+                operation=operation
+            )
 
-        first_poly = generate_random_polynomials_recursive(n, d, i, mod)
+            if operation == 'add':
+                poly_dict = add_polynomials(first_poly, second_poly, d, mod)
+            else:
+                poly_dict = multiply_polynomials(first_poly, second_poly, d, mod)
 
-        second_poly = generate_random_polynomials_recursive(n, d, C-i, mod)
-
-        if operation == 'add':
-            poly_dict=add_polynomials(first_poly, second_poly, d, mod)
         else:
-            poly_dict = multiply_polynomials(first_poly, second_poly, d, mod)
+            # Recursive case: Generate composite polynomial
+            i = random.randint(1, C-1)
+            operation = random.choice(["add", "multiply"])
+
+            first_poly, first_circuit = generate_random_polynomials_recursive(n, d, i, mod)
+            second_poly, second_circuit = generate_random_polynomials_recursive(n, d, C-i, mod)
+
+            # Create circuit node for this operation
+            circuit_node = CircuitNode(
+                node_type="operation",
+                inputs=[first_circuit, second_circuit],
+                operation=operation
+            )
+
+            if operation == 'add':
+                poly_dict = add_polynomials(first_poly, second_poly, d, mod)
+            else:
+                poly_dict = multiply_polynomials(first_poly, second_poly, d, mod)
+
         
         # Convert to vector
-        maxim=0
+        maxim = 0
         for ind in index_to_monomial:
             if ind > maxim:
                 maxim = ind
@@ -96,51 +140,61 @@ def generate_random_polynomials(n, d, C, num_polynomials=10000, mod=5):
                 vector[monomial_to_index[monomial]] = coef
         
         all_polynomials.append(vector)
+        all_circuits.append(circuit_node)
     
-    return index_to_monomial, monomial_to_index, all_polynomials
+    return index_to_monomial, monomial_to_index, all_polynomials, all_circuits
 
 def generate_random_polynomials_recursive(n, d, C, mod):
     """
-    Generate random polynomials by multiplying polynomials of specific degrees.
+    Recursively generate random polynomials by multiplying polynomials of specific degrees.
     
     Parameters:
     n - number of variables
     d - maximum degree
     C - complexity parameter
-    num_polynomials - number of polynomials to generate
+    mod - modulo for coefficients
     
     Returns:
-    index_to_monomial - dictionary mapping indices to monomials
-    all_polynomials - list of polynomial vectors
+    poly_dict - polynomial as a dictionary
+    circuit - arithmetic circuit representing the polynomial
     """
-    
-    
-    # Generate first polynomial of degree i
-
-    if C ==1:
+    # Base case: Generate a single variable or constant
+    if C == 1:
         var_idx = random.randint(0, n)
         exponents = [0] * n
-        if var_idx != n:
+        
+        # Create circuit node
+        if var_idx == n:
+            # Constant term
+            circuit = CircuitNode(node_type="constant", value=1)
+        else:
+            # Variable term
             exponents[var_idx] = 1
+            circuit = CircuitNode(node_type="input", value=var_idx)
+            
         poly = {tuple(exponents): 1}
-
-        return poly
+        return poly, circuit
     else:
+        # Recursive case: Generate composite polynomial
         i = random.randint(1, C-1)
-
         operation = random.choice(["add", "multiply"])
 
-        first_poly = generate_random_polynomials_recursive(n, d, i, mod)
+        first_poly, first_circuit = generate_random_polynomials_recursive(n, d, i, mod)
+        second_poly, second_circuit = generate_random_polynomials_recursive(n, d, C-i, mod)
 
-        second_poly = generate_random_polynomials_recursive(n, d, C-i, mod)
+        # Create circuit node for this operation
+        circuit = CircuitNode(
+            node_type="operation",
+            inputs=[first_circuit, second_circuit],
+            operation=operation
+        )
 
         if operation == 'add':
             poly_dict = add_polynomials(first_poly, second_poly, d, mod)
         else:
             poly_dict = multiply_polynomials(first_poly, second_poly, d, mod)
-        
 
-    return poly_dict
+        return poly_dict, circuit
 
 def add_polynomials(poly1, poly2, d, mod):
     """Add two polynomials, restricting to terms of degree <= d"""
@@ -148,10 +202,10 @@ def add_polynomials(poly1, poly2, d, mod):
     
     for monomial, coef in poly2.items():
         if sum(monomial) > d:
-            continue  # Skip terms with degree > n
+            continue  # Skip terms with degree > d
         
         if monomial in result:
-            result[monomial] = (result[monomial] + coef) % mod #mod2
+            result[monomial] = (result[monomial] + coef) % mod
             if result[monomial] == 0:
                 del result[monomial]
         else:
@@ -160,7 +214,7 @@ def add_polynomials(poly1, poly2, d, mod):
     return result
 
 def multiply_polynomials(poly1, poly2, d, mod):
-    """Multiply two polynomials, restricting to terms of degree <= n"""
+    """Multiply two polynomials, restricting to terms of degree <= d"""
     result = {}
     
     for mon1, coef1 in poly1.items():
@@ -172,8 +226,8 @@ def multiply_polynomials(poly1, poly2, d, mod):
             if sum(new_mon) > d:
                 continue
             
-            # Multiply the coefficients mod2
-            new_coef = (coef1 * coef2) % 2
+            # Multiply the coefficients
+            new_coef = (coef1 * coef2) % mod
             
             # Add to the result
             if new_mon in result:
@@ -181,15 +235,14 @@ def multiply_polynomials(poly1, poly2, d, mod):
                 if result[new_mon] == 0:
                     del result[new_mon]
             else:
-                result[new_mon] = new_coef
+                if new_coef != 0:
+                    result[new_mon] = new_coef
     
     return result
 
-
-# Helper functions for working with polynomials and actions
 def add_polynomials_vector(poly1, poly2, mod):
-    """Add two polynomial vectors (binary coefficients)"""
-    if (len(poly1)!=len(poly2)):
+    """Add two polynomial vectors"""
+    if len(poly1) != len(poly2):
         return "error"
 
     max_len = max(len(poly1), len(poly2))
@@ -206,19 +259,25 @@ def add_polynomials_vector(poly1, poly2, mod):
     
     return result
 
-def multiply_polynomials_vector(poly1, poly2, mod):
-    if (len(poly1)!=len(poly2)):
+def multiply_polynomials_vector(poly1, poly2, mod, index_to_monomial, monomial_to_index):
+    """
+    Multiply two polynomial vectors using the additive indexing scheme
+    """
+    if len(poly1) != len(poly2):
         return "error"
 
     result = [0] * len(poly1)
     
     for i in range(len(poly1)):
+        if poly1[i] == 0:  # Skip zero coefficients
+            continue
+            
         for j in range(len(poly2)):
-            if poly1[i] == 0 or poly2[j] == 0: #since most entries are 0, this speeds up the algo
+            if poly2[j] == 0:  # Skip zero coefficients
                 continue
             
-            #thanks to our indexing, index(monomial1 * monomial2) = index(monomial1) + index(monomial2) 
-            # this offers enormous speed improvement instead of looking up the indices
-            result[i+j] = (result[i+j] + (poly1[i] * poly2[j])) % mod  
+            # With additive indexing, i+j represents the product monomial's index
+            if i+j < len(result):
+                result[i+j] = (result[i+j] + (poly1[i] * poly2[j])) % mod
     
     return result
