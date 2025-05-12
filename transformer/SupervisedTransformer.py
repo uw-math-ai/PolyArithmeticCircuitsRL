@@ -191,22 +191,6 @@ class ArithmeticCircuit:
         new_circuit.nodes = copy.deepcopy(self.nodes)
         new_circuit.edges = copy.deepcopy(self.edges)
         return new_circuit
-    
-    # def __str__(self):
-    #     """String representation of the circuit"""
-    #     result = []
-    #     for i, node in enumerate(self.nodes):
-    #         if node["type"] == "input":
-    #             result.append(f"{i}: Input(x_{node['value']})")
-    #         elif node["type"] == "constant":
-    #             result.append(f"{i}: Constant({node['value']})")
-    #         else:
-    #             inputs = [j for j, k in self.edges if k == i]
-    #             if len(inputs) >= 2:
-    #                 result.append(f"{i}: {node['operation']}({inputs[0]}, {inputs[1]})")
-    #             else:
-    #                 result.append(f"{i}: {node['operation']}(invalid inputs)")
-    #     return "\n".join(result)
 
 # Neural Network Architecture
 class ArithmeticCircuitGNN(nn.Module):
@@ -323,7 +307,9 @@ class CircuitBuilder(nn.Module):
         # Create memory tensor for transformer (combine graph and polynomial embeddings)
         memory = torch.cat([
             graph_embeddings.unsqueeze(0),  # (1, batch_size, embedding_dim)
-            poly_embeddings.unsqueeze(0)    # (1, batch_size, embedding_dim)
+            poly_embeddings.unsqueeze(0),    # (1, batch_size, embedding_dim)
+            circuit_embeddings
+
         ], dim=0)  # (2, batch_size, embedding_dim)
         
         # Query tensor (output token for each example in batch)
