@@ -33,7 +33,7 @@ class Config:
         self.train_size = 500         # Number of training examples
         self.epochs = 200              # Number of training epochs
         self.max_circuit_length = 100  # Maximum length for circuit sequence
-        self.trim_circuit = True
+        self.trim_circuit = False
 
 config = Config()
 
@@ -207,6 +207,21 @@ class CircuitDataset(Dataset):
         self.max_vector_size = max_vector_size
         self.config = config
         self.data = self.generate_data(size)
+
+    def compute_value_score(self, current_poly, target_poly):
+        current = torch.tensor(current_poly, dtype=torch.float)
+        target = torch.tensor(target_poly, dtype=torch.float)
+
+        # L1 distance
+        l1_dist = torch.sum(torch.abs(current - target))
+        dist_score = -l1_dist.item()  # Lower distance is better
+
+        # Monomial overlap score
+        overlap = torch.sum(torch.minimum(current, target))
+        overlap_score = overlap.item() / max(torch.sum(target).item(), 1.0)
+
+        # Weighted combination
+        return 0.7 * overlap_score + 0.3 * dist_score
     
     def generate_data(self, size):
         """Generate training data: (intermediate_circuit, target_poly, circuit_history) -> next_action"""
@@ -243,12 +258,16 @@ class CircuitDataset(Dataset):
                 action_idx = encode_action(next_op, next_node1_id, next_node2_id, max_nodes)
                 
                 # Store example
+                # Compute value score for current circuit state
+                current_poly = polynomials[i]
+                value_score = self.compute_value_score(current_poly, target_poly)
+
                 dataset.append({
                     'actions': current_actions,
                     'target_poly': target_poly,
                     'mask': available_mask,
                     'action': action_idx,
-                    'value': (i - n - 1) / (len(actions) - n - 1)  # Progress through operations
+                    'value': value_score  # ← this is now a heuristic score
                 })
                 
                 # If we have enough examples, return
