@@ -33,6 +33,7 @@ class Config:
         self.train_size = 500         # Number of training examples
         self.epochs = 200              # Number of training epochs
         self.max_circuit_length = 100  # Maximum length for circuit sequence
+        self.trim_circuit = True
 
 config = Config()
 
@@ -220,7 +221,7 @@ class CircuitDataset(Dataset):
         # Generate random circuits
         for _ in range(num_circuits):
             # Generate a random circuit
-            actions, polynomials, _, _ = generate_random_circuit(n, d, self.config.max_complexity, mod=self.config.mod)
+            actions, polynomials, _, _ = generate_random_circuit(n, d, self.config.max_complexity, mod=self.config.mod, trim = config.trim_circuit)
             
             # Target polynomial is the final polynomial
             target_poly = torch.tensor(polynomials[-1], dtype=torch.float, device=device)
@@ -460,7 +461,7 @@ def main():
     n = config.n_variables
     d = config.max_complexity
     index_to_monomial, monomial_to_index, _ = generate_monomials_with_additive_indices(n, d)
-    
+
     # Calculate maximum vector size
     max_vector_size = max(monomial_to_index.values()) + 1
     

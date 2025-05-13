@@ -123,7 +123,7 @@ def multiply_polynomials_vector(poly1, poly2, mod):
     
     return result
 
-def generate_random_circuit(n, d, C, mod=2):
+def generate_random_circuit(n, d, C, mod=2, trim=False):
     """
     Generate a random arithmetic circuit represented as a list of actions.
     
@@ -177,8 +177,53 @@ def generate_random_circuit(n, d, C, mod=2):
             poly = multiply_polynomials_vector(polynomials[input1_idx], polynomials[input2_idx], mod)
         
         polynomials.append(poly)
+
+    if trim:
+        actions, polynomials, _ = trim_circuit(actions, polynomials)
     
     return actions, polynomials, index_to_monomial, monomial_to_index
+
+
+def trim_circuit(actions, polynomials):
+    """
+    Trim unused actions and corresponding polynomial vectors from generate_random_circuit
+    when computing the target polynomial
+
+    Returns:
+        new_actions, new_polynomials, remap: trimmed actions and polynomials
+        remap: old_index -> new_index
+    """
+    used = set()
+    stack = [len(actions) - 1]  # Start from final node
+
+    while stack:
+        idx = stack.pop()
+        if idx in used:
+            continue
+        used.add(idx)
+        op, in1, in2 = actions[idx]
+        if op in ("add", "multiply"):
+            if in1 is not None:
+                stack.append(in1)
+            if in2 is not None:
+                stack.append(in2)
+
+    # Sort used indices to maintain consistent ordering
+    used = sorted(used)
+    remap = {old: new for new, old in enumerate(used)}
+
+    new_actions = [actions[i] for i in used]
+    new_polynomials = [polynomials[i] for i in used]
+
+    # Remap indices inside actions
+    for i, (op, in1, in2) in enumerate(new_actions):
+        if op in ("add", "multiply"):
+            new_actions[i] = (op, remap[in1], remap[in2])
+        else:
+            new_actions[i] = (op, None, None)
+
+    return new_actions, new_polynomials, remap
+
 
 def generate_random_polynomials(n, d, C, num_polynomials=10000, mod=5):
     """
