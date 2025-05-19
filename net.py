@@ -103,7 +103,7 @@ class CircuitState:
         while len(term_vectors) < max_terms:
             term_vectors.append([0] * max_poly_size)
         
-        if term_vectors > max_terms:
+        if len(term_vectors) > max_terms:
             print("error: too many terms")
 
         # 2. Encode target polynomial
