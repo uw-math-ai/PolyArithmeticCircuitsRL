@@ -1,0 +1,11 @@
+# ignore changes in packages 
+venv/
+
+# ignore changes in cache 
+__pycache__/
+
+# ignore changes in serialized data 
+*.pkl
+
+# ignore changes in model checkpoints
+*.pt

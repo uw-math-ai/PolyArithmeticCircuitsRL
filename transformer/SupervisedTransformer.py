@@ -3,17 +3,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv, global_mean_pool
 from torch_geometric.data import Data, DataLoader, Batch
-from torch_geometric.utils import add_self_loops
 import numpy as np
 import random
-from collections import deque
-import copy
 import os
 import tqdm
-import math
 from torch.utils.data import Dataset, DataLoader
 from generator import *
 from PositionalEncoding import *
+from State import Game
+from torch.distributions import Categorical
+from utils import vector_to_sympy, encode_action
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
@@ -34,6 +33,12 @@ class Config:
         self.epochs = 200              # Number of training epochs
         self.max_circuit_length = 100  # Maximum length for circuit sequence
         self.trim_circuit = False
+        
+        # Reinforcement Learning Parameters (prefixed with rl_)
+        self.rl_learning_rate = 1e-3            # learning rate
+        self.rl_reward_decay = 0.99             # reward decay 
+        self.rl_episodes = 100                  # number of games to play
+        self.rl_eps = np.finfo(np.float32).eps  # epsilon for numerical stability
 
 config = Config()
 
@@ -178,27 +183,6 @@ class CircuitBuilder(nn.Module):
             action_logits = action_logits.masked_fill(~available_actions_masks, float('-inf'))
         
         return action_logits, value_pred
-
-# Helper function to encode actions with commutative operations
-def encode_action(operation, node1_id, node2_id, max_nodes):
-    """
-    Encode an action so that commutative operations share the same action ID
-    regardless of the order of input nodes.
-    """
-    # For commutative operations, sort the node IDs
-    if operation in ["add", "multiply"]:
-        node1_id, node2_id = sorted([node1_id, node2_id])
-    
-    # Compute unique pair index using triangular numbers
-    # This maps each unordered pair (i,j) to a unique index
-    if node1_id > node2_id:
-        node1_id, node2_id = node2_id, node1_id
-    
-    pair_idx = (node1_id * (2 * max_nodes - node1_id - 1)) // 2 + node2_id - node1_id
-    
-    # Final action index: pair_index * num_operations + op_index
-    return pair_idx * 2 + (1 if operation == "multiply" else 0)
-
 
 class CircuitDataset(Dataset):
     def __init__(self, index_to_monomial, monomial_to_index, max_vector_size, size=10000):
@@ -435,6 +419,48 @@ def train_supervised(model, dataset, config):
     
     return model
 
+def train_reinforce(model, dataset, config):
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=config.rl_learning_rate)
+    index_to_monomial = dataset.index_to_monomial
+
+    for i in range(config.rl_episodes):
+        _, target_poly, _, _, _, _ = dataset[i]
+        sp_target_poly = vector_to_sympy(target_poly, index_to_monomial)
+        game = Game(sp_target_poly, target_poly.unsqueeze(0), config).to(device)
+        log_probs = []
+        
+        while not game.is_done():
+            circuit_graph, target_poly, circuit_actions, mask = game.observe()
+            action_logits, _ = model(circuit_graph, target_poly, circuit_actions, mask)  
+            dist = Categorical(action_logits)
+            action, log_prob = dist.sample()
+
+            # instead of masking, just repeatedly sample until we get a valid action
+            while not game.is_valid_action(action):
+                action, log_prob = dist.sample()
+            
+            game.take_action(action)
+            log_probs.append(log_prob)
+
+        rewards = game.compute_rewards()
+
+        R, loss, returns = 0, 0, []
+
+        for r in rewards[::-1]:
+            R = r + config.rl_reward_decay * R
+            returns.append(R)
+
+        returns = torch.tensor(returns[::-1])
+        returns = (returns - returns.mean()) / (returns.std() + config.rl_eps)
+
+        for lp, R in zip(log_probs, returns):
+            loss += -lp * R
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
 def evaluate_model(model, dataset, config, num_tests=100):
     """Evaluate the model on a test set"""
     test_indices = random.sample(range(len(dataset)), min(num_tests, len(dataset)))
@@ -505,6 +531,10 @@ def main():
     # Train the model
     print("Training model...")
     model = train_supervised(model, dataset, config)
+
+    # Start reinforcement learning 
+    # print("Beginning reinforcement learning...")
+    # model = train_reinforce(model, dataset, config)
     
     # Save the improved model
     print(f"Saving model to {model_path}")
