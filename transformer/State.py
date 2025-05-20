@@ -30,18 +30,21 @@ class Game:
         self.device = 'cpu'
 
     def _decode_action(self, action_idx):
-        operation = "multiply" if action_idx % 2 == 1 else 0
-        pair_idx = (action_idx - operation) // 2
-        node1_id = (math.sqrt(1 + 8 * pair_idx) - 1) // 2
+        operation = "multiply" if action_idx % 2 == 1 else "add"
+        pair_idx = (action_idx - (1 if operation=="multiply" else 0)) // 2
+
+        # We need to find the largest k such that k(k+1)/2 ≤ pair_idx
+        node1_id = int((math.sqrt(1 + 8 * pair_idx) - 1) // 2)
         node2_id = pair_idx - ((node1_id * (node1_id + 1)) // 2)
         return node1_id, operation, node2_id
     
     def _expr_used(self, node):
         # check if the node was a past action
-        if node > self.config.n_variables + 1:
+        if node >= self.config.n_variables + 1:
             index = node - 1 - self.config.n_variables
             return self.exprs[index], self.used_actions[index]
         else:
+            # print(f"index{node} symbols: {self.symbols}")
             return self.symbols[node], set()
 
     def take_action(self, action_idx):
@@ -55,7 +58,8 @@ class Game:
 
         self.actions_taken.append((op, node1, node2))
         self.exprs.append(op_fn(expr1, expr2))
-        self.used_actions(used1.union(used2).union({ len(self.actions_taken) }))
+        # Fix: append to the list instead of trying to call it
+        self.used_actions.append(used1.union(used2).union({ len(self.actions_taken) }))
 
     def is_done(self):
         # TODO: more efficient polynomial comparison with sampling?
@@ -65,18 +69,21 @@ class Game:
     def compute_rewards(self):
         # TODO: add term to prevent +1 -1 reward hacking
         success = self.exprs[-1] - self.target_sp == 0
-        actions_used = self.used_actions[-1]
-        rewards = list(map(lambda i: (0.5 if success else 0.2) if i in actions_used else -1), len(self.actions_taken))
+        # actions_used = self.used_actions[-1]
+        # rewards = list(map(lambda i: (0.5 if success else 0.2) if i in actions_used else -1, range(len(self.actions_taken))))
 
         # additional reward for successful computation of polynomial
         if success:
-            rewards[-1] = 1
+            # rewards[-1] = 1
+            rewards = [100]*len(self.actions_taken)
+        else:
+            rewards=[0]*len(self.actions_taken)
 
         return rewards
     
     def is_valid_action(self, action_idx):
         left, _, right = self._decode_action(action_idx)
-        return left < len(self.actions_taken) and right < len(self.actions_taken)
+        return left < len(self.actions_taken)+self.config.n_variables+1 and right < len(self.actions_taken)+self.config.n_variables+1
     
     def _get_graph(self, actions):
         """Convert actions to a PyTorch Geometric graph"""

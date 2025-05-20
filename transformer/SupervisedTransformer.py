@@ -3,68 +3,86 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv, global_mean_pool
 from torch_geometric.data import Data, DataLoader, Batch
-import numpy as np
+from torch_geometric.utils import add_self_loops
 import random
 import os
 import tqdm
+import math
 from torch.utils.data import Dataset, DataLoader
 from generator import *
 from PositionalEncoding import *
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from utils import encode_action, vector_to_sympy
+from State import *
 from State import Game
 from torch.distributions import Categorical
 from utils import vector_to_sympy, encode_action
+
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
 class Config:
     def __init__(self):
-        self.n_variables = 3           # Number of variables
-        self.max_complexity = 5        # Maximum complexity of circuits
-        self.hidden_dim = 128          # Hidden dimension for neural networks
-        self.embedding_dim = 64        # Embedding dimension for nodes
-        self.num_gnn_layers = 12       # Number of GNN layers
-        self.num_transformer_layers = 12 # Number of transformer layers
-        self.transformer_heads = 16     # Number of attention heads
-        self.learning_rate = 0.001     # Learning rate
-        self.batch_size = 128          # Batch size for training
-        self.mod = 50                  # Modulo for coefficients
-        self.train_size = 500         # Number of training examples
-        self.epochs = 200              # Number of training epochs
+        self.n_variables = 3         
+        self.max_complexity = 5      
+        self.hidden_dim = 512         
+        self.embedding_dim = 512       
+        self.num_gnn_layers = 6        
+        self.num_transformer_layers = 48 
+        self.transformer_heads = 8    
+        self.learning_rate = 0.0003    # Reduced learning rate for stability
+        self.batch_size = 64           
+        self.mod = 50                  
+        self.train_size = 10000
+        self.epochs = 300             
         self.max_circuit_length = 100  # Maximum length for circuit sequence
-        self.trim_circuit = False
-        
-        # Reinforcement Learning Parameters (prefixed with rl_)
+        self.warmup_steps = 1000       # learning rate warmup
+        self.weight_decay = 0.01       # L2 regularization
+
         self.rl_learning_rate = 1e-3            # learning rate
         self.rl_reward_decay = 0.99             # reward decay 
-        self.rl_episodes = 100                  # number of games to play
+        self.rl_episodes = 10000                  # number of games to play
         self.rl_eps = np.finfo(np.float32).eps  # epsilon for numerical stability
-
 config = Config()
 
 
 class ArithmeticCircuitGNN(nn.Module):
     def __init__(self, input_dim, hidden_dim, embedding_dim):
         super(ArithmeticCircuitGNN, self).__init__()
-        self.conv1 = GCNConv(input_dim, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, hidden_dim)
-        self.conv3 = GCNConv(hidden_dim, embedding_dim)
+        self.convs = nn.ModuleList()
+        self.convs.append(GCNConv(input_dim, hidden_dim))
+        
+        for i in range(config.num_gnn_layers - 2):
+            self.convs.append(GCNConv(hidden_dim, hidden_dim))
+            
+        self.convs.append(GCNConv(hidden_dim, embedding_dim))
+        
+        # Layer normalization
+        self.layer_norms = nn.ModuleList([
+            nn.LayerNorm(hidden_dim) for _ in range(config.num_gnn_layers - 1)
+        ])
+        self.final_norm = nn.LayerNorm(embedding_dim)
     
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
         
-        # ensure edge_index is not empty
         if edge_index.numel() == 0:
-            # Return zero embeddings if no edges
-            return torch.zeros(x.size(0), self.conv3.out_channels, device=device)
+            return torch.zeros(x.size(0), self.convs[-1].out_channels, device=device)
         
-        # GNN layers with error handling
-        try:
-            x = F.relu(self.conv1(x, edge_index))
-            x = F.relu(self.conv2(x, edge_index))
-            x = self.conv3(x, edge_index)
-        except Exception as e:
-            print(f"GNN forward pass error: {e}")
+        # First layer
+        x = F.relu(self.convs[0](x, edge_index))
+        
+        # Middle layers with residual connections
+        for i in range(1, len(self.convs) - 1):
+            identity = x
+            x = self.layer_norms[i-1](x)
+            x = F.relu(self.convs[i](x, edge_index))
+            x = x + identity  # Residual connection
+        
+        # Final layer
+        x = self.convs[-1](x, edge_index)
+        x = self.final_norm(x)
         
         return x
 
@@ -128,6 +146,9 @@ class CircuitBuilder(nn.Module):
         
         # Process target polynomials
         poly_embeddings = self.polynomial_embedding(target_polynomials)
+        poly_embeddings = poly_embeddings + torch.randn_like(poly_embeddings) * 1e-6 # adding some random noise so the attention weights aren't uniform
+        graph_embeddings = graph_embeddings + torch.randn_like(graph_embeddings) * 1e-6
+
         
         # Process circuit histories for each example in the batch
         circuit_embeddings_list = []
@@ -155,7 +176,7 @@ class CircuitBuilder(nn.Module):
         
         # Create memory tensor for transformer (combine graph, polynomial and circuit embeddings)
         memory = torch.cat([
-            graph_embeddings.unsqueeze(0),  # (1, batch_size, embedding_dim)
+            # graph_embeddings.unsqueeze(0),  # (1, batch_size, embedding_dim)
             poly_embeddings.unsqueeze(0),   # (1, batch_size, embedding_dim)
             circuit_embeddings              # (seq_len, batch_size, embedding_dim)
         ], dim=0)  
@@ -184,6 +205,8 @@ class CircuitBuilder(nn.Module):
         
         return action_logits, value_pred
 
+
+
 class CircuitDataset(Dataset):
     def __init__(self, index_to_monomial, monomial_to_index, max_vector_size, size=10000):
         self.index_to_monomial = index_to_monomial
@@ -191,21 +214,6 @@ class CircuitDataset(Dataset):
         self.max_vector_size = max_vector_size
         self.config = config
         self.data = self.generate_data(size)
-
-    def compute_value_score(self, current_poly, target_poly):
-        current = torch.tensor(current_poly, dtype=torch.float)
-        target = torch.tensor(target_poly, dtype=torch.float)
-
-        # L1 distance
-        l1_dist = torch.sum(torch.abs(current - target))
-        dist_score = -l1_dist.item()  # Lower distance is better
-
-        # Monomial overlap score
-        overlap = torch.sum(torch.minimum(current, target))
-        overlap_score = overlap.item() / max(torch.sum(target).item(), 1.0)
-
-        # Weighted combination
-        return 0.7 * overlap_score + 0.3 * dist_score
     
     def generate_data(self, size):
         """Generate training data: (intermediate_circuit, target_poly, circuit_history) -> next_action"""
@@ -213,14 +221,14 @@ class CircuitDataset(Dataset):
         dataset = []
         
         n = self.config.n_variables
-        d = self.config.max_complexity
+        d = self.config.max_complexity*2
         
         num_circuits = size // self.config.max_complexity
         
         # Generate random circuits
         for _ in range(num_circuits):
             # Generate a random circuit
-            actions, polynomials, _, _ = generate_random_circuit(n, d, self.config.max_complexity, mod=self.config.mod, trim = config.trim_circuit)
+            actions, polynomials, _, _ = generate_random_circuit(n, d, self.config.max_complexity, mod=self.config.mod)
             
             # Target polynomial is the final polynomial
             target_poly = torch.tensor(polynomials[-1], dtype=torch.float, device=device)
@@ -242,16 +250,12 @@ class CircuitDataset(Dataset):
                 action_idx = encode_action(next_op, next_node1_id, next_node2_id, max_nodes)
                 
                 # Store example
-                # Compute value score for current circuit state
-                current_poly = polynomials[i]
-                value_score = self.compute_value_score(current_poly, target_poly)
-
                 dataset.append({
                     'actions': current_actions,
                     'target_poly': target_poly,
                     'mask': available_mask,
                     'action': action_idx,
-                    'value': value_score  # ← this is now a heuristic score
+                    'value': (i - n - 1) / (len(actions) - n - 1)  # Progress through operations
                 })
                 
                 # If we have enough examples, return
@@ -368,13 +372,27 @@ def train_supervised(model, dataset, config):
         collate_fn=circuit_collate
     )
     
-    optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
+    # Optimizer with weight decay
+    optimizer = torch.optim.AdamW(
+        model.parameters(), 
+        lr=config.learning_rate,
+        weight_decay=config.weight_decay
+    )
+    
+    # Learning rate scheduler
+    scheduler = CosineAnnealingLR(
+        optimizer, 
+        T_max=len(data_loader) * config.epochs,
+        eta_min=config.learning_rate/100
+    )
     
     # Training loop
     for epoch in range(config.epochs):
+
         total_action_loss = 0
         total_value_loss = 0
         action_correct = 0
+        action_incorrect = 0
         total = 0
         value_mse = 0
         
@@ -386,73 +404,120 @@ def train_supervised(model, dataset, config):
             action_logits, value_preds = model(batched_graph, target_polys, circuit_actions, masks)
             
             # Calculate action loss
-            action_loss = F.cross_entropy(action_logits, actions)
+            action_loss = F.cross_entropy(action_logits, actions) # test with label_smoothing=0.1
             
             # Calculate value loss
             value_loss = F.mse_loss(value_preds, values)
             
             # Combined loss 
             loss = action_loss + value_loss
+            loss= action_loss # first let's see if we can get good action accuracy
+            # Gradient clipping to prevent explosion
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
             
             # Backpropagation
             loss.backward()
             optimizer.step()
+            scheduler.step()
+
             
             # Track metrics
             pred_actions = torch.argmax(action_logits, dim=1)
             action_correct += (pred_actions == actions).sum().item()
+            action_incorrect += (pred_actions != actions).sum().item()
+
             value_mse += F.mse_loss(value_preds, values, reduction='sum').item()
             total += actions.size(0)
             
             total_action_loss += action_loss.item() * actions.size(0)
             total_value_loss += value_loss.item() * actions.size(0)
+                # Update learning rate
         
+        # Print current learning rate
+        current_lr = optimizer.param_groups[0]['lr']
+        print(f"  Current learning rate: {current_lr:.6f}")
         # Print epoch results
         avg_action_loss = total_action_loss / len(dataset)
         avg_value_loss = total_value_loss / len(dataset)
-        action_accuracy = 100 * action_correct / total
+        action_accuracy = 100 * action_correct / (action_correct+action_incorrect)
         avg_value_mse = value_mse / total
         
         print(f"Epoch {epoch+1}:")
         print(f"  Action Loss: {avg_action_loss}, Accuracy: {action_accuracy}%")
         print(f"  Value Loss: {avg_value_loss}, MSE: {avg_value_mse}")
+        model_path = f"transformer_model_n{config.n_variables}_C{config.max_complexity}_mod{config.mod}_GNN{config.num_gnn_layers}_TF{config.num_transformer_layers}.pt"
+
+        if epoch%20==0:
+            torch.save(model.state_dict(), model_path)
     
     return model
 
-def train_reinforce(model, dataset, config):
 
+def train_reinforce(model, dataset, config):
     optimizer = torch.optim.Adam(model.parameters(), lr=config.rl_learning_rate)
     index_to_monomial = dataset.index_to_monomial
-
+    correct_count=0
+    incorrect_count=0
     for i in range(config.rl_episodes):
-        _, target_poly, _, _, _, _ = dataset[i]
+        circuit_graph_dataset, target_poly, circuit_actions_dataset, mask_dataset, action_dataset, value = dataset[random.randint(1, len(dataset)-2)]
         sp_target_poly = vector_to_sympy(target_poly, index_to_monomial)
         game = Game(sp_target_poly, target_poly.unsqueeze(0), config).to(device)
         log_probs = []
-        
         while not game.is_done():
             circuit_graph, target_poly, circuit_actions, mask = game.observe()
-            action_logits, _ = model(circuit_graph, target_poly, circuit_actions, mask)  
-            dist = Categorical(action_logits)
-            action, log_prob = dist.sample()
-
-            # instead of masking, just repeatedly sample until we get a valid action
-            while not game.is_valid_action(action):
-                action, log_prob = dist.sample()
+            # print(circuit_actions_dataset)
+            # print(circuit_actions)
+            # for i in range(50):
+            #     _,tar,cir,_,_,_ = dataset[i]
+            #     print(cir)
+            #     print(vector_to_sympy(tar, index_to_monomial))
+            # print(mask)
+            action_logits, _ = model(circuit_graph, target_poly, circuit_actions, mask)
             
+            # Find valid actions (where mask is True)
+            valid_indices = torch.where(mask[0])[0]
+            
+            # Extract only the logits for valid actions
+            valid_logits = action_logits[0, valid_indices]
+            
+            # Create categorical distribution only on valid actions
+            dist = Categorical(logits=valid_logits)
+            
+            # Sample from the valid actions only
+            local_action = dist.sample()
+            log_prob = dist.log_prob(local_action)
+            
+            # Convert back to global action index
+            action = valid_indices[local_action]
+
+            
+            while not game.is_valid_action(action):
+                print("error with mask")
+                # action, log_prob = dist.sample()
+                # log_prob = dist.log_prob(action)
+                # action = valid_indices[action]
+
             game.take_action(action)
             log_probs.append(log_prob)
 
         rewards = game.compute_rewards()
+        if rewards[-1]==100:
+            correct_count = correct_count+1
+        else:
+            incorrect_count = incorrect_count+1
 
+        # Process rewards and compute loss
         R, loss, returns = 0, 0, []
 
         for r in rewards[::-1]:
             R = r + config.rl_reward_decay * R
             returns.append(R)
 
-        returns = torch.tensor(returns[::-1])
-        returns = (returns - returns.mean()) / (returns.std() + config.rl_eps)
+        returns = torch.tensor(returns[::-1], device=device)
+        
+        # if len(returns) > 1:  
+        #     returns = (returns - returns.mean()) / (returns.std() + config.rl_eps)
 
         for lp, R in zip(log_probs, returns):
             loss += -lp * R
@@ -460,7 +525,88 @@ def train_reinforce(model, dataset, config):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        
+        # Print progress every 100 episodes
+        if (i + 1) % 10 == 0:
+            print(f"correct count: {correct_count}")
+            print(f"Episode {i+1}/{config.rl_episodes}, Last reward: {rewards[-1]:.4f}")
 
+def create_example_data(max_vector_size, model):
+    # Graph with 4 nodes (3 inputs + 1 constant), 4 features each
+    x = torch.tensor([
+        [1, 0, 0, 0],    # Input 0
+        [1, 0, 0, 1/3],  # Input 1
+        [1, 0, 0, 2/3],  # Input 2
+        [0, 1, 0, 1.0]   # Constant
+    ], dtype=torch.float, device=device)
+    
+    # Create self-loops for each node (initial circuit has no computation edges)
+    n_nodes = x.size(0)
+    edge_index = torch.tensor([
+        [i for i in range(n_nodes)],  # Source nodes
+        [i for i in range(n_nodes)]   # Target nodes (self-loops)
+    ], dtype=torch.long, device=device)
+    
+    graph_data = Data(x=x, edge_index=edge_index)
+    
+    # Target polynomial (using the example from original code)
+    target_poly = torch.zeros(max_vector_size, dtype=torch.float, device=device)
+    target_poly[36] = 2.0
+    
+    # Initial circuit actions - just the base nodes
+    actions = [
+        ('input', None, None),    # x0
+        ('input', None, None),    # x1
+        ('input', None, None),    # x2
+        ('constant', None, None)  # Constant value
+    ]
+    
+    # Get available actions mask
+    max_nodes = config.n_variables + config.max_complexity + 1
+    total_max_pairs = (max_nodes * (max_nodes + 1)) // 2
+    max_possible_actions = total_max_pairs * 2
+    
+    mask = torch.zeros(max_possible_actions, dtype=torch.bool, device=device)
+    
+    # Set available actions to True for all pairs of initial nodes
+    for i in range(n_nodes):
+        for j in range(i, n_nodes):
+            for op_idx, op in enumerate(["add", "multiply"]):
+                action_idx = encode_action(op, i, j, max_nodes)
+                if action_idx < max_possible_actions:
+                    mask[action_idx] = True
+    
+    # Prepare data for model
+    batched_graph = Batch.from_data_list([graph_data])
+    target_poly = target_poly.unsqueeze(0)
+    mask = mask.unsqueeze(0)
+    circuit_actions = [actions]
+    
+    # Forward pass through the model
+    print("Predicting first operation in circuit construction...")
+    action_logits, value_pred = model(batched_graph, target_poly, circuit_actions, mask)
+    print(action_logits)
+    # Get the top predicted actions
+    top_action_values, top_action_indices = torch.topk(action_logits[0], 5)
+    
+    print("\nTop 5 predicted actions:")
+    for i, (idx, val) in enumerate(zip(top_action_indices, top_action_values)):
+        idx = idx.item()
+        val = val.item()
+        
+        # Decode the action
+        op_idx = idx % 2
+        pair_idx = idx // 2
+        operation = "multiply" if op_idx == 1 else "add"
+        
+        # Find node indices from pair index
+        node1 = int(math.floor((-1 + math.sqrt(1 + 8 * pair_idx)) / 2))
+        node2 = pair_idx - (node1 * (node1 + 1)) // 2
+        
+        print(f"  {i+1}. {operation}({node1}, {node2}) - score: {val:.4f}")
+    
+    return action_logits, value_pred
+    
 def evaluate_model(model, dataset, config, num_tests=100):
     """Evaluate the model on a test set"""
     test_indices = random.sample(range(len(dataset)), min(num_tests, len(dataset)))
@@ -504,10 +650,10 @@ def main():
     
     # Generate monomial indexing
     n = config.n_variables
-    d = config.max_complexity
+    d = config.max_complexity*2
     index_to_monomial, monomial_to_index, _ = generate_monomials_with_additive_indices(n, d)
-
-    # Calculate maximum vector size
+    
+    # Calculate maximum vector size, +1 because max index is 0-based
     max_vector_size = max(monomial_to_index.values()) + 1
     
     # Create dataset
@@ -524,6 +670,8 @@ def main():
         
         # Evaluate the loaded model first
         print("Evaluating loaded model:")
+        create_example_data(max_vector_size, model)
+        train_reinforce(model, dataset, config)
         evaluate_model(model, dataset, config)
     else:
         print("No existing model found. Starting training from scratch.")
@@ -531,10 +679,6 @@ def main():
     # Train the model
     print("Training model...")
     model = train_supervised(model, dataset, config)
-
-    # Start reinforcement learning 
-    # print("Beginning reinforcement learning...")
-    # model = train_reinforce(model, dataset, config)
     
     # Save the improved model
     print(f"Saving model to {model_path}")

@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
+
 class CircuitHistoryEncoder(nn.Module):
     """Encodes the circuit history as a sequence for the transformer"""
     def __init__(self, embedding_dim):
