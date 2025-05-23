@@ -11,7 +11,7 @@ import copy
 import os
 import tqdm
 import math
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Subset
 from generator import *
 from PositionalEncoding import *
 
@@ -207,6 +207,18 @@ class CircuitDataset(Dataset):
         self.max_vector_size = max_vector_size
         self.config = config
         self.data = self.generate_data(size)
+
+    def train_test_split(self, test_ratio=0.2, seed=42):
+        """Split the dataset into training and testing subsets."""
+        np.random.seed(seed)
+        indices = np.random.permutation(len(self.data))
+        test_size = int(len(self.data) * test_ratio)
+        test_indices = indices[:test_size]
+        train_indices = indices[test_size:]
+
+        train_subset = Subset(self, train_indices)
+        test_subset = Subset(self, test_indices)
+        return train_subset, test_subset
 
     def compute_value_score(self, current_poly, target_poly):
         current = torch.tensor(current_poly, dtype=torch.float)
@@ -486,6 +498,7 @@ def main():
     
     # Create dataset
     dataset = CircuitDataset(index_to_monomial, monomial_to_index, max_vector_size, size=config.train_size)
+    train, test = dataset.train_test_split()
     
     # Initialize model
     model = CircuitBuilder(config, max_vector_size).to(device)
@@ -498,13 +511,13 @@ def main():
         
         # Evaluate the loaded model first
         print("Evaluating loaded model:")
-        evaluate_model(model, dataset, config)
+        evaluate_model(model, test, config)
     else:
         print("No existing model found. Starting training from scratch.")
     
     # Train the model
     print("Training model...")
-    model = train_supervised(model, dataset, config)
+    model = train_supervised(model, train, config)
     
     # Save the improved model
     print(f"Saving model to {model_path}")
@@ -512,7 +525,7 @@ def main():
     
     # Evaluate the final model
     print("Evaluating final model:")
-    evaluate_model(model, dataset, config)
+    evaluate_model(model, test, config)
 
 if __name__ == "__main__":
     main()
