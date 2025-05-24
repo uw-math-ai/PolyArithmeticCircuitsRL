@@ -1,51 +1,38 @@
 import sympy as sp
 import torch
 from torch_geometric.data import Data
+import torch_geometric.utils # Import this
 from utils import encode_action
 import torch
 import math
 
 class Game:
     def __init__(self, sympy_poly, vec_poly, config):
-        self.config = config 
-
-        # list of actions where each action is a tuple of (node index, op, node index)
+        self.config = config
         self.actions_taken = []
-
-        # list of sympy expressions where the i-th entry represents the polynomial 
-        # if actions_taken[i] were to be evaluated 
         self.exprs = []
-
-        # list of sets where the i-th set represents all the nodes used by
-        # actions_taken[i] and its predecessors. Can't use DSU here because 
-        # actions may not be disjoint across trees. 
         self.used_actions = []
-
-        self.symbols = sp.symbols([f"x{i}" for i in range(config.n_variables)]) + [1]
-
-        # target polynomial   
+        # Corrected line: Use list [sp.S.One] instead of tuple
+        self.symbols = sp.symbols([f"x{i}" for i in range(config.n_variables)]) + [sp.S.One]
         self.target_sp = sympy_poly
         self.target_vec = vec_poly
-
         self.device = 'cpu'
 
     def _decode_action(self, action_idx):
         operation = "multiply" if action_idx % 2 == 1 else "add"
-        pair_idx = (action_idx - (1 if operation=="multiply" else 0)) // 2
+        pair_idx = action_idx // 2
 
-        # We need to find the largest k such that k(k+1)/2 ≤ pair_idx
-        node1_id = int((math.sqrt(1 + 8 * pair_idx) - 1) // 2)
+        node1_id = int((math.sqrt(1 + 8 * pair_idx) - 1) / 2)
         node2_id = pair_idx - ((node1_id * (node1_id + 1)) // 2)
         return node1_id, operation, node2_id
-    
+
     def _expr_used(self, node):
-        # check if the node was a past action
-        if node >= self.config.n_variables + 1:
-            index = node - 1 - self.config.n_variables
+        num_base_nodes = self.config.n_variables + 1
+        if node >= num_base_nodes:
+            index = node - num_base_nodes
             return self.exprs[index], self.used_actions[index]
         else:
-            # print(f"index{node} symbols: {self.symbols}")
-            return self.symbols[node], set()
+            return self.symbols[node], {node}
 
     def take_action(self, action_idx):
         mul = lambda a, b : a * b
@@ -54,110 +41,106 @@ class Game:
         node1, op, node2 = self._decode_action(action_idx)
         expr1, used1 = self._expr_used(node1)
         expr2, used2 = self._expr_used(node2)
-        op_fn = mul if op == "multiply" else add 
+        op_fn = mul if op == "multiply" else add
 
+        new_expr = sp.expand(op_fn(expr1, expr2))
         self.actions_taken.append((op, node1, node2))
-        self.exprs.append(op_fn(expr1, expr2))
-        # Fix: append to the list instead of trying to call it
-        self.used_actions.append(used1.union(used2).union({ len(self.actions_taken) }))
+        self.exprs.append(new_expr)
+        self.used_actions.append(used1.union(used2).union({len(self.actions_taken) - 1 + self.config.n_variables + 1}))
 
     def is_done(self):
-        # TODO: more efficient polynomial comparison with sampling?
         return len(self.actions_taken) >= self.config.max_complexity or \
-               (False if len(self.exprs) == 0 else self.exprs[-1] - self.target_sp == 0)
-    
-    def compute_rewards(self):
-        # TODO: add term to prevent +1 -1 reward hacking
-        success = self.exprs[-1] - self.target_sp == 0
-        # actions_used = self.used_actions[-1]
-        # rewards = list(map(lambda i: (0.5 if success else 0.2) if i in actions_used else -1, range(len(self.actions_taken))))
+               (len(self.exprs) > 0 and sp.expand(self.exprs[-1] - self.target_sp) == 0)
 
-        # additional reward for successful computation of polynomial
+    def compute_rewards(self):
+        """Computes rewards for the game, shaping them for better RL."""
+        if not self.actions_taken:
+            return []
+
+        success = sp.expand(self.exprs[-1] - self.target_sp) == 0
+
+        rewards = [-0.1] * len(self.actions_taken)
+
         if success:
-            # rewards[-1] = 1
-            rewards = [100]*len(self.actions_taken)
-        else:
-            rewards=[0]*len(self.actions_taken)
+            rewards[-1] = 100.0
+        elif len(self.actions_taken) >= self.config.max_complexity:
+            rewards[-1] = -10.0
 
         return rewards
-    
+
     def is_valid_action(self, action_idx):
+        max_nodes = self.config.n_variables + self.config.max_complexity + 1
+        total_pairs = (max_nodes * (max_nodes + 1)) // 2
+        max_possible_actions = total_pairs * 2
+        if action_idx >= max_possible_actions: return False
+
         left, _, right = self._decode_action(action_idx)
-        return left < len(self.actions_taken)+self.config.n_variables+1 and right < len(self.actions_taken)+self.config.n_variables+1
-    
+        current_num_nodes = len(self.actions_taken) + self.config.n_variables + 1
+        return left < current_num_nodes and right < current_num_nodes
+
     def _get_graph(self, actions):
-        """Convert actions to a PyTorch Geometric graph"""
-        # Create node features
         n_nodes = len(actions)
         node_features = []
         edges = []
-        
+
         for i, action in enumerate(actions):
             action_type, input1_idx, input2_idx = action
-            
-            # Create node feature
+
             if action_type == "input":
-                # Input node
-                type_encoding = [1, 0, 0]  # One-hot for input
-                value = i / max(1, self.config.n_variables)  # Normalize index
+                type_encoding = [1, 0, 0]
+                value = i / max(1, self.config.n_variables)
             elif action_type == "constant":
-                # Constant node
-                type_encoding = [0, 1, 0]  # One-hot for constant
-                value = 1.0  # Constant value
-            else:  # operation
-                # Operation node
-                type_encoding = [0, 0, 1]  # One-hot for operation
-                value = 1.0 if action_type == "multiply" else 0.0  # 1 for multiply, 0 for add
-                
-                # Add edges from inputs to this node
+                type_encoding = [0, 1, 0]
+                value = 1.0
+            else:
+                type_encoding = [0, 0, 1]
+                value = 1.0 if action_type == "multiply" else 0.0
                 edges.append((input1_idx, i))
                 edges.append((input2_idx, i))
-            
-            # Combine features
             node_features.append(type_encoding + [value])
-        
-        # Convert to PyTorch tensors
+
         x = torch.tensor(node_features, dtype=torch.float, device=self.device)
-        
-        # Handle the case with no edges
+
         if len(edges) == 0:
-            edge_index = torch.tensor([[i, i] for i in range(n_nodes)], dtype=torch.long, device=self.device).t().contiguous()
+            edge_index = torch.empty((2, 0), dtype=torch.long, device=self.device)
         else:
             edge_index = torch.tensor(edges, dtype=torch.long, device=self.device).t().contiguous()
-        
-        # Create PyTorch Geometric data object
+
+        edge_index, _ = torch_geometric.utils.add_self_loops(edge_index, num_nodes=n_nodes)
+
         data = Data(x=x, edge_index=edge_index)
-        
         return data
-    
+
     def _action_mask(self, actions):
-        """Create a mask for available actions with a fixed size"""
         n_nodes = len(actions)
         max_nodes = self.config.n_variables + self.config.max_complexity + 1
-        
-        # Calculate the maximum possible number of actions
-        total_max_pairs = (max_nodes * (max_nodes + 1)) // 2  # Max possible combinations
+        total_max_pairs = (max_nodes * (max_nodes + 1)) // 2
         max_possible_actions = total_max_pairs * 2
-        
-        # Create mask with the maximum possible size
+
         mask = torch.zeros(1, max_possible_actions, dtype=torch.bool, device=self.device)
-        
-        # Set available actions to True
+
         for i in range(n_nodes):
             for j in range(i, n_nodes):
-                for _, op in enumerate(["add", "multiply"]):
+                for op in ["add", "multiply"]:
                     action_idx = encode_action(op, i, j, max_nodes)
                     if action_idx < max_possible_actions:
                         mask[0][action_idx] = True
-        
         return mask
 
     def to(self, device):
         self.device = device
         return self
-    
+
     def observe(self):
         variables = [("input", None, None) for _ in range(self.config.n_variables)]
         constants = variables + [("constant", None, None)]
         history = constants + self.actions_taken
-        return self._get_graph(history), self.target_vec, [history], self._action_mask(history)
+
+        graph = self._get_graph(history)
+        mask = self._action_mask(history)
+
+        target_vec_observed = self.target_vec
+        if target_vec_observed.dim() == 1:
+           target_vec_observed = target_vec_observed.unsqueeze(0)
+
+        return graph, target_vec_observed, [history], mask

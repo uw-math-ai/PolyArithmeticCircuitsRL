@@ -12,14 +12,17 @@ from torch.utils.data import Dataset, DataLoader
 from generator import *
 from PositionalEncoding import *
 from torch.optim.lr_scheduler import CosineAnnealingLR
+from generator import generate_monomials_with_additive_indices, generate_random_circuit
 from utils import encode_action, vector_to_sympy
 from State import *
 from State import Game
 from torch.distributions import Categorical
 from utils import vector_to_sympy, encode_action
+import numpy as np
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 print(f"Using device: {device}")
 
 class Config:
