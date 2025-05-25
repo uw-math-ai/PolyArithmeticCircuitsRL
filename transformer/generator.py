@@ -166,6 +166,13 @@ def generate_random_circuit(n, d, C, mod=2):
         
         # Choose an operation
         operation = random.choice(["add", "multiply"])
+
+        while operation == 'multiply' and (input2_idx==n or input1_idx==n):
+            input1_idx = random.randint(0, num_nodes - 1)
+            input2_idx = random.randint(0, num_nodes - 1)
+            
+            # Choose an operation
+            operation = random.choice(["add", "multiply"])
         
         # Add the action
         actions.append((operation, input1_idx, input2_idx))

@@ -28,12 +28,12 @@ print(f"Using device: {device}")
 class Config:
     def __init__(self):
         # --- SIMPLIFIED SETTINGS FOR DEBUGGING ---
-        self.n_variables = 2         # Reduced
-        self.max_complexity = 3      # Reduced
-        self.hidden_dim = 128        # Reduced
-        self.embedding_dim = 128       # Reduced
+        self.n_variables = 3         # Reduced
+        self.max_complexity = 5      # Reduced
+        self.hidden_dim = 256        # Reduced
+        self.embedding_dim = 256       # Reduced
         self.num_gnn_layers = 3        # Reduced
-        self.num_transformer_layers = 4 # Reduced (Start even lower if needed, e.g., 2)
+        self.num_transformer_layers = 24 # Reduced (Start even lower if needed, e.g., 2)
         self.transformer_heads = 4     # Reduced
         self.transformer_dropout = 0.2 # Increased Dropout
         self.train_size = 10000        # Kept the same, but can be reduced for speed
@@ -235,6 +235,8 @@ class CircuitDataset(Dataset):
                 for op in ["add", "multiply"]:
                     action_idx = encode_action(op, i, j, max_nodes)
                     if action_idx < max_possible_actions: mask[action_idx] = True
+                    if op == 'multiply' and (i==config.n_variables or j==config.n_variables):
+                        mask[action_idx] = False
         return mask
 
     def __len__(self): return len(self.data)
@@ -326,20 +328,46 @@ def calculate_gae(rewards, values, dones, gamma, lambda_gae):
            torch.tensor(returns, dtype=torch.float, device=device)
 
 def train_ppo(model, dataset, config):
+
+    
     optimizer = torch.optim.Adam(model.parameters(), lr=config.rl_learning_rate)
     index_to_monomial = dataset.index_to_monomial
-    print("\n--- Starting PPO Training ---")
+    
+    # Curriculum learning parameters
+    current_complexity = 1  # Start with simplest polynomials
+    complexity_threshold = 0.7  # Increase complexity when success rate > 70%
+    complexity_window = 100  # Number of recent games to consider
+    recent_successes = []  # Track recent game outcomes
+    
+    print(f"complexity level: {current_complexity}")
+    
     for ppo_iter in range(config.ppo_iterations):
         model.eval()
         batch_states, batch_actions, batch_old_log_probs = [], [], []
         batch_rewards, batch_dones, batch_values = [], [], []
         collected_steps, games_played, success_count = 0, 0, 0
+        
+        # Store circuit examples for printing
+        circuit_examples = []
+        iteration_successes = []  # Track successes this iteration
 
         with torch.no_grad():
             while collected_steps < config.steps_per_batch:
                 games_played += 1
-                _, target_poly, _, _, _, _ = dataset[random.randint(0, len(dataset)-1)]
+                
+                # Generate polynomial with current complexity level
+                n = config.n_variables
+                d = config.max_complexity * 2
+                actions, polynomials, _, _ = generate_random_circuit(
+                    n, d, current_complexity, mod=config.mod
+                )
+                
+                if not polynomials:
+                    continue
+                
+                target_poly = torch.tensor(polynomials[-1], dtype=torch.float)
                 sp_target_poly = vector_to_sympy(target_poly, index_to_monomial)
+                
                 game = Game(sp_target_poly, target_poly.unsqueeze(0), config).to('cpu')
                 traj_states, traj_actions, traj_log_probs, traj_rewards, traj_dones, traj_values = [], [], [], [], [], []
 
@@ -358,10 +386,66 @@ def train_ppo(model, dataset, config):
                     batch_old_log_probs.extend(traj_log_probs); batch_values.extend(traj_values)
                     batch_rewards.extend(traj_rewards); batch_dones.extend(traj_dones)
                     collected_steps += len(traj_states)
-                    if traj_dones[-1] and traj_rewards[-1] == 100.0: success_count += 1
+                    
+                    variables = [("input", None, None) for _ in range(config.n_variables)]
+                    constants = [("constant", None, None)]
+                    final_circuit = variables + constants + game.actions_taken
+                    success = traj_dones[-1] and traj_rewards[-1] == 100.0
+                    if success: success_count += 1
+                    
+                    iteration_successes.append(success)
+                    
+                    if len(circuit_examples) < 10:
+                        final_expr = game.exprs[-1] if game.exprs else None
+                        circuit_examples.append({
+                            'target': sp_target_poly,
+                            'circuit': final_circuit,
+                            'success': success,
+                            'final_reward': traj_rewards[-1] if traj_rewards else 0,
+                            'steps': len(traj_states),
+                            'final_expr': final_expr,
+                            'complexity': current_complexity
+                        })
+
+        recent_successes.extend(iteration_successes)
+        recent_successes = recent_successes[-complexity_window:]
+        
+        if len(recent_successes) >= complexity_window // 2:  # Need enough samples
+            recent_success_rate = sum(recent_successes) / len(recent_successes)
+            
+            if recent_success_rate > complexity_threshold and current_complexity < config.max_complexity:
+                current_complexity += 1
+                recent_successes = []  # Reset tracking for new complexity
+                print(f"Increasing complexity to {current_complexity} ***")
+                print(f"    (Success rate: {recent_success_rate} > {complexity_threshold})")
+
+        # Print circuit examples after trajectory collection
+        print(f"PPO Iteration {ppo_iter+1} (Complexity: {current_complexity}) ===")
+        for i, example in enumerate(circuit_examples):
+            print(f"\nExample {i+1}:")
+            print(f"  Target polynomial: {example['target']}")
+            print(f"  Final expression: {example['final_expr'] if example['final_expr'] else 'None'}")
+            print(f"  Success: {'YES' if example['success'] else 'NO'}")
+            print(f"  Final reward: {example['final_reward']:.2f}")
+            print(f"  Steps taken: {example['steps']}")
+            print(f"  Complexity level: {example['complexity']}")
+            print(f"  Circuit actions:")
+            for j, action in enumerate(example['circuit']):
+                if j < config.n_variables:
+                    # Input node
+                    print(f"    {j}: Input x_{j}")
+                elif j == config.n_variables:
+                    # Constant node
+                    print(f"    {j}: Constant 1")
+                else:
+                    # Operation node
+                    op, node1, node2 = action
+                    op_symbol = '*' if op == 'multiply' else '+'
+                    print(f"    {j}: {op.capitalize()} node_{node1} {op_symbol} node_{node2}")
+        print("=" * 60)
 
         if not batch_states:
-             print("PPO Iter {ppo_iter+1}: No data collected, skipping update.")
+             print(f"PPO Iter {ppo_iter+1}: No data collected, skipping update.")
              continue
 
         advantages, returns = calculate_gae(batch_rewards, batch_values, batch_dones, config.gamma, config.lambda_gae)
@@ -406,8 +490,14 @@ def train_ppo(model, dataset, config):
 
         success_rate = 100 * success_count / games_played if games_played > 0 else 0
         avg_ent = total_ent_loss / num_batches / (-config.ent_coef) if num_batches > 0 and config.ent_coef != 0 else 0
-        print(f"PPO Iter {ppo_iter+1}: SR: {success_rate:.2f}%, L: {total_loss/num_batches:.3f} (Pi: {total_pi_loss/num_batches:.3f}, V: {total_v_loss/num_batches:.3f}, E: {avg_ent:.4f})")
-        if (ppo_iter + 1) % 50 == 0: torch.save(model.state_dict(), f"ppo_model_n{config.n_variables}_C{config.max_complexity}.pt")
+        
+        # Include curriculum info in the summary
+        recent_sr = 100 * sum(recent_successes) / len(recent_successes) if recent_successes else 0
+        print(f"\nPPO Iter {ppo_iter+1}: SR: {success_rate}% (Recent: {recent_sr}%), Complexity: {current_complexity}, L: {total_loss/num_batches} (Pi: {total_pi_loss/num_batches}, V: {total_v_loss/num_batches}, E: {avg_ent})")
+        
+        if (ppo_iter + 1) % 50 == 0: 
+            torch.save(model.state_dict(), f"ppo_model_n{config.n_variables}_C{config.max_complexity}_curriculum.pt")
+            print(f"  Model saved with current complexity level: {current_complexity}")     
 
 # --- evaluate_model (No changes) ---
 def evaluate_model(model, test_dataset, config, num_tests=500):
@@ -452,15 +542,19 @@ def main():
     model = CircuitBuilder(config, max_vector_size).to(device)
     best_model_path = f"best_supervised_model_n{config.n_variables}_C{config.max_complexity}.pt"
     ppo_model_path = f"ppo_model_n{config.n_variables}_C{config.max_complexity}.pt"
+    if os.path.exists(best_model_path):
+        print(f"Loading pretrained model from {best_model_path}")
+        model.load_state_dict(torch.load(best_model_path, map_location=device))
 
+    else:
+        print("\n--- Starting/Resuming Supervised Training with Simplified Config ---")
+        model = train_supervised(model, train_dataset, test_dataset, config)
     # --- Focus on Supervised Training ---
-    print("\n--- Starting/Resuming Supervised Training with Simplified Config ---")
     # Optionally load if a *best* supervised model exists for this config
     # if os.path.exists(best_model_path):
     #     print(f"Loading existing best supervised model from {best_model_path}")
     #     model.load_state_dict(torch.load(best_model_path, map_location=device))
 
-    model = train_supervised(model, train_dataset, test_dataset, config)
 
     print("\n--- Final Supervised Evaluation ---")
     final_acc, _ = evaluate_model(model, test_dataset, config)
