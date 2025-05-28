@@ -5,19 +5,16 @@ import numpy as np
 def generate_monomials_with_additive_indices(n, d):
     """
     Generate monomials with an indexing scheme where:
-    index(A) + index(B) = index(A+B) when adding monomial exponents
-    
+    index(A) + index(B) = index(A+B) when adding monomial exponents.
+
     Args:
         n: Number of variables
         d: Maximum degree
-        
+
     Returns:
         index_to_monomial, monomial_to_index, and all_monomials
     """
-    # Calculate the base for our number system
     base = d + 1
-    
-    # Create all possible monomials up to the max degree
     all_possible_monomials = []
     for total_degree in range(d + 1):
         for combo in combinations_with_replacement(range(n), total_degree):
@@ -25,208 +22,197 @@ def generate_monomials_with_additive_indices(n, d):
             for var_idx in combo:
                 exponents[var_idx] += 1
             all_possible_monomials.append(tuple(exponents))
-    
-    # Create the indexing using a number system with base (d+1)
+
     index_to_monomial = {}
     monomial_to_index = {}
-    
     for monomial in all_possible_monomials:
-        # Calculate the index: the key insight is to use a positional number system
-        # where each position uses base (d+1)
         index = 0
         for i, exp in enumerate(monomial):
-            # Use base^position weighting
             index += exp * (base ** i)
-        
         index_to_monomial[index] = monomial
         monomial_to_index[monomial] = index
-    
-    # Sort by index for cleaner output
+
     all_monomials = [index_to_monomial[idx] for idx in sorted(index_to_monomial.keys())]
-    
     return index_to_monomial, monomial_to_index, all_monomials
 
-def create_polynomial_vector(index_to_monomial, monomial_to_index, n, var_idx=None, constant_val=None):
+def create_polynomial_vector(index_to_monomial, monomial_to_index, n, d, var_idx=None, constant_val=None):
     """
-    Create a vector representation of a polynomial (either a variable or constant)
-    
-    Args:
-        index_to_monomial: Mapping from indices to monomials
-        monomial_to_index: Mapping from monomials to indices
-        n: Number of variables
-        var_idx: Variable index (if creating a variable)
-        constant_val: Constant value (if creating a constant)
-        
-    Returns:
-        Vector representation of the polynomial
+    Create a vector representation of a polynomial using additive indexing.
+    Note: The size depends on n and d via the monomial indexing.
     """
-    # Determine max vector size
-    max_idx = max(monomial_to_index.values())
+    base = d + 1
+    max_idx = 0
+    # Calculate max_idx based on max degree d and n variables
+    # The highest index corresponds to x_(n-1)^d
+    for i in range(n):
+      max_idx += d * (base ** i)
+
     vector_size = max_idx + 1
     vector = [0] * vector_size
-    
+
     if var_idx is not None:
-        # Create variable polynomial: x_var_idx
         exponents = [0] * n
         exponents[var_idx] = 1
         mono_tuple = tuple(exponents)
-        
         if mono_tuple in monomial_to_index:
             idx = monomial_to_index[mono_tuple]
-            vector[idx] = 1
-    
+            if idx < vector_size: vector[idx] = 1
     elif constant_val is not None:
-        # Create constant polynomial
         zero_tuple = tuple([0] * n)
-        
         if zero_tuple in monomial_to_index:
             idx = monomial_to_index[zero_tuple]
-            vector[idx] = constant_val
-    
+            if idx < vector_size: vector[idx] = constant_val
+
     return vector
 
 def add_polynomials_vector(poly1, poly2, mod):
-    """Add two polynomial vectors"""
-    # Ensure equal length
+    """Add two polynomial vectors."""
     max_len = max(len(poly1), len(poly2))
-    
-    if len(poly1) < max_len:
-        poly1 = poly1 + [0] * (max_len - len(poly1))
-    if len(poly2) < max_len:
-        poly2 = poly2 + [0] * (max_len - len(poly2))
-
-    result = [0] * max_len
-    
-    # Add coefficients
-    for i in range(max_len):
-        result[i] = (poly1[i] + poly2[i]) % mod
-    
+    poly1 = poly1 + [0] * (max_len - len(poly1))
+    poly2 = poly2 + [0] * (max_len - len(poly2))
+    result = [(p1 + p2) % mod for p1, p2 in zip(poly1, poly2)]
     return result
 
-def multiply_polynomials_vector(poly1, poly2, mod):
-    """Multiply two polynomial vectors using additive indexing scheme"""
-    # Ensure equal length
-    max_len = max(len(poly1), len(poly2))
-        
-    result = [0] * max_len
-    
-    # Multiply using the additive indexing property
-    for i in range(max_len):
-        if poly1[i] == 0:  # Skip zero coefficients
-            continue
-        for j in range(max_len):
-            if poly2[j] == 0:  # Skip zero coefficients
-                continue
-            # With additive indexing, i+j represents the product monomial's index
-            if i+j < max_len:
-                result[i+j] = (result[i+j] + (poly1[i] * poly2[j])) % mod
-    
+def multiply_polynomials_vector(poly1, poly2, mod, index_to_monomial, n, d):
+    """Multiply two polynomial vectors using additive indexing."""
+    base = d + 1
+    max_idx = 0
+    for i in range(n):
+        max_idx += d * (base ** i)
+    vector_size = max_idx + 1
+
+    result = [0] * vector_size
+
+    for i in range(len(poly1)):
+        if poly1[i] == 0: continue
+        for j in range(len(poly2)):
+            if poly2[j] == 0: continue
+
+            # Check if the resulting index is within bounds before adding
+            if i + j < vector_size:
+                result[i + j] = (result[i + j] + (poly1[i] * poly2[j])) % mod
+
     return result
 
 def generate_random_circuit(n, d, C, mod=2):
     """
     Generate a random arithmetic circuit represented as a list of actions.
-    
-    Parameters:
-    n - number of variables
-    d - maximum degree
-    C - complexity parameter (number of operations)
-    mod - modulo for coefficients
-    
-    Returns:
-    actions - list of (operation, input1_idx, input2_idx) tuples
-    polynomials - list of polynomial vectors for each node
+    Now allows multiplication by constants.
     """
-    # Generate monomial indexing
     index_to_monomial, monomial_to_index, _ = generate_monomials_with_additive_indices(n, d)
-    
-    # Initialize actions and polynomials lists
     actions = []
     polynomials = []
-    
-    # Add variable nodes (the first n nodes are variables)
+
+    # Add variable nodes
     for i in range(n):
-        # No action for input nodes, so use None
         actions.append(("input", None, None))
-        # Create polynomial vector for variable x_i
-        poly = create_polynomial_vector(index_to_monomial, monomial_to_index, n, var_idx=i)
+        poly = create_polynomial_vector(index_to_monomial, monomial_to_index, n, d, var_idx=i)
         polynomials.append(poly)
-    
-    # Add constant node (the n+1 node is constant 1)
+
+    # Add constant node
     actions.append(("constant", None, None))
-    poly = create_polynomial_vector(index_to_monomial, monomial_to_index, n, constant_val=1)
+    poly = create_polynomial_vector(index_to_monomial, monomial_to_index, n, d, constant_val=1)
     polynomials.append(poly)
-    
-    # Now add operations
+
+    # Add operations
     for _ in range(C):
-        # Choose two input nodes (can be any previously created node)
         num_nodes = len(actions)
         input1_idx = random.randint(0, num_nodes - 1)
         input2_idx = random.randint(0, num_nodes - 1)
-        
-        # Choose an operation
         operation = random.choice(["add", "multiply"])
-        
-        # Add the action
+
+        # *** MODIFICATION: Removed the restriction on multiplying by constants ***
+        # No need for the while loop that prevented multiplication by node 'n'.
+
         actions.append((operation, input1_idx, input2_idx))
-        
-        # Compute the result polynomial
+
         if operation == "add":
             poly = add_polynomials_vector(polynomials[input1_idx], polynomials[input2_idx], mod)
-        else:  # multiply
-            poly = multiply_polynomials_vector(polynomials[input1_idx], polynomials[input2_idx], mod)
-        
+        else: # multiply
+            poly = multiply_polynomials_vector(polynomials[input1_idx], polynomials[input2_idx], mod, index_to_monomial, n, d)
+
         polynomials.append(poly)
-    
+
+    # Trim unused operations (optional but good for clean data)
     actions, polynomials, _ = trim_circuit(actions, polynomials)
 
-    
     return actions, polynomials, index_to_monomial, monomial_to_index
 
 def trim_circuit(actions, polynomials):
     """
     Trim unused operations while preserving all input and constant nodes.
-    
-    Returns:
-        new_actions, new_polynomials, remap: trimmed actions and polynomials
-        remap: old_index -> new_index
     """
-    # First, include all input and constant nodes
     used = set()
+    num_inputs_constants = 0
     for i, (op, _, _) in enumerate(actions):
         if op in ("input", "constant"):
             used.add(i)
-    
-    # Then trace backward from the final node to find all used operation nodes
-    stack = [len(actions) - 1]  # Start from final node
-    
+            num_inputs_constants +=1
+
+    # If only inputs/constants exist, return as is.
+    if len(actions) == num_inputs_constants:
+        return actions, polynomials, {i: i for i in range(len(actions))}
+
+    stack = [len(actions) - 1] # Start from final node
+    visited_in_stack = set() # Prevent cycles in stack processing
+
     while stack:
         idx = stack.pop()
-        if idx in used:
+        if idx in used or idx in visited_in_stack:
             continue
+
         used.add(idx)
+        visited_in_stack.add(idx) # Mark as visited for this trace
         op, in1, in2 = actions[idx]
         if op in ("add", "multiply"):
             if in1 is not None:
                 stack.append(in1)
             if in2 is not None:
                 stack.append(in2)
-    
-    # Sort used indices to maintain consistent ordering
-    used = sorted(used)
+
+    used = sorted(list(used)) # Ensure consistent order
     remap = {old: new for new, old in enumerate(used)}
-    
-    new_actions = [actions[i] for i in used]
-    new_polynomials = [polynomials[i] for i in used]
-    
-    # Remap indices inside actions
-    for i, (op, in1, in2) in enumerate(new_actions):
+
+    new_actions = []
+    new_polynomials = []
+    for old_idx in used:
+        op, in1, in2 = actions[old_idx]
         if op in ("add", "multiply"):
-            new_actions[i] = (op, remap[in1], remap[in2])
+             # Ensure inputs were kept, otherwise this node is invalid
+            if in1 in remap and in2 in remap:
+                new_actions.append((op, remap[in1], remap[in2]))
+                new_polynomials.append(polynomials[old_idx])
+            else: # This node became invalid due to trimming, try to recover or drop
+                 # For simplicity, we drop, but a more complex logic could try to fix.
+                 # Re-calculate 'used' and 'remap' if dropping many nodes.
+                 # Here, we assume a mostly valid structure or accept some loss.
+                 pass # Or handle more gracefully
         else:
-            new_actions[i] = (op, None, None)
-    
-    return new_actions, new_polynomials, remap
+            new_actions.append((op, None, None))
+            new_polynomials.append(polynomials[old_idx])
+
+    # Re-calculate remap based on potentially dropped nodes
+    final_used_indices = [idx for idx, (op, _, _) in enumerate(new_actions)]
+    remap = {old: new for new, old in enumerate(final_used_indices)} # This might need a rethink based on how new_actions is built
+
+    # A simpler approach: Just filter and remap once
+    used = sorted(list(used))
+    remap = {old: new for new, old in enumerate(used)}
+    new_actions_final = []
+    new_polynomials_final = []
+    for old_idx in used:
+        op, in1, in2 = actions[old_idx]
+        if op in ("add", "multiply"):
+            new_actions_final.append((op, remap[in1], remap[in2]))
+        else:
+            new_actions_final.append((op, None, None))
+        new_polynomials_final.append(polynomials[old_idx])
+
+
+    return new_actions_final, new_polynomials_final, remap
+
+
+
 
 def generate_random_polynomials(n, d, C, num_polynomials=10000, mod=5):
     """
