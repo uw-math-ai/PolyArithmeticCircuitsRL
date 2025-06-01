@@ -7,6 +7,8 @@ import re
 from torch_geometric.data import Batch
 import copy
 import heapq
+import hashlib
+import pickle
 
 from generator import generate_monomials_with_additive_indices
 from State import Game
@@ -198,6 +200,20 @@ class TreeNode:
         self.actions_trace = actions_trace or []
         self.value = None
 
+def game_key(game):
+    """
+    Generates a unique key including:
+    - Actions taken (operation + node pairs)
+    - Expressions serialized as strings
+    - Current L1 distance
+    """
+    state_repr = {
+        'actions_taken': game.actions_taken,
+        'exprs': [str(expr) for expr in game.exprs],
+        'current_l1_dist': game.current_l1_dist,
+    }
+    serialized = pickle.dumps(state_repr)
+    return hashlib.sha256(serialized).hexdigest()
 
 def hybrid_tree_search_top_w(config, model, root_game, w=5, d=5):
     """
@@ -209,22 +225,29 @@ def hybrid_tree_search_top_w(config, model, root_game, w=5, d=5):
     """
     model.eval()
     current_game = root_game
+    visited = {}  # Memoization: (action_logits, value)
 
     for depth in range(d):
         # search frontier
         frontier = [TreeNode(current_game)]
         candidates = []
 
-        # Collect all valid actions and their log-probabilities
+        # Collect all valid actions and log-probabilities
         for node in frontier:
             graph, target_vec, actions, mask = node.game.observe()
-            with torch.no_grad():
-                action_logits, _ = model(
-                    Batch.from_data_list([graph.to(node.game.device)]),
-                    target_vec.to(node.game.device),
-                    actions,
-                    mask.to(node.game.device)
-                )
+            key = game_key(node.game)
+
+            if key in visited:
+                action_logits, _ = visited[key]
+            else:
+                with torch.no_grad():
+                    action_logits, value = model(
+                        Batch.from_data_list([graph.to(node.game.device)]),
+                        target_vec.to(node.game.device),
+                        actions,
+                        mask.to(node.game.device)
+                    )
+                visited[key] = (action_logits, value)
 
             log_probs = F.log_softmax(action_logits[0], dim=0)
             valid_indices = torch.where(mask[0])[0]
@@ -263,18 +286,26 @@ def hybrid_tree_search_top_w(config, model, root_game, w=5, d=5):
                 if sp.expand(node.game.exprs[-1] - root_game.target_sp) == 0:
                     return extract_steps(config, node.game), True
 
-        # Evaluate and select the best leaf by value
+        # Evaluate and select best leaf by value
         best_leaf = None
         best_value = -float('inf')
+
         for node in new_frontier:
             graph, target_vec, actions, mask = node.game.observe()
-            with torch.no_grad():
-                _, value = model(
-                    Batch.from_data_list([graph.to(node.game.device)]),
-                    target_vec.to(node.game.device),
-                    actions,
-                    mask.to(node.game.device)
-                )
+            key = game_key(node.game)
+
+            if key in visited:
+                _, value = visited[key]
+            else:
+                with torch.no_grad():
+                    _, value = model(
+                        Batch.from_data_list([graph.to(node.game.device)]),
+                        target_vec.to(node.game.device),
+                        actions,
+                        mask.to(node.game.device)
+                    )
+                visited[key] = (_, value)
+
             node.value = value.item()
             if node.value > best_value:
                 best_leaf = node
@@ -287,7 +318,6 @@ def hybrid_tree_search_top_w(config, model, root_game, w=5, d=5):
         current_game = best_leaf.game
 
     return extract_steps(config, best_leaf.game), False
-
 
 def extract_steps(config, game):
     """extract steps from a game state"""
