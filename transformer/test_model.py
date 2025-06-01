@@ -4,8 +4,12 @@ from sympy.parsing.sympy_parser import parse_expr, standard_transformations, imp
 import numpy as np
 import torch.nn.functional as F
 import re
+from torch_geometric.data import Batch
 import copy
-import math
+import heapq
+
+from generator import generate_monomials_with_additive_indices
+from State import Game
 
 # --- Imports from your project files ---
 # Make sure these files are in the same directory or Python path
@@ -21,9 +25,6 @@ except ImportError:
         print("Please ensure 'SupervisedTransformer_Debug.py' or 'SupervisedTransformer.py' is accessible.")
         exit()
 
-from generator import generate_monomials_with_additive_indices
-from State import Game
-from torch_geometric.data import Batch
 
 # --- Global Setup ---
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -46,20 +47,19 @@ def preprocess_poly_string(poly_str):
     poly_str = poly_str.replace('**', ' ** ').replace('*', ' * ').replace('+', ' + ').replace('-', ' - ')
     return ' '.join(poly_str.split())
 
-def sympy_to_vector(sympy_poly, monomial_to_index, n_vars, mod=50):
-    """Convert a sympy polynomial to vector representation."""
+def sympy_to_vector(sympy_poly, monomial_to_index, n_vars, mod=50, max_vector_size=None):
+    """Convert a sympy polynomial to a fixed-size vector representation."""
     poly_expanded = sp.expand(sympy_poly)
-    max_idx = max(monomial_to_index.values())
-    vector = torch.zeros(max_idx + 1, dtype=torch.float)
+    vector_length = max(monomial_to_index.values()) + 1 if max_vector_size is None else max_vector_size
+    vector = torch.zeros(vector_length, dtype=torch.float)
     poly_dict = poly_expanded.as_coefficients_dict()
     symbols = sp.symbols([f"x{i}" for i in range(n_vars)])
 
     for term, coeff in poly_dict.items():
         exponents = [0] * n_vars
-        if term.is_number: # Handles constant term (including 1)
-            pass # exponents remain all zero
+        if term.is_number:
+            pass
         else:
-            # Use as_powers_dict for robust exponent extraction
             powers = term.as_powers_dict()
             for i, symbol in enumerate(symbols):
                 exponents[i] = powers.get(symbol, 0)
@@ -69,7 +69,7 @@ def sympy_to_vector(sympy_poly, monomial_to_index, n_vars, mod=50):
             idx = monomial_to_index[exponent_tuple]
             vector[idx] = float(coeff % mod)
         else:
-             print(f"Warning: Monomial {exponent_tuple} (from {term}) not found in index.")
+            print(f"Warning: Monomial {exponent_tuple} not in index — skipped.")
 
     return vector
 
@@ -150,30 +150,158 @@ def beam_search_build_circuit(model, target_poly_vec, target_poly_sp, config, in
 
 
 def print_circuit(steps, n_vars):
-    """Pretty print the circuit"""
+    """Pretty print the arithmetic circuit from steps."""
     print("\nArithmetic Circuit:")
     print("-" * 50)
 
     nodes = {}
+    # Initialize input variable nodes
     for i in range(n_vars):
         nodes[i] = sp.symbols(f'x{i}')
         print(f"Node {i}: {nodes[i]}")
-    nodes[n_vars] = sp.S.One
-    print(f"Node {n_vars}: {nodes[n_vars]} (constant)")
 
+    # Constant node
+    const_idx = n_vars
+    nodes[const_idx] = sp.S.One
+    print(f"Node {const_idx}: {nodes[const_idx]} (constant)")
+
+    # Compute and display each step
+    current_idx = const_idx + 1
     for step in steps:
-        node_idx = step['step']
-        op_symbol = '*' if step['operation'] == 'multiply' else '+'
-        n1 = step['node1']
-        n2 = step['node2']
+        op = step['operation']
+        op_symbol = '*' if op == 'multiply' else '+'
+        n1, n2 = step['node1'], step['node2']
+
         expr1 = nodes.get(n1, f"Node{n1}")
         expr2 = nodes.get(n2, f"Node{n2}")
 
-        print(f"Node {node_idx}: {step['operation']}({n1}, {n2}) = {expr1} {op_symbol} {expr2}")
-        print(f"         Result: {step['result']}")
-        nodes[node_idx] = step['result']
+        result_expr = step.get('result')
+        if result_expr is None:
+            result_expr = expr1 * expr2 if op == 'multiply' else expr1 + expr2
+
+        print(f"Node {current_idx}: {op}(Node {n1}, Node {n2}) = {expr1} {op_symbol} {expr2}")
+        print(f"         Result: {result_expr}")
+
+        nodes[current_idx] = result_expr
+        current_idx += 1
 
     print("-" * 50)
+
+
+# Tree Search -------------------------
+
+class TreeNode:
+    def __init__(self, game, logprob=0.0, first_action=None, actions_trace=None):
+        self.game = game
+        self.logprob = logprob
+        self.first_action = first_action
+        self.actions_trace = actions_trace or []
+        self.value = None
+
+
+def hybrid_tree_search_top_w(config, model, root_game, w=5, d=5):
+    """
+    1. Selects top-w highest log-probability actions globally across the frontier,
+    2. Expands them into new nodes,
+    3. Backtracks using model value estimates from the leaves.
+
+    Repeats up to depth `d` or until a correct solution is found.
+    """
+    model.eval()
+    current_game = root_game
+
+    for depth in range(d):
+        # search frontier
+        frontier = [TreeNode(current_game)]
+        candidates = []
+
+        # Collect all valid actions and their log-probabilities
+        for node in frontier:
+            graph, target_vec, actions, mask = node.game.observe()
+            with torch.no_grad():
+                action_logits, _ = model(
+                    Batch.from_data_list([graph.to(node.game.device)]),
+                    target_vec.to(node.game.device),
+                    actions,
+                    mask.to(node.game.device)
+                )
+
+            log_probs = F.log_softmax(action_logits[0], dim=0)
+            valid_indices = torch.where(mask[0])[0]
+
+            for local_idx in valid_indices:
+                action_idx = local_idx.item()
+                log_prob_val = log_probs[action_idx].item()
+                candidates.append((log_prob_val, node, action_idx))
+
+        if not candidates:
+            print("No valid actions found.")
+            break
+
+        # Select top-w candidates
+        top_candidates = heapq.nlargest(w, candidates, key=lambda x: x[0])
+        new_frontier = []
+
+        for log_prob_val, parent_node, action_idx in top_candidates:
+            new_game = copy.deepcopy(parent_node.game)
+            new_game.take_action(action_idx)
+
+            first_action = parent_node.first_action or action_idx
+            trace = parent_node.actions_trace + [action_idx]
+
+            new_node = TreeNode(
+                game=new_game,
+                logprob=parent_node.logprob + log_prob_val,
+                first_action=first_action,
+                actions_trace=trace
+            )
+            new_frontier.append(new_node)
+
+        # Check if any node solves the target exactly
+        for node in new_frontier:
+            if node.game.is_done() and node.game.exprs:
+                if sp.expand(node.game.exprs[-1] - root_game.target_sp) == 0:
+                    return extract_steps(config, node.game), True
+
+        # Evaluate and select the best leaf by value
+        best_leaf = None
+        best_value = -float('inf')
+        for node in new_frontier:
+            graph, target_vec, actions, mask = node.game.observe()
+            with torch.no_grad():
+                _, value = model(
+                    Batch.from_data_list([graph.to(node.game.device)]),
+                    target_vec.to(node.game.device),
+                    actions,
+                    mask.to(node.game.device)
+                )
+            node.value = value.item()
+            if node.value > best_value:
+                best_leaf = node
+                best_value = node.value
+
+        if best_leaf is None:
+            print("No best leaf node found.")
+            break
+
+        current_game = best_leaf.game
+
+    return extract_steps(config, best_leaf.game), False
+
+
+def extract_steps(config, game):
+    """extract steps from a game state"""
+    steps_structured = []
+    for i, (op, n1, n2) in enumerate(game.actions_taken):
+        expr = game.exprs[i]
+        steps_structured.append({
+            'step': i + config.n_variables,
+            'operation': op,
+            'node1': n1,
+            'node2': n2,
+            'result': expr
+        })
+    return steps_structured
 
 # --- Main Execution ---
 
@@ -188,35 +316,43 @@ def main():
 
     # Generate monomial indexing (must match training)
     index_to_monomial, monomial_to_index, _ = generate_monomials_with_additive_indices(n, d)
-    max_vector_size = max(monomial_to_index.values()) + 1
+    # max_vector_size = max(monomial_to_index.values()) + 1
+    # Calculate max_vector_size based on n and d
+    base = d + 1
+    max_idx = 0
+    for i in range(n):
+        max_idx += d * (base ** i)
+    max_vector_size = max_idx + 1
 
     # Load the trained model
     model = CircuitBuilder(config, max_vector_size).to(device)
-    model_path = f"ppo_model_n{config.n_variables}_C{config.max_complexity}.pt"
-    best_sup_model_path = f"best_supervised_model_n{config.n_variables}_C{config.max_complexity}.pt"
+    model_path = f"ppo_model_n{config.n_variables}_C{config.max_complexity}_curriculum.pt"
+    # best_sup_model_path = f"best_supervised_model_n{config.n_variables}_C{config.max_complexity}.pt"
 
-    print(f"Attempting to load PPO model: {model_path}")
-    try:
-        model.load_state_dict(torch.load(model_path, map_location=device))
-        print(f"Successfully loaded PPO model from {model_path}")
-    except FileNotFoundError:
-        print(f"PPO model not found. Trying best supervised model: {best_sup_model_path}")
-        try:
-             model.load_state_dict(torch.load(best_sup_model_path, map_location=device))
-             print(f"Successfully loaded supervised model from {best_sup_model_path}")
-        except FileNotFoundError:
-             print(f"Error: No suitable model found ({model_path} or {best_sup_model_path}). Please train a model first.")
-             return
-    except Exception as e:
-        print(f"An error occurred loading the model: {e}")
-        return
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    print(f"Successfully loaded PPO model from {model_path}")
+
+    #
+    # print(f"Attempting to load PPO model: {model_path}")
+    # try:
+    #     model.load_state_dict(torch.load(model_path, map_location=device))
+    #     print(f"Successfully loaded PPO model from {model_path}")
+    # except FileNotFoundError:
+    #     print(f"PPO model not found. Trying best supervised model: {best_sup_model_path}")
+    #     try:
+    #          model.load_state_dict(torch.load(best_sup_model_path, map_location=device))
+    #          print(f"Successfully loaded supervised model from {best_sup_model_path}")
+    #     except FileNotFoundError:
+    #          print(f"Error: No suitable model found ({model_path} or {best_sup_model_path}). Please train a model first.")
+    #          return
+    # except Exception as e:
+    #     print(f"An error occurred loading the model: {e}")
+    #     return
 
     # Create symbolic variables based on config
     vars_str = [f'x{i}' for i in range(n)]
     symbols_tuple = sp.symbols(vars_str)
-    # Ensure symbols_tuple is always iterable, even if N=1
-    symbols_list = list(symbols_tuple) if isinstance(symbols_tuple, tuple) else [symbols_tuple]
-    local_dict = {str(s): s for s in symbols_list}
+    local_dict = {name: symbol for name, symbol in zip(vars_str, symbols_tuple)}
 
     print(f"\nPolynomial Circuit Builder")
     print(f"Variables: {', '.join(vars_str)}")
@@ -231,24 +367,24 @@ def main():
             break
 
         try:
-            poly_str_processed = preprocess_poly_string(poly_str)
-            print(f"Processed input: {poly_str_processed}")
+            # poly_str_processed = preprocess_poly_string(poly_str)
+            print(f"Processed input: {poly_str}")
 
-            poly_sp = parse_expr(poly_str_processed,
+            poly_sp = parse_expr(poly_str,
                                  transformations=(standard_transformations + (implicit_multiplication_application,)),
                                  local_dict=local_dict)
+            print(f"\nInput Target polynomial: {poly_sp}")
             poly_sp = sp.expand(poly_sp)
-            print(f"\nTarget polynomial (expanded): {poly_sp}")
+            print(f"\nExpanded Target polynomial: {poly_sp}")
 
-            poly_vec = sympy_to_vector(poly_sp, monomial_to_index, n, config.mod).to(device)
+            poly_vec = sympy_to_vector(poly_sp, monomial_to_index, n, config.mod, max_vector_size=max_vector_size).to(device)
 
-            print("\nBuilding circuit with Beam Search...")
-            steps, success = beam_search_build_circuit(
-                model, poly_vec, poly_sp, config, index_to_monomial,
-                beam_width=10, # You can adjust beam width
-                max_steps=config.max_complexity + 5 # Allow a few extra steps
-            )
+            game = Game(poly_sp, poly_vec, config, index_to_monomial, monomial_to_index).to(device)
 
+            print("Begin Tree Search")
+            steps, success = hybrid_tree_search_top_w(config, model, game, w=10, d=15)
+
+            # if game.exprs and sp.expand(game.exprs[-1] - poly_sp) == 0:
             if success:
                 print("\n✓ Successfully found circuit!")
                 print_circuit(steps, n)
@@ -262,10 +398,10 @@ def main():
 
         except Exception as e:
             print(f"Error processing polynomial: {e}")
-            print("Please check your input format. Examples for N=2:")
-            print("  x0 + x1")
-            print("  x0**2 + 2*x0*x1 + x1**2")
-            print("  x0*(x1 + 1)")
+            # print("Please check your input format. Examples for N=2:")
+            # print("  x0 + x1")
+            # print("  x0**2 + 2*x0*x1 + x1**2")
+            # print("  x0*(x1 + 1)")
 
 if __name__ == "__main__":
     main()
