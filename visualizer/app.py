@@ -497,7 +497,7 @@ def main():
                     st.session_state["tree_zoom_slider"] = 1.0
                 zoom_level = st.slider(
                     "Tree zoom",
-                    min_value=0.6,
+                    min_value=0.1,
                     max_value=2.5,
                     value=float(st.session_state.get("tree_zoom_slider", 1.0)),
                     step=0.05,
