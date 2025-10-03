@@ -1,6 +1,5 @@
 import random
 from itertools import combinations_with_replacement
-import numpy as np
 
 
 def generate_monomials_with_additive_indices(n, d):
