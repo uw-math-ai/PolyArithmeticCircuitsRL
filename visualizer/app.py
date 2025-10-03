@@ -45,13 +45,15 @@ def load_model_and_index(n_vars: int, max_complexity: int, modulus: int):
 
     n = config.n_variables
     d = config.max_complexity * 2
-    index_to_monomial, monomial_to_index, _ = generate_monomials_with_additive_indices(n, d)
+    index_to_monomial, monomial_to_index, _ = generate_monomials_with_additive_indices(
+        n, d
+    )
 
     # Calculate max_vector_size (dense vector length)
     base = d + 1
     max_idx = 0
     for i in range(n):
-        max_idx += d * (base ** i)
+        max_idx += d * (base**i)
     max_vector_size = max_idx + 1
 
     device = get_device()
@@ -59,8 +61,10 @@ def load_model_and_index(n_vars: int, max_complexity: int, modulus: int):
 
     # Try to load PPO checkpoint; fallback to best supervised
     ckpt_paths = [
-        REPO_ROOT / f"transformer/ppo_model_n{config.n_variables}_C{config.max_complexity}_curriculum.pt",
-        REPO_ROOT / f"transformer/best_supervised_model_n{config.n_variables}_C{config.max_complexity}.pt",
+        REPO_ROOT
+        / f"transformer/ppo_model_n{config.n_variables}_C{config.max_complexity}_curriculum.pt",
+        REPO_ROOT
+        / f"transformer/best_supervised_model_n{config.n_variables}_C{config.max_complexity}.pt",
     ]
 
     ckpt_loaded = None
@@ -101,7 +105,13 @@ def _variable_label(idx: int) -> str:
 
 def build_circuit_network(steps, n_vars, theme):
     """Create a modern, inverted (inputs at bottom) PyVis network for the circuit."""
-    net = Network(height="720px", width="100%", bgcolor=theme["bg"], font_color=theme["text"], directed=True)
+    net = Network(
+        height="720px",
+        width="100%",
+        bgcolor=theme["bg"],
+        font_color=theme["text"],
+        directed=True,
+    )
 
     options = {
         "layout": {
@@ -124,15 +134,10 @@ def build_circuit_network(steps, n_vars, theme):
             "smooth": {"type": "cubicBezier", "roundness": 0.25},
             "color": theme["edge"],
             "arrows": {"to": {"enabled": True, "scaleFactor": 0.42}},
-            "width": 3
+            "width": 3,
         },
         "nodes": {
-            "shadow": {
-                "enabled": True,
-                "size": 12,
-                "x": 0,
-                "y": 4
-            },
+            "shadow": {"enabled": True, "size": 12, "x": 0, "y": 4},
             "borderWidth": 3,
         },
     }
@@ -250,12 +255,18 @@ def main():
             value=int(default_config.mod),
             step=1,
         )
-        st.caption("Settings control polynomial generation and which checkpoint is loaded.")
+        st.caption(
+            "Settings control polynomial generation and which checkpoint is loaded."
+        )
 
         st.divider()
         st.subheader("Search parameters")
-        beam_w = st.number_input("Top-w (tree search)", min_value=2, max_value=50, value=10, step=1)
-        depth_d = st.number_input("Depth (tree search)", min_value=1, max_value=50, value=15, step=1)
+        beam_w = st.number_input(
+            "Top-w (tree search)", min_value=2, max_value=50, value=10, step=1
+        )
+        depth_d = st.number_input(
+            "Depth (tree search)", min_value=1, max_value=50, value=15, step=1
+        )
         st.caption("Higher values explore more but take longer.")
 
     n_vars = int(n_vars_input)
@@ -302,7 +313,9 @@ def main():
             n = config.n_variables
             d = config.max_complexity * 2
             C = config.max_complexity
-            target_sp = generate_random_target(index_to_monomial, monomial_to_index, n, d, C, config.mod)
+            target_sp = generate_random_target(
+                index_to_monomial, monomial_to_index, n, d, C, config.mod
+            )
             st.session_state["target_poly"] = sp.expand(target_sp)
             st.session_state["result"] = None
 
@@ -317,7 +330,9 @@ def main():
             try:
                 vars_str = [f"x{i}" for i in range(config.n_variables)]
                 symbols_tuple = sp.symbols(vars_str)
-                local_dict = {name: symbol for name, symbol in zip(vars_str, symbols_tuple)}
+                local_dict = {
+                    name: symbol for name, symbol in zip(vars_str, symbols_tuple)
+                }
                 p = sp.expand(sp.sympify(target_input, locals=local_dict))
                 st.session_state["target_poly"] = p
                 st.session_state["result"] = None
@@ -365,36 +380,36 @@ def main():
         f"""
         <style>
         .stApp {{
-            background-color: {theme['page']} !important;
-            color: {theme['text']} !important;
+            background-color: {theme["page"]} !important;
+            color: {theme["text"]} !important;
             transition: background-color 0.3s ease, color 0.3s ease;
         }}
         header[data-testid="stHeader"] {{
-            background: linear-gradient(90deg, {theme['sidebar']}, {theme['page']});
-            color: {theme['text']} !important;
+            background: linear-gradient(90deg, {theme["sidebar"]}, {theme["page"]});
+            color: {theme["text"]} !important;
         }}
         header[data-testid="stHeader"] * {{
-            color: {theme['text']} !important;
+            color: {theme["text"]} !important;
         }}
         [data-testid="stToolbar"] {{
-            background-color: {theme['sidebar']} !important;
+            background-color: {theme["sidebar"]} !important;
         }}
         [data-testid="stToolbar"] * {{
-            color: {theme['text']} !important;
+            color: {theme["text"]} !important;
         }}
         [data-testid="stSidebar"] {{
-            background-color: {theme['sidebar']} !important;
-            color: {theme['text']} !important;
+            background-color: {theme["sidebar"]} !important;
+            color: {theme["text"]} !important;
         }}
         [data-testid="stSidebar"] * {{
-            color: {theme['text']} !important;
+            color: {theme["text"]} !important;
         }}
         .stMarkdown, .stText, .stCaption, .stHeader, .stSubheader, .stRadio, .stNumberInput label {{
-            color: {theme['text']} !important;
+            color: {theme["text"]} !important;
         }}
         .stButton>button {{
-            background-color: {theme['button_bg']} !important;
-            color: {theme['button_text']} !important;
+            background-color: {theme["button_bg"]} !important;
+            color: {theme["button_text"]} !important;
             border-radius: 10px !important;
             border: none !important;
             font-weight: 600 !important;
@@ -402,42 +417,42 @@ def main():
             box-shadow: 0 6px 18px rgba(37, 99, 235, 0.25);
         }}
         .stButton>button:hover {{
-            background-color: {theme['button_hover']} !important;
+            background-color: {theme["button_hover"]} !important;
         }}
         input, textarea, select {{
-            background-color: {theme['control_bg']} !important;
-            color: {theme['text']} !important;
+            background-color: {theme["control_bg"]} !important;
+            color: {theme["text"]} !important;
             border-radius: 8px !important;
-            border: 1px solid {theme['border']} !important;
+            border: 1px solid {theme["border"]} !important;
         }}
         [data-testid="stTextInput"] label {{
-            color: {theme['text']} !important;
+            color: {theme["text"]} !important;
             font-weight: 600 !important;
         }}
         [data-testid="stTextInput"] div[role="tooltip"] {{
-            color: {theme['text']} !important;
+            color: {theme["text"]} !important;
         }}
         [data-baseweb="input"] input {{
-            background-color: {theme['control_bg']} !important;
-            color: {theme['text']} !important;
+            background-color: {theme["control_bg"]} !important;
+            color: {theme["text"]} !important;
             border-radius: 8px !important;
         }}
         [data-baseweb="input"] input::placeholder {{
-            color: {theme['placeholder']} !important;
+            color: {theme["placeholder"]} !important;
             opacity: 0.9 !important;
         }}
         textarea::placeholder {{
-            color: {theme['placeholder']} !important;
+            color: {theme["placeholder"]} !important;
             opacity: 0.9 !important;
         }}
         [data-baseweb="select"] > div {{
-            background-color: {theme['control_bg']} !important;
-            color: {theme['text']} !important;
+            background-color: {theme["control_bg"]} !important;
+            color: {theme["text"]} !important;
         }}
         [data-testid="stAlert"] > div {{
-            background-color: {theme['control_bg']} !important;
-            color: {theme['text']} !important;
-            border: 1px solid {theme['border']} !important;
+            background-color: {theme["control_bg"]} !important;
+            color: {theme["text"]} !important;
+            border: 1px solid {theme["border"]} !important;
             border-radius: 10px !important;
         }}
         </style>
@@ -462,10 +477,20 @@ def main():
             with st.spinner("Searching for circuit..."):
                 # Convert target to vector
                 n = config.n_variables
-                poly_vec = sympy_to_vector(target_sp, monomial_to_index, n, config.mod, max_vector_size=max_vector_size).to(device)
+                poly_vec = sympy_to_vector(
+                    target_sp,
+                    monomial_to_index,
+                    n,
+                    config.mod,
+                    max_vector_size=max_vector_size,
+                ).to(device)
                 # Create game and search
-                game = Game(target_sp, poly_vec, config, index_to_monomial, monomial_to_index).to(device)
-                steps, success = hybrid_tree_search_top_w(config, model, game, w=int(beam_w), d=int(depth_d))
+                game = Game(
+                    target_sp, poly_vec, config, index_to_monomial, monomial_to_index
+                ).to(device)
+                steps, success = hybrid_tree_search_top_w(
+                    config, model, game, w=int(beam_w), d=int(depth_d)
+                )
             target_key = sp.srepr(sp.expand(target_sp))
             st.session_state["result"] = {
                 "steps": steps,
@@ -484,14 +509,18 @@ def main():
             if success:
                 st.success("Successfully found an exact circuit.")
             else:
-                st.warning("Exact circuit not found within limits. Showing best attempt.")
+                st.warning(
+                    "Exact circuit not found within limits. Showing best attempt."
+                )
 
             if steps:
                 st.markdown("Steps (latest is root):")
                 for i, step in enumerate(steps):
                     op = step.get("operation", "")
                     n1, n2 = step.get("node1"), step.get("node2")
-                    st.write(f"{i+1}. {op} (node {n1}, node {n2}) -> {step.get('result')}")
+                    st.write(
+                        f"{i + 1}. {op} (node {n1}, node {n2}) -> {step.get('result')}"
+                    )
 
                 if "tree_zoom_slider" not in st.session_state:
                     st.session_state["tree_zoom_slider"] = 1.0
@@ -507,7 +536,9 @@ def main():
                 zoom_val = float(zoom_level)
 
                 net = build_circuit_network(steps, config.n_variables, theme)
-                with tempfile.NamedTemporaryFile("w", delete=False, suffix=".html") as tmp:
+                with tempfile.NamedTemporaryFile(
+                    "w", delete=False, suffix=".html"
+                ) as tmp:
                     tmp_path = tmp.name
                 net.save_graph(tmp_path)
                 html = Path(tmp_path).read_text(encoding="utf-8")
