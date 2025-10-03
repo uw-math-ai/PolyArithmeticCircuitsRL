@@ -1,8 +1,8 @@
 import random
-from itertools import combinations_with_replacement
+from itertools import product
 
 
-def generate_monomials_with_additive_indices(n, d):
+def generate_monomials_with_additive_indices(n: int, d: int):
     """
     Generate monomials with an indexing scheme where:
     index(A) + index(B) = index(A+B) when adding monomial exponents.
@@ -15,29 +15,26 @@ def generate_monomials_with_additive_indices(n, d):
         index_to_monomial, monomial_to_index, and all_monomials
     """
     base = d + 1
-    all_possible_monomials = []
-    for total_degree in range(d + 1):
-        for combo in combinations_with_replacement(range(n), total_degree):
-            exponents = [0] * n
-            for var_idx in combo:
-                exponents[var_idx] += 1
-            all_possible_monomials.append(tuple(exponents))
+    index_to_monomial: dict[int, tuple[int, ...]] = {}
+    monomial_to_index: dict[tuple[int, ...], int] = {}
 
-    index_to_monomial = {}
-    monomial_to_index = {}
-    for monomial in all_possible_monomials:
-        index = 0
-        for i, exp in enumerate(monomial):
-            index += exp * (base**i)
-        index_to_monomial[index] = monomial
-        monomial_to_index[monomial] = index
+    for exponents in product(range(d + 1), repeat=n):
+        if sum(exponents) <= d:
+            idx = sum(exp * (base**i) for i, exp in enumerate(exponents))
+            index_to_monomial[idx] = exponents
+            monomial_to_index[exponents] = idx
 
     all_monomials = [index_to_monomial[idx] for idx in sorted(index_to_monomial.keys())]
     return index_to_monomial, monomial_to_index, all_monomials
 
 
 def create_polynomial_vector(
-    index_to_monomial, monomial_to_index, n, d, var_idx=None, constant_val=None
+    index_to_monomial: dict[int, tuple[int, ...]],
+    monomial_to_index: dict[tuple[int, ...], int],
+    n: int,
+    d: int,
+    var_idx=None,
+    constant_val=None,
 ):
     """
     Create a vector representation of a polynomial using additive indexing.
@@ -51,7 +48,7 @@ def create_polynomial_vector(
         max_idx += d * (base**i)
 
     vector_size = max_idx + 1
-    vector = [0] * vector_size
+    vector: list[int] = [0] * vector_size
 
     if var_idx is not None:
         exponents = [0] * n
@@ -71,16 +68,23 @@ def create_polynomial_vector(
     return vector
 
 
-def add_polynomials_vector(poly1, poly2, mod):
+def add_polynomials_vector(poly1: list[int], poly2: list[int], mod: int):
     """Add two polynomial vectors."""
     max_len = max(len(poly1), len(poly2))
     poly1 = poly1 + [0] * (max_len - len(poly1))
     poly2 = poly2 + [0] * (max_len - len(poly2))
-    result = [(p1 + p2) % mod for p1, p2 in zip(poly1, poly2)]
+    result: list[int] = [(p1 + p2) % mod for p1, p2 in zip(poly1, poly2)]
     return result
 
 
-def multiply_polynomials_vector(poly1, poly2, mod, index_to_monomial, n, d):
+def multiply_polynomials_vector(
+    poly1: list[int],
+    poly2: list[int],
+    mod: int,
+    index_to_monomial: dict[int, tuple[int, ...]],
+    n: int,
+    d: int,
+) -> list[int]:
     """Multiply two polynomial vectors using additive indexing."""
     base = d + 1
     max_idx = 0
@@ -104,7 +108,7 @@ def multiply_polynomials_vector(poly1, poly2, mod, index_to_monomial, n, d):
     return result
 
 
-def generate_random_circuit(n, d, C, mod=2):
+def generate_random_circuit(n: int, d: int, C: int, mod: int = 2):
     """
     Generate a random arithmetic circuit represented as a list of actions.
     Now allows multiplication by constants.
@@ -112,8 +116,8 @@ def generate_random_circuit(n, d, C, mod=2):
     index_to_monomial, monomial_to_index, _ = generate_monomials_with_additive_indices(
         n, d
     )
-    actions = []
-    polynomials = []
+    actions: list[tuple[str, int | None, int | None]] = []
+    polynomials: list[list[int]] = []
 
     # Add variable nodes
     for i in range(n):
@@ -256,8 +260,8 @@ def generate_random_polynomials(n, d, C, num_polynomials=10000, mod=5):
     all_polynomials - list of polynomial vectors
     all_circuits - list of action sequences for each polynomial
     """
-    all_polynomials = []
-    all_circuits = []
+    all_polynomials: list[list[int]] = []
+    all_circuits: list[list[tuple[str, int | None, int | None]]] = []
 
     # Get monomial indexing from first call (they'll all be the same)
     first_circuit, first_polys, index_to_monomial, monomial_to_index = (
