@@ -2,12 +2,19 @@ import sympy as sp
 import torch
 from torch_geometric.data import Data
 import torch_geometric.utils
-from utils import encode_action, vector_to_sympy # Keep vector_to_sympy for debugging
-from generator import add_polynomials_vector, multiply_polynomials_vector, create_polynomial_vector
+from utils import encode_action, vector_to_sympy  # Keep vector_to_sympy for debugging
+from generator import (
+    add_polynomials_vector,
+    multiply_polynomials_vector,
+    create_polynomial_vector,
+)
 import math
 
+
 class Game:
-    def __init__(self, sympy_poly, vec_poly, config, index_to_monomial, monomial_to_index):
+    def __init__(
+        self, sympy_poly, vec_poly, config, index_to_monomial, monomial_to_index
+    ):
         """
         Initializes the Game state for RL.
 
@@ -21,22 +28,24 @@ class Game:
         self.config = config
         self.index_to_monomial = index_to_monomial
         self.monomial_to_index = monomial_to_index
-        self.actions_taken = [] # List to store (op, node1, node2) tuples
-        self.exprs = []         # List to store SymPy expressions (for checking & debugging)
+        self.actions_taken = []  # List to store (op, node1, node2) tuples
+        self.exprs = []  # List to store SymPy expressions (for checking & debugging)
         self.poly_vectors = []  # List to store polynomial vectors (for rewards & potential input)
         self.used_actions = []  # Tracks which nodes are used (for potential pruning/reward)
 
         # Base nodes: n variables + 1 constant
-        self.symbols = sp.symbols([f"x{i}" for i in range(config.n_variables)]) + [sp.S.One]
+        self.symbols = sp.symbols([f"x{i}" for i in range(config.n_variables)]) + [
+            sp.S.One
+        ]
         self.target_sp = sympy_poly
-        self.target_vec = vec_poly.squeeze(0) # Ensure it's 1D
+        self.target_vec = vec_poly.squeeze(0)  # Ensure it's 1D
 
-        self.device = 'cpu' # Keep game logic on CPU, only model needs GPU
+        self.device = "cpu"  # Keep game logic on CPU, only model needs GPU
 
         # Initialize base vectors with proper size
         n, d = config.n_variables, config.max_complexity * 2
         vector_size = len(index_to_monomial)
-        
+
         # Create variable vectors
         for i in range(config.n_variables):
             var_vector = [0] * vector_size
@@ -48,7 +57,7 @@ class Game:
                 idx = monomial_to_index[mono_tuple]
                 var_vector[idx] = 1
             self.poly_vectors.append(var_vector)
-        
+
         # Create constant vector
         const_vector = [0] * vector_size
         zero_tuple = tuple([0] * config.n_variables)
@@ -62,12 +71,16 @@ class Game:
         if target_size != vector_size:
             if target_size < vector_size:
                 # Pad target vector
-                self.target_vec = torch.cat([self.target_vec, torch.zeros(vector_size - target_size)])
+                self.target_vec = torch.cat(
+                    [self.target_vec, torch.zeros(vector_size - target_size)]
+                )
             else:
                 # Truncate target vector
                 self.target_vec = self.target_vec[:vector_size]
-        
-        self.current_l1_dist = torch.linalg.norm(torch.tensor(self.poly_vectors[-1], dtype=torch.float) - self.target_vec, 1).item()
+
+        self.current_l1_dist = torch.linalg.norm(
+            torch.tensor(self.poly_vectors[-1], dtype=torch.float) - self.target_vec, 1
+        ).item()
 
     def _decode_action(self, action_idx):
         """Decodes an action index into (node1, operation, node2)."""
@@ -102,8 +115,10 @@ class Game:
 
         if op == "multiply":
             op_fn = lambda a, b: a * b
-            new_vec = multiply_polynomials_vector(vec1, vec2, self.config.mod, self.index_to_monomial, n, d)
-        else: # add
+            new_vec = multiply_polynomials_vector(
+                vec1, vec2, self.config.mod, self.index_to_monomial, n, d
+            )
+        else:  # add
             op_fn = lambda a, b: a + b
             new_vec = add_polynomials_vector(vec1, vec2, self.config.mod)
 
@@ -121,18 +136,21 @@ class Game:
     def is_done(self):
         """Checks if the game reached a terminal state (success or max steps)."""
         success = False
-        if self.exprs: # Check only if actions have been taken
-             # Use SymPy for exact check (can be slow)
-             # success = sp.expand(self.exprs[-1] - self.target_sp) == 0
-             # Use Vector for faster check (might have mod issues if not careful)
-             current_vec_t = torch.tensor(self.poly_vectors[-1], dtype=torch.float)
-             target_vec_t = self.target_vec.float()
-             # Ensure same length before comparing
-             max_len = max(len(current_vec_t), len(target_vec_t))
-             current_vec_t = torch.cat([current_vec_t, torch.zeros(max_len - len(current_vec_t))])
-             target_vec_t = torch.cat([target_vec_t, torch.zeros(max_len - len(target_vec_t))])
-             success = torch.equal(current_vec_t, target_vec_t)
-
+        if self.exprs:  # Check only if actions have been taken
+            # Use SymPy for exact check (can be slow)
+            # success = sp.expand(self.exprs[-1] - self.target_sp) == 0
+            # Use Vector for faster check (might have mod issues if not careful)
+            current_vec_t = torch.tensor(self.poly_vectors[-1], dtype=torch.float)
+            target_vec_t = self.target_vec.float()
+            # Ensure same length before comparing
+            max_len = max(len(current_vec_t), len(target_vec_t))
+            current_vec_t = torch.cat(
+                [current_vec_t, torch.zeros(max_len - len(current_vec_t))]
+            )
+            target_vec_t = torch.cat(
+                [target_vec_t, torch.zeros(max_len - len(target_vec_t))]
+            )
+            success = torch.equal(current_vec_t, target_vec_t)
 
         return len(self.actions_taken) >= self.config.max_complexity or success
 
@@ -150,8 +168,12 @@ class Game:
         current_vec_t = torch.tensor(self.poly_vectors[-1], dtype=torch.float)
         target_vec_t = self.target_vec.float()
         max_len = max(len(current_vec_t), len(target_vec_t))
-        current_vec_t = torch.cat([current_vec_t, torch.zeros(max_len - len(current_vec_t))])
-        target_vec_t = torch.cat([target_vec_t, torch.zeros(max_len - len(target_vec_t))])
+        current_vec_t = torch.cat(
+            [current_vec_t, torch.zeros(max_len - len(current_vec_t))]
+        )
+        target_vec_t = torch.cat(
+            [target_vec_t, torch.zeros(max_len - len(target_vec_t))]
+        )
         new_l1_dist = torch.linalg.norm(current_vec_t - target_vec_t, 1).item()
 
         # Reward shaping: reward for reducing distance (scaled)
@@ -162,14 +184,14 @@ class Game:
         step_penalty = -0.01
 
         reward = distance_reward + step_penalty
-        self.current_l1_dist = new_l1_dist # Update for next step
+        self.current_l1_dist = new_l1_dist  # Update for next step
 
         # Check for terminal state
         success = torch.equal(current_vec_t, target_vec_t)
         max_steps_reached = len(self.actions_taken) >= self.config.max_complexity
 
         if success:
-            reward += 10.0 # Large reward for success
+            reward += 10.0  # Large reward for success
         elif max_steps_reached:
             reward -= 1.0  # Penalty for failing at max steps
 
@@ -192,11 +214,10 @@ class Game:
         # This isn't ideal. Let's return just the last reward.
         # The PPO `train_ppo` loop *collects* rewards. So `compute_rewards`
         # should return the reward for the *last* action.
-        all_rewards = [-0.01] * (len(self.actions_taken) -1) # Base penalty
-        all_rewards.append(reward) # Add the last reward
+        all_rewards = [-0.01] * (len(self.actions_taken) - 1)  # Base penalty
+        all_rewards.append(reward)  # Add the last reward
 
-        return all_rewards # PPO loop will take rewards[-1]
-
+        return all_rewards  # PPO loop will take rewards[-1]
 
     def _get_graph(self, actions):
         """Builds the Torch Geometric graph from actions."""
@@ -210,13 +231,23 @@ class Game:
             elif action_type == "constant":
                 type_encoding, value = [0, 1, 0], 1.0
             else:
-                type_encoding, value = [0, 0, 1], 1.0 if action_type == "multiply" else 0.0
-                edges.append((input1_idx, i)); edges.append((input2_idx, i))
+                type_encoding, value = (
+                    [0, 0, 1],
+                    1.0 if action_type == "multiply" else 0.0,
+                )
+                edges.append((input1_idx, i))
+                edges.append((input2_idx, i))
             node_features.append(type_encoding + [value])
 
         x = torch.tensor(node_features, dtype=torch.float, device=self.device)
-        edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous() if edges else torch.empty((2, 0), dtype=torch.long)
-        edge_index, _ = torch_geometric.utils.add_self_loops(edge_index, num_nodes=n_nodes)
+        edge_index = (
+            torch.tensor(edges, dtype=torch.long).t().contiguous()
+            if edges
+            else torch.empty((2, 0), dtype=torch.long)
+        )
+        edge_index, _ = torch_geometric.utils.add_self_loops(
+            edge_index, num_nodes=n_nodes
+        )
         return Data(x=x, edge_index=edge_index)
 
     def _action_mask(self, actions):
@@ -225,11 +256,13 @@ class Game:
         max_nodes = self.config.n_variables + self.config.max_complexity + 1
         total_max_pairs = (max_nodes * (max_nodes + 1)) // 2
         max_possible_actions = total_max_pairs * 2
-        mask = torch.zeros(1, max_possible_actions, dtype=torch.bool, device=self.device)
+        mask = torch.zeros(
+            1, max_possible_actions, dtype=torch.bool, device=self.device
+        )
 
         # Allow actions using any currently available node (0 to n_nodes-1)
         for i in range(n_nodes):
-            for j in range(i, n_nodes): # Ensure i <= j for canonical pairs
+            for j in range(i, n_nodes):  # Ensure i <= j for canonical pairs
                 for op in ["add", "multiply"]:
                     action_idx = encode_action(op, i, j, max_nodes)
                     if action_idx < max_possible_actions:
@@ -259,7 +292,11 @@ class Game:
         mask = self._action_mask(history)
 
         # Get the target vector (ensure it's 2D for batching)
-        target_vec_observed = self.target_vec.unsqueeze(0) if self.target_vec.dim() == 1 else self.target_vec
+        target_vec_observed = (
+            self.target_vec.unsqueeze(0)
+            if self.target_vec.dim() == 1
+            else self.target_vec
+        )
 
         # Return: graph, target_poly_vector, list_of_actions, mask
         return graph, target_vec_observed, [history], mask
