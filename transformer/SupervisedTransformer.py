@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv, global_mean_pool
 from torch_geometric.data import Data, DataLoader, Batch
-from torch_geometric.utils import add_self_loops
 import random
 import os
 import tqdm
@@ -17,7 +16,6 @@ from utils import encode_action, vector_to_sympy
 from State import *
 from State import Game
 from torch.distributions import Categorical
-from utils import vector_to_sympy, encode_action
 import numpy as np
 
 
