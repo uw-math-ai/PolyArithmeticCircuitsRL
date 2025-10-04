@@ -93,12 +93,18 @@ class Game:
         n, d = self.config.n_variables, self.config.max_complexity * 2
 
         if op == "multiply":
-            op_fn = lambda a, b: a * b
+
+            def op_fn(a, b):
+                return a * b
+
             new_vec = multiply_polynomials_vector(
                 vec1, vec2, self.config.mod, self.index_to_monomial, n, d
             )
         else:  # add
-            op_fn = lambda a, b: a + b
+
+            def op_fn(a, b):
+                return a + b
+
             new_vec = add_polynomials_vector(vec1, vec2, self.config.mod)
 
         # Update SymPy (can be slow, use mainly for final check/debug)
