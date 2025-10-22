@@ -1,0 +1,6 @@
+Michael's\ experiments/
+__pycache__/
+.vscode/
+.streamlit/
+.env
+MAIL/

@@ -1,0 +1,51 @@
+{
+  "project_overview": {
+    "title": "Reinforcement Learning for Polynomial Arithmetic Circuits",
+    "description": "Research project using RL to discover efficient arithmetic circuits for polynomials",
+    "duration_months": 6,
+    "research_goals": [
+      "Implement AlphaZero-style MCTS for circuit construction",
+      "Evaluate on standard benchmarks (elementary symmetric, determinants)",
+      "Compare against classical algebraic complexity constructions",
+      "Generate training data through self-play",
+      "Publish results at ML conference (ICML/ICLR)"
+    ]
+  },
+  "computational_requirements": {
+    "model_size": "4.2M parameters",
+    "training_data": "Self-generated through MCTS self-play",
+    "cpu_baseline": "3548 hours (148 days)",
+    "gpu_speedup_needed": "Essential for practical training times",
+    "preferred_gpu": "A10G (balanced performance/cost) or V100 (high performance)"
+  },
+  "cost_breakdown": {
+    "main_training_run": {
+      "instance": "g5.xlarge",
+      "hours": "197.1",
+      "cost": "$258"
+    },
+    "development_phase": {
+      "duration": "3 months",
+      "cost": "$176"
+    },
+    "experimentation": {
+      "description": "Multiple model configurations and ablations",
+      "cost": "$129"
+    },
+    "total_project_cost": "$564"
+  },
+  "justification_points": [
+    "CPU training would take 148 days - impractical for research",
+    "GPU reduces training to 8.2 days - enables iterative research",
+    "Project addresses fundamental questions in algebraic complexity theory",
+    "Implementation includes comprehensive verification and benchmarking",
+    "Results will be published and code open-sourced",
+    "Educational value for understanding RL in mathematical domains"
+  ],
+  "alternatives_considered": {
+    "local_cpu": "148 days - too slow",
+    "local_gpu": "Not available/insufficient for this scale",
+    "google_colab": "Limited to 12-hour sessions, insufficient for full training",
+    "other_clouds": "AWS preferred for academic discounts and ecosystem"
+  }
+}
