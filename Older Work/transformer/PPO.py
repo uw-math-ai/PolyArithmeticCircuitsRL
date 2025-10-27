@@ -131,12 +131,8 @@ class CircuitBuilder(nn.Module):
         self.gnn = ArithmeticCircuitGNN(
             4, config.hidden_dim, config.embedding_dim
         )
-        self.circuit_encoder = CircuitHistoryEncoder(config.embedding_dim)
         self.polynomial_embedding = nn.Linear(
             max_poly_tensor_size, config.embedding_dim
-        )
-        self.positional_encoding = PositionalEncoding(
-            config.embedding_dim, config.max_circuit_length
         )
         decoder_layer = nn.TransformerDecoderLayer(
             d_model=config.embedding_dim,
@@ -163,33 +159,22 @@ class CircuitBuilder(nn.Module):
     ):
         batch_size = target_polynomials.size(0)
 
+        # Get node embeddings from GNN
         node_embeddings = self.gnn(batched_graph)
         
+        # Aggregate node embeddings into a single graph embedding per graph in the batch
+        # using global mean pooling
+        graph_embeddings = global_mean_pool(node_embeddings, batched_graph.batch)
+        # graph_embeddings shape: (batch_size, embedding_dim)
+        
+        # Embed the target polynomial
         poly_embeddings = self.polynomial_embedding(target_polynomials)
+        # poly_embeddings shape: (batch_size, embedding_dim)
 
-        circuit_embeddings_list = []
-        max_seq_len = 0
-        for i in range(batch_size):
-            tokens = self.circuit_encoder.encode_circuit_actions(circuit_actions[i])
-            embeddings = self.circuit_encoder(tokens)
-            circuit_embeddings_list.append(embeddings)
-            max_seq_len = max(max_seq_len, embeddings.size(0))
-
-        padded_circuit_embeddings = []
-        for emb in circuit_embeddings_list:
-            if emb.nelement() == 0:
-                emb = torch.zeros(0, self.embedding_dim, device=device)
-            padding = torch.zeros(
-                max_seq_len - emb.size(0), self.embedding_dim, device=device
-            )
-            padded_circuit_embeddings.append(torch.cat([emb, padding], dim=0))
-
-        circuit_embeddings = torch.stack(
-            padded_circuit_embeddings, dim=1
-        )
-        circuit_embeddings = self.positional_encoding(circuit_embeddings)
-
-        memory = torch.cat([poly_embeddings.unsqueeze(0), circuit_embeddings], dim=0)
+        # Build memory for transformer decoder:
+        # memory should contain both the target (polynomial) and current state (graph)
+        # Shape: (2, batch_size, embedding_dim)
+        memory = torch.stack([poly_embeddings, graph_embeddings], dim=0)
 
         query = self.output_token.expand(-1, batch_size, -1)
         output = self.transformer_decoder(tgt=query, memory=memory)
@@ -279,7 +264,7 @@ class CircuitDataset(Dataset):
         C = self.config.max_complexity
         num_circuits = size // C if C > 0 else size
 
-        all_polynomials, all_circuits = generate_random_polynomials(
+        all_polynomials, all_circuits, _ = generate_random_polynomials(
             n, C, num_polynomials=num_circuits, mod=self.config.mod
         )
 
