@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Polynomial Game Board Viewer — v6 (Full Ancestor Paths)</title>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dagre-d3/0.6.4/dagre-d3.min.js"></script>
+
+<script>
+  window.MathJax = { tex: {inlineMath: [['\\(','\\)'], ['$', '$']]}, svg: {fontCache: 'global'} };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+
+<style>
+  :root {
+    --bg:#0f1020; --panel:#17182c; --text:#eaeaf2; --muted:#a9acc7;
+    --add:#43d17e; --mul:#ff8a65; --edge:#b7bdd7;
+    --node:#2f3360; --stroke:#b9c0ff; --accent:#8ab4ff;
+    --highlight:#ffd54f;
+  }
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  .app{display:grid;grid-template-rows:auto 1fr;height:100%}
+  header{display:flex;gap:1rem;align-items:center;padding:12px 16px;background:var(--panel);border-bottom:1px solid #262a4d;flex-wrap:wrap}
+  header h1{font-size:16px;margin:0;letter-spacing:.02em;color:var(--accent)}
+  .controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-left:auto}
+  .controls label{color:var(--muted);font-size:13px}
+  .search{display:flex;gap:8px;align-items:center;background:#111338;border:1px solid #2b2f56;border-radius:8px;padding:6px 8px}
+  .search input[type="text"]{background:transparent;border:none;color:var(--text);min-width:240px;outline:none}
+  .btn{background:#223066;border:1px solid #2b2f56;color:#dfe3ff;border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer}
+  .btn:hover{filter:brightness(1.1)}
+  .legend{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px;margin-left:16px}
+  .legend .chip{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:6px}
+  main{position:relative}
+  svg{width:100%;height:100%;background:linear-gradient(180deg,#10122a 0%,#0e1024 100%);cursor:grab}
+  svg:active{cursor:grabbing}
+  .node rect{fill:var(--node);stroke:var(--stroke);stroke-width:1.2px;rx:10;ry:10;filter:drop-shadow(0 2px 6px rgba(0,0,0,.35))}
+  .node.focus rect{stroke:var(--highlight);stroke-width:2px}
+  .edge{fill:none;stroke-width:1.8px;stroke-linecap:round;stroke-linejoin:round;opacity:.95}
+  .edge.add{stroke:var(--add)}
+  .edge.mul{stroke:var(--mul)}
+  .edge.focus{stroke-width:2.6px;opacity:1}
+  .edgeLabel{font-size:11px;fill:#e9ecff;paint-order:stroke;stroke:#0e1024;stroke-width:3px;stroke-linejoin:round}
+  .dim{opacity:.15}
+  .tooltip{position:absolute;pointer-events:none;opacity:0;background:rgba(23,24,44,.95);color:var(--text);border:1px solid #2b2f56;border-radius:8px;padding:8px 10px;font-size:13px;max-width:360px;box-shadow:0 6px 18px rgba(0,0,0,.4);transition:opacity 120ms ease}
+  .footer{position:absolute;bottom:12px;right:16px;color:var(--muted);font-size:12px;opacity:.8;background:rgba(15,16,32,.6);padding:6px 10px;border-radius:6px;border:1px solid #23284b}
+</style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Polynomial Game Board Viewer</h1>
+      <div class="legend">
+        <span class="chip" style="background:var(--add)"></span> add
+        <span class="chip" style="background:var(--mul)"></span> mul
+      </div>
+      <div class="controls">
+        <label>Load JSON <input id="file" type="file" accept=".json,application/json"></label>
+        <div class="search">
+          <span style="color:#a9acc7">Find:</span>
+          <input id="searchInput" type="text" placeholder="e.g. x**2+2*x" />
+          <button id="searchBtn" class="btn">Search</button>
+          <button id="clearBtn" class="btn">Clear</button>
+        </div>
+        <label><input id="toggleLabels" type="checkbox" checked> Node labels</label>
+        <label><input id="toggleEdgeLabels" type="checkbox"> Edge labels</label>
+        <label>Rank sep <input id="rankSep" type="range" min="30" max="200" value="90"></label>
+        <label>Node sep <input id="nodeSep" type="range" min="10" max="160" value="28"></label>
+        <label><input id="dimOthers" type="checkbox" checked> Dim non-path</label>
+        <button id="fitBtn" class="btn">Fit</button>
+        <button id="resetBtn" class="btn">Reset</button>
+      </div>
+    </header>
+    <main>
+      <svg id="svg"><g id="viewport"></g></svg>
+      <div class="tooltip" id="tooltip"></div>
+      <div class="footer">Tip: drag to pan, scroll to zoom. Hover nodes for full polynomial. Search or click to highlight all upstream paths.</div>
+    </main>
+  </div>
+
+<script>
+const svg = d3.select('#svg');
+const viewport = d3.select('#viewport');
+const tooltip = d3.select('#tooltip');
+const zoom = d3.zoom().scaleExtent([0.3, 3]).on('zoom', (ev)=>viewport.attr('transform', ev.transform));
+svg.call(zoom);
+
+let lastData = null;
+let dagreGraph = null;
+let nodeG = null;
+let edgeSel = null;
+
+function estimateNodeSize(label) {
+  const plain = String(label).replace(/^\\\(|\\\)$/g,'');
+  const lines = plain.split(/\n|\\\\/);
+  const maxLen = Math.max(1, ...lines.map(s=>s.length));
+  const width = Math.min(360, 24 + 8 * maxLen);
+  const height = 20 + 18 * Math.max(1, lines.length);
+  return {width, height};
+}
+function normalizePolyString(s) {
+  return String(s).replace(/\s+/g,'').replace(/^\\\(|\\\)$/g,'');
+}
+
+// Build reverse adjacency (predecessors) as a Map: node -> [pred1, pred2, ...]
+function buildReverseAdjacency(g) {
+  const pred = new Map();
+  g.nodes().forEach(id => pred.set(id, []));
+  g.edges().forEach(e => {
+    if (!g.node(e.v).dummy && !g.node(e.w).dummy) {
+      pred.get(e.w).push(e.v);
+    }
+  });
+  return pred;
+}
+
+// Collect *all* ancestors by simple reverse BFS with no early stopping.
+// Return sets of nodes and edge keys "u->v" to keep.
+function collectAllAncestorPaths(g, targetId) {
+  const pred = buildReverseAdjacency(g);
+  const keepNodes = new Set([targetId]);
+  const keepEdges = new Set();
+  const visited = new Set([targetId]);
+  const q = [targetId];
+
+  while (q.length) {
+    const u = q.shift();
+    const ps = pred.get(u) || [];
+    for (const p of ps) {
+      keepNodes.add(p);
+      keepEdges.add(p + '->' + u);
+      if (!visited.has(p)) {
+        visited.add(p);
+        q.push(p);
+      }
+    }
+  }
+  return { keepNodes, keepEdges };
+}
+
+function render(graphData) {
+  const g = new dagre.graphlib.Graph({ multigraph: true })
+    .setGraph({})
+    .setDefaultEdgeLabel(()=> ({}));
+
+  const rankSep = +document.getElementById('rankSep').value || 90;
+  const nodeSep = +document.getElementById('nodeSep').value || 28;
+  g.graph().ranksep = rankSep;
+  g.graph().nodesep = nodeSep;
+  g.graph().rankdir = 'LR';
+
+  const nodes = (graphData.nodes || []).map((n,i)=> ({...n, id: n.id ?? n.key ?? String(i)}));
+  const links = (graphData.links || graphData.edges || []).map((e)=> ({
+    source: (typeof e.source === 'object' ? e.source.id : e.source),
+    target: (typeof e.target === 'object' ? e.target.id : e.target),
+    op: (e.op || (e.data && e.data.op) || '').toLowerCase()
+  }));
+
+  const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+  nodes.forEach(n => {
+    const label = n.label ?? n.expr ?? n.id;
+    const math = String(label).startsWith('\\(') ? label : `\\(${label}\\)`;
+    const {width, height} = estimateNodeSize(math);
+    g.setNode(n.id, { label: math, step: n.step ?? 0, width, height });
+  });
+
+  links.forEach((e, idx) => {
+    const lbl = e.op === 'add' ? '+' : (e.op === 'mul' ? '×' : '');
+    const klass = e.op === 'add' ? 'add' : (e.op === 'mul' ? 'mul' : '');
+    g.setEdge(e.source, e.target, { label: lbl, op: e.op, class: klass }, `e${idx}`);
+  });
+
+  // Dummy ranks to stabilize
+  const byStep = new Map();
+  g.nodes().forEach(id => {
+    const st = g.node(id).step || 0;
+    (byStep.get(st) ?? byStep.set(st, []).get(st)).push(id);
+  });
+  for (const step of Array.from(byStep.keys()).sort((a,b)=>a-b)) {
+    const did = `__rank_${step}`;
+    g.setNode(did, { width: 0.01, height: 0.01, step, dummy: true });
+    (byStep.get(step) || []).forEach(nid => g.setEdge(did, nid, { arrowhead: 'none', style: 'opacity:0' }));
+  }
+
+  dagre.layout(g);
+
+  viewport.selectAll('*').remove();
+
+  // Markers per op
+  const defs = viewport.append('defs');
+  defs.append('marker').attr('id','arrow-add').attr('markerWidth',10).attr('markerHeight',10)
+    .attr('refX',9).attr('refY',3).attr('orient','auto').attr('markerUnits','strokeWidth')
+    .append('path').attr('d','M0,0 L0,6 L9,3 z').attr('fill','var(--add)');
+  defs.append('marker').attr('id','arrow-mul').attr('markerWidth',10).attr('markerHeight',10)
+    .attr('refX',9).attr('refY',3).attr('orient','auto').attr('markerUnits','strokeWidth')
+    .append('path').attr('d','M0,0 L0,6 L9,3 z').attr('fill','var(--mul)');
+
+  const line = d3.line().x(d=>d.x).y(d=>d.y).curve(d3.curveLinear);
+
+  // Edges
+  const E = g.edges().filter(e => !g.node(e.v).dummy && !g.node(e.w).dummy);
+  const edgeG = viewport.append('g').attr('class','edges');
+  edgeSel = edgeG.selectAll('path.edge')
+    .data(E, d=>d.v+'->'+d.w)   // key edges by "u->v"
+    .enter()
+    .append('path')
+    .attr('class', d => `edge ${g.edge(d).class || ''}`)
+    .attr('d', d => line(g.edge(d).points))
+    .attr('marker-end', d => {
+      const op = g.edge(d).op;
+      return op === 'add' ? 'url(#arrow-add)' : (op === 'mul' ? 'url(#arrow-mul)' : null);
+    });
+
+  if (document.getElementById('toggleEdgeLabels').checked) {
+    edgeG.selectAll('text.edgeLabel')
+      .data(E, d=>d.v+'->'+d.w)
+      .enter()
+      .append('text')
+      .attr('class','edgeLabel')
+      .attr('text-anchor','middle')
+      .attr('x', d => {
+        const pts = g.edge(d).points; return pts[Math.floor(pts.length/2)].x;
+      })
+      .attr('y', d => {
+        const pts = g.edge(d).points; return pts[Math.floor(pts.length/2)].y - 4;
+      })
+      .text(d => g.edge(d).label || '');
+  }
+
+  // Nodes
+  const nodeIds = g.nodes().filter(id => !(g.node(id).dummy));
+  nodeG = viewport.append('g').attr('class','nodes')
+    .selectAll('g.node')
+    .data(nodeIds, d=>d)
+    .enter()
+    .append('g')
+    .attr('class','node')
+    .attr('data-id', id => id)
+    .attr('transform', id => {
+      const n = g.node(id);
+      return `translate(${n.x - n.width/2}, ${n.y - n.height/2})`;
+    })
+    .on('mouseenter', (ev, id) => {
+      const n0 = (lastData.nodes || []).find(nn => (nn.id ?? nn.key) === id) || {};
+      const label = n0.expr || n0.label || id;
+      tooltip.html(
+        `<div><strong>ID:</strong> ${id}</div>` +
+        `<div><strong>Step:</strong> ${n0.step ?? 0}</div>` +
+        `<div><strong>Polynomial:</strong> \\(${normalizePolyString(label)}\\)</div>`
+      );
+      tooltip.style('opacity', 1);
+      MathJax.typesetPromise([tooltip.node()]);
+    })
+    .on('mousemove', ev => {
+      tooltip.style('left', (ev.clientX + 12) + 'px')
+             .style('top',  (ev.clientY + 12) + 'px');
+    })
+    .on('mouseleave', () => tooltip.style('opacity', 0))
+    .on('click', (ev, id) => focusAncestors(id, g));
+
+  nodeG.append('rect')
+    .attr('width', id => g.node(id).width)
+    .attr('height', id => g.node(id).height)
+    .attr('rx', 10).attr('ry', 10);
+
+  if (document.getElementById('toggleLabels').checked) {
+    nodeG.append('foreignObject')
+      .attr('x', 0).attr('y', 0)
+      .attr('width', id => g.node(id).width)
+      .attr('height', id => g.node(id).height)
+      .append('xhtml:div')
+      .attr('class','label')
+      .style('display','grid')
+      .style('place-items','center')
+      .html(id => g.node(id).label);
+  }
+
+  fitToScreen(g);
+  MathJax.typesetPromise(Array.from(document.querySelectorAll('.label')));
+
+  dagreGraph = g; // store for search/focus
+}
+
+function fitToScreen(g) {
+  const ids = g.nodes().filter(id => !(g.node(id).dummy));
+  if (ids.length === 0) return;
+  const svgEl = document.getElementById('svg');
+  const rect = svgEl.getBoundingClientRect();
+  const width = rect.width  || svgEl.clientWidth  || 800;
+  const height= rect.height || svgEl.clientHeight || 600;
+
+  let minX= Infinity, minY= Infinity, maxX= -Infinity, maxY= -Infinity;
+  ids.forEach(id => {
+    const n = g.node(id);
+    minX = Math.min(minX, n.x - n.width/2);
+    maxX = Math.max(maxX, n.x + n.width/2);
+    minY = Math.min(minY, n.y - n.height/2);
+    maxY = Math.max(maxY, n.y + n.height/2);
+  });
+
+  if (!isFinite(minX) || !isFinite(maxX) || !isFinite(minY) || !isFinite(maxY)) return;
+
+  const gW = Math.max(1, maxX - minX);
+  const gH = Math.max(1, maxY - minY);
+  const scale = Math.min(width / (gW + 120), height / (gH + 120));
+  if (!isFinite(scale) || scale <= 0) return;
+
+  const tx = (width  - scale * (minX + maxX)) / 2;
+  const ty = (height - scale * (minY + maxY)) / 2;
+  svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+}
+
+// Focus/highlight
+function applyFocus(keepNodes, keepEdges) {
+  nodeG.classed('focus', d => keepNodes.has(d));
+  nodeG.classed('dim', d => !keepNodes.has(d));
+  edgeSel.classed('focus', d => keepEdges.has(d.v + '->' + d.w));
+  edgeSel.classed('dim', d => !keepEdges.has(d.v + '->' + d.w));
+}
+function clearFocus() {
+  nodeG.classed('focus', false).classed('dim', false);
+  edgeSel.classed('focus', false).classed('dim', false);
+}
+function focusAncestors(id, g) {
+  const dimOthers = document.getElementById('dimOthers').checked;
+  if (!dimOthers) return;
+  const { keepNodes, keepEdges } = collectAllAncestorPaths(g, id);
+  applyFocus(keepNodes, keepEdges);
+  // center on node
+  const n = g.node(id);
+  const svgEl = document.getElementById('svg');
+  const rect = svgEl.getBoundingClientRect();
+  const scale = d3.zoomTransform(svg.node()).k || 1;
+  const tx = rect.width/2 - scale*(n.x);
+  const ty = rect.height/2 - scale*(n.y);
+  svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+}
+
+// Search
+function findNodeByPoly(q) {
+  if (!lastData) return null;
+  const needle = normalizePolyString(q);
+  for (const n of (lastData.nodes || [])) {
+    const label = normalizePolyString(n.label ?? n.expr ?? n.id);
+    if (label === needle) return n.id ?? n.key;
+  }
+  for (const n of (lastData.nodes || [])) {
+    const label = normalizePolyString(n.label ?? n.expr ?? n.id);
+    if (label.includes(needle)) return n.id ?? n.key;
+  }
+  return null;
+}
+
+// UI wiring
+const reload = () => { if (lastData) render(lastData); };
+
+document.getElementById('file').addEventListener('change', async (e) => {
+  const f = e.target.files?.[0]; if (!f) return;
+  const txt = await f.text();
+  const data = JSON.parse(txt);
+  if (data.nodes) data.nodes.forEach((n,i)=>{ if (n.id === undefined) n.id = n.key ?? String(i); });
+  lastData = data;
+  render(data);
+});
+
+['rankSep','nodeSep','toggleLabels','toggleEdgeLabels','dimOthers'].forEach(id => {
+  document.getElementById(id).addEventListener('input', reload);
+  document.getElementById(id).addEventListener('change', reload);
+});
+document.getElementById('fitBtn').addEventListener('click', reload);
+document.getElementById('resetBtn').addEventListener('click', () => {
+  clearFocus();
+  svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity);
+});
+document.getElementById('searchBtn').addEventListener('click', () => {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q || !dagreGraph) return;
+  const id = findNodeByPoly(q);
+  if (!id) { alert('No match. Try a canonical form like x**2+2*x.'); return; }
+  const { keepNodes, keepEdges } = collectAllAncestorPaths(dagreGraph, id);
+  applyFocus(keepNodes, keepEdges);
+  nodeG.classed('focus', d => d === id);
+});
+document.getElementById('clearBtn').addEventListener('click', () => {
+  clearFocus();
+});
+document.getElementById('searchInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('searchBtn').click();
+});
+</script>
+</body>
+</html>
