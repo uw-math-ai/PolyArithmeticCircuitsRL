@@ -6,17 +6,25 @@ from torch_geometric.data import Data, DataLoader, Batch
 from torch_geometric.utils import add_self_loops
 import random
 import os
+import sys
+from pathlib import Path
 import tqdm
 import math
-import sympy
 from torch.utils.data import Dataset, DataLoader
-from generator import generate_random_circuit, get_symbols, generate_random_polynomials
 from PositionalEncoding import *
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from utils import encode_action
 from State import Game
 from torch.distributions import Categorical
 import numpy as np
+
+CURRENT_DIR = Path(__file__).resolve().parent
+SRC_ROOT = CURRENT_DIR.parent
+if str(SRC_ROOT) not in sys.path:
+    sys.path.append(str(SRC_ROOT))
+
+from encoders.compact_encoder import CompactOneHotGraphEncoder
+from generator import generate_random_circuit, generate_random_polynomials
 
 # --- Setup ---
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -63,28 +71,36 @@ class Config:
         # --- Curriculum Learning ---
         self.complexity_threshold = 0.6
         self.complexity_window = 200
+        self.compact_size = CompactOneHotGraphEncoder(
+            N=self.max_complexity,
+            P=self.mod,
+            D=self.n_variables,
+        ).size
 
 config = Config()
 
-# --- SymPy to Tensor Conversion ---
-def sympy_to_tensor(expr: sympy.Expr, n_vars: int, max_degree: int) -> torch.Tensor:
-    """
-    Converts a SymPy expression into a multi-dimensional tensor representing its coefficients.
-    The tensor shape is (max_degree+1, ..., max_degree+1) for n_vars dimensions.
-    """
-    symbols = get_symbols(n_vars)
-    poly = sympy.Poly(expr, symbols)
-    
-    # The shape of the tensor will be (max_degree+1) for each variable
-    tensor_shape = tuple([max_degree + 1] * n_vars)
-    tensor = torch.zeros(tensor_shape, dtype=torch.float)
+def build_compact_encoder(config: Config) -> CompactOneHotGraphEncoder:
+    """Helper to instantiate a fresh compact encoder for this config."""
+    return CompactOneHotGraphEncoder(
+        N=config.max_complexity,
+        P=config.mod,
+        D=config.n_variables,
+    )
 
-    for exponents, coeff in poly.terms():
-        # Ensure the degree of each variable is within the allowed max_degree
-        if all(e <= max_degree for e in exponents):
-            tensor[exponents] = float(coeff)
-            
-    return tensor.flatten()
+
+def encode_actions_with_compact_encoder(actions, config: Config) -> torch.Tensor:
+    """
+    Encode a sequence of circuit actions using the compact one-hot encoder.
+    Inputs/constant actions are ignored; only arithmetic ops update the encoding.
+    """
+    encoder = build_compact_encoder(config)
+    for action_type, node1_id, node2_id in actions:
+        if action_type not in ("add", "multiply"):
+            continue
+        op_type = 0 if action_type == "add" else 1
+        encoder.update(node1_id, node2_id, op_type)
+    encoding = encoder.get_encoding().copy()
+    return torch.from_numpy(encoding)
 
 # --- GNN Model ---
 class ArithmeticCircuitGNN(nn.Module):
@@ -124,7 +140,7 @@ class ArithmeticCircuitGNN(nn.Module):
 class CircuitBuilder(nn.Module):
     """Main model combining GNN, Transformer, Policy, and Value heads."""
 
-    def __init__(self, config, max_poly_tensor_size):
+    def __init__(self, config, state_encoding_size):
         super(CircuitBuilder, self).__init__()
         self.config = config
         self.embedding_dim = config.embedding_dim
@@ -132,7 +148,7 @@ class CircuitBuilder(nn.Module):
             4, config.hidden_dim, config.embedding_dim
         )
         self.polynomial_embedding = nn.Linear(
-            max_poly_tensor_size, config.embedding_dim
+            state_encoding_size, config.embedding_dim
         )
         decoder_layer = nn.TransformerDecoderLayer(
             d_model=config.embedding_dim,
@@ -253,7 +269,6 @@ class CircuitDataset(Dataset):
         description="Training",
     ):
         self.config = config
-        self.max_poly_tensor_size = (config.max_degree + 1) ** config.n_variables
         print(f"Generating {description} dataset ({size} examples) with N={config.n_variables}, C={config.max_complexity}...")
         self.data = self.generate_data(size)
         print(f"Finished generating {description} dataset.")
@@ -270,8 +285,7 @@ class CircuitDataset(Dataset):
 
         for i in tqdm.tqdm(range(len(all_circuits)), desc=f"Processing generated data"):
             actions = all_circuits[i]
-            target_poly_expr = all_polynomials[i]
-            target_poly_tensor = sympy_to_tensor(target_poly_expr, n, self.config.max_degree)
+            target_encoding = encode_actions_with_compact_encoder(actions, self.config)
 
             n_base = n + 1
 
@@ -294,7 +308,7 @@ class CircuitDataset(Dataset):
                 dataset.append(
                     {
                         "actions": current_actions,
-                        "target_poly": target_poly_tensor,
+                        "target_poly": target_encoding.clone(),
                         "mask": available_mask.cpu(),
                         "action": action_idx,
                         "value": (len(actions) - i) / max(1, len(actions) - n_base),
@@ -324,13 +338,6 @@ class CircuitDataset(Dataset):
         item = self.data[idx]
         circuit_graph = self.actions_to_graph(item["actions"])
         target_poly = item["target_poly"]
-        
-        # Ensure tensor is flattened and padded
-        target_poly = target_poly.flatten()
-        if len(target_poly) < self.max_poly_tensor_size:
-            target_poly = torch.cat(
-                [target_poly, torch.zeros(self.max_poly_tensor_size - len(target_poly))]
-            )
 
         return (
             circuit_graph,
@@ -506,11 +513,13 @@ def train_ppo(model, config):
                     continue
 
                 target_poly_expr = polynomials_gen[-1]
-                target_poly_tensor = sympy_to_tensor(target_poly_expr, n, config.max_degree).unsqueeze(0)
+                target_poly_encoding = encode_actions_with_compact_encoder(
+                    actions_gen, config
+                ).unsqueeze(0)
 
                 game = Game(
                     target_poly_expr,
-                    target_poly_tensor,
+                    target_poly_encoding,
                     config,
                 ).to("cpu")
                 
@@ -731,11 +740,7 @@ def evaluate_model(model, test_dataset, config, num_tests=100):
 # --- Main Execution ---
 def main():
     config = Config()
-    n = config.n_variables
-    max_degree = config.max_degree
-    
-    max_poly_tensor_size = (max_degree + 1) ** n
-    print(f"Max polynomial tensor size: {max_poly_tensor_size}")
+    print(f"Compact encoder size: {config.compact_size}")
 
     # Create datasets
     train_dataset = CircuitDataset(
@@ -750,7 +755,7 @@ def main():
     )
 
     # Initialize model
-    model = CircuitBuilder(config, max_poly_tensor_size).to(device)
+    model = CircuitBuilder(config, config.compact_size).to(device)
     best_model_path = (
         f"best_supervised_model_n{config.n_variables}_C{config.max_complexity}.pt"
     )

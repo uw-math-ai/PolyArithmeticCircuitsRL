@@ -6,9 +6,9 @@ from utils import decode_action, encode_action
 
 
 class Game:
-    def __init__(self, target_poly_expr, target_poly_tensor, config):
+    def __init__(self, target_poly_expr, target_encoding, config):
         self.target_poly_expr = target_poly_expr
-        self.target_poly_tensor = target_poly_tensor
+        self.target_encoding = target_encoding
         self.config = config
         self.symbols = [sympy.Symbol(f"x{i}") for i in range(config.n_variables)]
 
@@ -37,7 +37,7 @@ class Game:
         circuit_graph = self.get_graph_representation()
 
         # The target polynomial tensor is already computed, just needs to be on the right device
-        target_poly_tensor_dev = self.target_poly_tensor.to(
+        target_encoding_dev = self.target_encoding.to(
             next(torch.zeros(1)).device if torch.cuda.is_available() else "cpu"
         )
 
@@ -47,7 +47,7 @@ class Game:
         # The mask of available actions
         available_actions_mask = self.get_available_actions_mask()
 
-        return circuit_graph, target_poly_tensor_dev, circuit_actions, available_actions_mask.unsqueeze(0)
+        return circuit_graph, target_encoding_dev, circuit_actions, available_actions_mask.unsqueeze(0)
 
     def get_graph_representation(self):
         n_nodes = len(self.actions)
