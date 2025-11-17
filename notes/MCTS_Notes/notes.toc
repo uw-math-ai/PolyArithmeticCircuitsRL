@@ -1,0 +1,17 @@
+\contentsline {section}{\numberline {1}AlphaGo Paper}{2}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Deep Network}{2}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}MCTS}{2}{subsection.1.2}%
+\contentsline {subsubsection}{\numberline {1.2.1}Action-Value function Q}{2}{subsubsection.1.2.1}%
+\contentsline {subsection}{\numberline {1.3}Self-Training MCTS}{3}{subsection.1.3}%
+\contentsline {subsection}{\numberline {1.4}Self-Play Training Pipeline}{4}{subsection.1.4}%
+\contentsline {section}{\numberline {2}Summary}{5}{section.2}%
+\contentsline {section}{\numberline {3}Understanding AlphaGo Zero: UCB, MCST and UCT}{5}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Upper Confidence Bound (UCB)}{5}{subsection.3.1}%
+\contentsline {subsubsection}{\numberline {3.1.1}Hoeffding's Inequality}{6}{subsubsection.3.1.1}%
+\contentsline {subsubsection}{\numberline {3.1.2}UCB Policy Derivation}{6}{subsubsection.3.1.2}%
+\contentsline {subsubsection}{\numberline {3.1.3}UCB1 Algorithm}{6}{subsubsection.3.1.3}%
+\contentsline {subsection}{\numberline {3.2}Monte Carlo Search Tree (MCST)}{7}{subsection.3.2}%
+\contentsline {subsubsection}{\numberline {3.2.1}Four Steps of MCST}{7}{subsubsection.3.2.1}%
+\contentsline {subsection}{\numberline {3.3}Upper Confidence Bound for Search Trees (UCT)}{7}{subsection.3.3}%
+\contentsline {subsubsection}{\numberline {3.3.1}Properties of UCT}{7}{subsubsection.3.3.1}%
+\contentsline {section}{\numberline {4}Final Remark}{8}{section.4}%

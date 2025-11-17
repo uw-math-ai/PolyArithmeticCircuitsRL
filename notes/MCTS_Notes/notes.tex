@@ -1,0 +1,287 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{graphicx}
+\DeclareMathOperator*{\argmax}{argmax}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{listings}
+\usepackage{color}
+
+% Code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray}
+}
+
+\title{Implementing MCTS in RL}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\tableofcontents
+\newpage
+
+
+
+
+\section{AlphaGo Paper}
+
+Self-trained.
+
+\subsection{Deep Network}
+
+In Go, policy controls the moves to win a game, to model uncertainty the policy is a probability distribution $p(s, a)$ the chance of taking a move $a$ from the position $s$. Value function is the likelihood of winning from position $s$, denoted as $v(s)$. So there's a probability of making a move, and then a value of winning from that move. A single deep network $f$, of convolutional layers, estimates $p$ and $v$. Takes board position $s$ as input and outputs both $p$ and $v$:
+\begin{equation}
+    (p, v) = f_\theta(s)
+\end{equation}
+
+\begin{equation}
+    p_a = Pr\{a|s\}
+\end{equation}
+
+\subsection{MCTS}
+
+In MCTS, we use a search tree to record all sequence of moves that we search (play). A node represents a board position and an edge represents a move. Starting with a board position, we search possible moves and evaluate policy and value function using the deep network $f$. After making an action, we expand the tree and add a new layer, same as above it has the probability of making an action and then the value of winning from that state. Repeat as necessary.
+
+\subsubsection{Action-Value function Q}
+
+Measures the value of making a move.
+
+If we make a move and the probability of winning from there is $0.9$ then $Q = 0.9$. Now the more steps you take $Q$ is just the average of the value of each step. So if you make $n$ moves and the value of winning from each move is $v_1, v_2, \ldots, v_n$ then:
+\begin{equation}
+    Q(s, a) = \frac{1}{n} \sum_{i=1}^{n} v_i
+\end{equation}
+
+However, $Q$ also considers the previous number of times that the path has been traversed (refer to the example below):
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{mcts_q_value.png}
+    \caption{MCTS Q Value Calculation Example}
+    \label{fig:mcts_q_value}
+\end{figure}
+
+Now to prioritize the search functionality so you don't keep searching the search space we consider exploitation and exploration:
+
+\begin{itemize}
+    \item Exploitation: Perform more searches that look promising (i.e. high Q value).
+    \item Exploration: Perform searches that are not frequently explored (i.e. low visit count N).
+\end{itemize}
+
+Mathematically the move $a$ is selected according to:
+
+\begin{align}
+    a_t = \argmax_a (Q(s, a) + u(s, a))\\
+    u(s, a) \propto \frac{P(s, a)}{1 + N(s, a)}
+\end{align}
+
+In this equation, Q controls the exploitation and u (inverse to its visit count) controls the exploration. Starting from the root, we use this policy (tree policy) to select the path that we want to search further.
+
+In the beginning, MCTS will focus more on exploration but as the iterations increase, most searches are exploitation and Q is getting more accurate.
+
+The policy is actually derived from the visit count $N$:
+
+\begin{align}
+    \pi_a \propto N(s, a)^{1/\tau}\\
+    \pi(a | s) = \frac{N(s, a)^{t/\tau}}{\sum_b N(s, b)^{1/\tau}}
+\end{align}
+
+After the initial iterations, moves with higher Q value will be visited more frequently. We use the visit count to calculate the policy because it is less prone to outliers. $\tau$ is a temperature parameter, when $\tau \to 0$ the policy becomes greedy (only select the most visited move) so no exploration. MCTS improves our policy evaluation (improves Q), and we use the new evaluation to improve the policy (policy improvement). Then we re-apply the policy to evaluate the policy again. These repeated iterations of policy evaluation and policy improvement are called policy iteration in RL.
+
+\subsection{Self-Training MCTS}
+
+Starting with an empty board position $s1$, use MCTS to get a policy $\pi_1$. Then sample a move $a_1$ from $\pi_1$ and then repeat to get new policy $\pi_2$ and move $a_2$, etc.
+
+This whole self-play game creates a sequence of input board position, policy and game result $z$ (1 if win, -1 if lose).
+
+\begin{equation}
+    (s_1 \to (\pi_1, z), s_2 \to (\pi_2, z), \ldots, s_T \to (\pi_T, z))
+\end{equation}
+
+This is the dataset we used to train the deep network f using supervised training. AlphaGo Zero plays games with itself to build up a training dataset. Then it randomly selects samples from the dataset to train $f$.
+
+The next step is NN training. Loss function has:
+
+\begin{itemize}
+    \item The Mean Square error between value function estimation $v$ and true label $z$.
+    \item Cross Entropy loss between policy $p$ and MCTS improved policy $\pi$.
+    \item $L2$ regularization on the network weights $\theta$ with $c = 0.0001$.
+\end{itemize}
+
+Some images for visualization:
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{Self_play.png}
+    \caption{MCTS Self-Play Training Loop}
+    \label{fig:mcts_self_play}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{NN.png}
+    \caption{MCTS Search Tree Example}
+    \label{fig:mcts_search_tree}
+\end{figure}
+
+
+\subsection{Self-Play Training Pipeline}
+
+Games used by the best models are used for the deep network $f$ training. Pipeline contains $3$ modules:
+
+\begin{itemize}
+    \item Optimization: Using samples in the training dataset to optimize f and checkpoint models every 1,000 training iterations.
+    \item Evaluator: If the MCTS using the new checkpoint models beats the current best model, we use it as the current best model instead.
+    \item Play 25,000 games with the current best model and add them to the training dataset. Only the last 500,000 self-play games are kept for training.
+\end{itemize}
+
+Note that in the evaluator step we don't want exploration because we want to evaluate what's already been learned, so we set $\tau \to 0$ to make the policy greedy.
+
+The network $f$ is trained concurrently when AlphaGo is playing games with itself. Use policy and the value estimation from the network $f$, MCTS builds a search tree to formulate a more precise policy for the next move. In parallel, AlphaGo Zero lets MCTS play against each other using different version of the deep network $f$. Then it picks the best one as the current best model to create training samples needed to train $f$. Once the training is done, we can use the MCTS with the most optimal network $f$ to plan for the next move in a real game. Once training is done use MCTS with most optimal network $f$ to plan for next move in a real game.
+
+\section{Summary}
+This document reviewed how modern Monte Carlo Tree Search (MCTS) is combined with deep learning to produce strong game-playing agents, using AlphaGo Zero as the canonical example.
+The core idea is a single neural network $f_\theta$ that jointly predicts a policy $p(a\mid s)$ and a value $v(s)$ from a position $s$, and those predictions are used as priors and leaf evaluations inside MCTS.  During tree traversal actions are chosen by maximizing a sum of an empirical action-value $Q(s,a)$ (exploitation) and an exploration bonus $u(s,a)$ derived from the network prior and the visit count.  After many simulations the visit counts $N(s,a)$ define an improved policy $\pi$ which is less sensitive to outliers than a single network forward pass.
+
+Self-play with MCTS turns this procedure into a training pipeline: games are generated by repeatedly running MCTS from the current root, sampling moves from the improved visit-count policy, and storing $(s,\pi,z)$ training tuples where $z$ is the game outcome.  The network is trained on these tuples with a loss that combines mean-squared error on the value ($v$ vs.\ $z$), cross-entropy between predicted policy $p$ and the MCTS policy $\pi$, and weight decay.  Iterating this loop (self-play data collection, network optimization, and evaluator-based checkpoint selection) yields progressively stronger models.
+
+Practically, the method balances exploration and exploitation via the $Q+u$ selection rule and uses a temperature parameter during sampling to control stochasticity early in training and to make greedy evaluations later.  The combination of a learned prior (the network) with statistical search (MCTS) gives robust policy improvement, and using visit counts to form training targets stabilizes learning compared to training on single-network actions.  These principles generalize beyond Go to other sequential decision problems where a fast policy/value estimator can be combined with limited search to improve performance.
+
+\section{Understanding AlphaGo Zero: UCB, MCST and UCT}
+
+\subsection{Upper Confidence Bound (UCB)}
+
+Greedy action selection picks the action with highest estimated value:
+\begin{equation}
+    A_t = \argmax_a Q_t(a)
+\end{equation}
+
+This ignores actions that may be inferior short-term but superior long-term. Epsilon-greedy fixes this by sometimes picking random actions with probability $\epsilon$, but it doesn't model uncertainty in action value estimates.
+
+\subsubsection{Hoeffding's Inequality}
+
+For $t$ independent, identically distributed random variables bounded between 0 and 1, Hoeffding's inequality states:
+\begin{equation}
+    Pr[|\bar{X_t}-\mathbb{E}[X]|>m] \leq e^{-2tm^2}
+\end{equation}
+
+The probability that sample mean differs from expected value by more than threshold $m$ decreases exponentially with increasing sample size $t$ and increasing threshold $m$.
+
+\subsubsection{UCB Policy Derivation}
+
+Apply Hoeffding's inequality to action values. The threshold $m$ becomes upper confidence bound $U_t(a)$:
+\begin{equation}
+    Pr[|Q_t(a)-q_*(a)|> U_t(a)] \leq e^{-2N_t(a)U_t(a)^2}
+\end{equation}
+
+Setting this probability to small number $l = t^{-4}$ and solving for $U_t(a)$:
+\begin{align}
+    l &= e^{-2N_t(a)U_t(a)^2}\\
+    U_t(a) &= \sqrt{-\log{l}/2N_t(a)}\\
+    U_t(a) &= C\sqrt{\log{t}/{N_t(a)}}
+\end{align}
+
+Final UCB policy:
+\begin{equation}
+    UCB(a) = \argmax_a \left(Q_t(a) + C\sqrt{\frac{\log{t}}{N_t(a)}}\right)
+\end{equation}
+
+Parameter $C$ quantifies degree of exploration. Large $C$ increases exploration. However $U_t(a)$ decays over time since denominator $N_t(a)$ (visit count) increases faster than numerator $\log t$.
+
+\subsubsection{UCB1 Algorithm}
+
+Multi-armed bandit algorithm using UCB:
+
+\begin{algorithm}[H]
+\caption{UCB1 Algorithm}
+\begin{algorithmic}
+\STATE Initialize:
+\STATE $p$ \# arm pull number
+\STATE $a$ \# possible actions
+\STATE $c$ \# exploration parameter
+\STATE $Q(a) = 0$ \# action value estimates
+\STATE $N(a) = 0$ \# action selection counts
+\STATE $t = 0$
+\FOR{pull in range($p$)}
+    \STATE $t = t + 1$
+    \STATE $A = \argmax_a \left(Q(a) + c\sqrt{\frac{\ln(t)}{N(a)}}\right)$
+    \STATE $R = \text{Bandit}(A)$ \# receive reward
+    \STATE $N(A) = N(A) + 1$
+    \STATE $Q(A) = Q(A) + \frac{R-Q(A)}{N(A)}$ \# update estimate
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Monte Carlo Search Tree (MCST)}
+
+MCST is a heuristic search algorithm for optimal decision making in games and sequential decision processes. Works for any domain described as (state, action) tuple.
+
+\subsubsection{Four Steps of MCST}
+
+\textbf{1. Selection:} Start at root node $R$ (initial game state) and traverse tree according to current policy until reaching leaf node $L$. If $L$ is:
+\begin{itemize}
+    \item Terminal node (final game state): jump to step 4
+    \item Non-terminal with unexplored children: continue to step 2
+\end{itemize}
+
+\textbf{2. Expansion:} Expand one child node $C$ of leaf $L$.
+
+\textbf{3. Rollout:} From node $C$, continue playing according to some policy (e.g., random) until reaching terminal node.
+
+\textbf{4. Update:} At terminal node, game score is returned. Propagate score (add to current node value) through all visited nodes starting from $C$, through selection path, up to root $R$. Update both node value and visit count.
+
+\subsection{Upper Confidence Bound for Search Trees (UCT)}
+
+UCT combines MCST with UCB. During selection phase, evaluate child nodes using UCB formulation:
+
+\begin{equation}
+    UCT(j) = \bar{X}_j + C\sqrt{\frac{\log(n_p)}{n_j}}
+\end{equation}
+
+Where:
+\begin{itemize}
+    \item $\bar{X}_j$ is average value of node (total score / visit count)
+    \item $C$ is exploration-exploitation trade-off constant
+    \item $n_p$ is parent node visit count
+    \item $n_j$ is node $j$ visit count
+\end{itemize}
+
+\subsubsection{Properties of UCT}
+
+\begin{itemize}
+    \item Requires minimal prior knowledge (only legal moves and terminal state scores)
+    \item Focuses search towards most valuable branches
+    \item Tunable for speed vs iteration count trade-off
+    \item Can become slow for large combinatorial spaces
+\end{itemize}
+
+UCT successfully blocks opponent strategies and quickly develops effective counter-strategies in game play.
+
+
+\section{Final Remark}
+
+
+
+It is able to do this by using a novel form of reinforcement learning, in which AlphaGo Zero becomes its own teacher. The system starts off with a neural network that knows nothing about the game of Go. It then plays games against itself, by combining this neural network with a powerful search algorithm. As it plays, the neural network is tuned and updated to predict moves, as well as the eventual winner of the games.
+
+This updated neural network is then recombined with the search algorithm to create a new, stronger version of AlphaGo Zero, and the process begins again. In each iteration, the performance of the system improves by a small amount, and the quality of the self-play games increases, leading to more and more accurate neural networks and ever stronger versions of AlphaGo Zero.
+
+\end{document}
