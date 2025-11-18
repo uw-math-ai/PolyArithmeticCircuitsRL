@@ -1,30 +1,33 @@
+import json
+import math
+import os
+import random
+import sys
+from pathlib import Path
+
+import numpy as np
+import sympy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, global_mean_pool
-from torch_geometric.data import Data, DataLoader, Batch
-from torch_geometric.utils import add_self_loops
-import random
-import os
-import sys
-from pathlib import Path
 import tqdm
-import math
-from torch.utils.data import Dataset, DataLoader
 from PositionalEncoding import *
-from torch.optim.lr_scheduler import CosineAnnealingLR
-from utils import encode_action
 from State import Game
+from encoders.compact_encoder import CompactOneHotGraphEncoder
+from generator import generate_random_circuit, generate_random_polynomials
 from torch.distributions import Categorical
-import numpy as np
+from torch_geometric.data import Batch, Data, DataLoader
+from torch_geometric.nn import GCNConv, global_mean_pool
+from torch_geometric.utils import add_self_loops
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.utils.data import Dataset, DataLoader
+from utils import encode_action
 
 CURRENT_DIR = Path(__file__).resolve().parent
 SRC_ROOT = CURRENT_DIR.parent
+PROJECT_ROOT = SRC_ROOT.parent
 if str(SRC_ROOT) not in sys.path:
     sys.path.append(str(SRC_ROOT))
-
-from encoders.compact_encoder import CompactOneHotGraphEncoder
-from generator import generate_random_circuit, generate_random_polynomials
 
 # --- Setup ---
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -67,6 +70,8 @@ class Config:
         self.ent_coef = 0.02
         self.rl_eps = 1e-8
         self.action_temperature = 1.0
+        self.step_penalty = -1.0
+        self.success_reward = 100.0
 
         # --- Curriculum Learning ---
         self.complexity_threshold = 0.6
@@ -76,6 +81,14 @@ class Config:
             P=self.mod,
             D=self.n_variables,
         ).size
+
+        # --- Interesting polynomial data ---
+        self.use_interesting_polynomials = True
+        self.interesting_data_dir = PROJECT_ROOT / "Game-Board-Generation" / "pre-training-data"
+        self.interesting_prefix = "game_board_C4"
+        self.interesting_analysis_file = "path_analysis.jsonl"
+        self.max_interesting_samples = 5000
+        self.interesting_only_multipath = True
 
 config = Config()
 
@@ -101,6 +114,188 @@ def encode_actions_with_compact_encoder(actions, config: Config) -> torch.Tensor
         encoder.update(node1_id, node2_id, op_type)
     encoding = encoder.get_encoding().copy()
     return torch.from_numpy(encoding)
+
+
+INTERESTING_CACHE = None
+
+
+def load_interesting_circuit_data(config: Config):
+    """Load interesting polynomials + reconstructed circuits from JSONL dumps."""
+    global INTERESTING_CACHE
+
+    if not config.use_interesting_polynomials:
+        INTERESTING_CACHE = []
+        return INTERESTING_CACHE
+
+    if INTERESTING_CACHE is not None:
+        return INTERESTING_CACHE
+
+    base_dir = config.interesting_data_dir
+    nodes_path = base_dir / f"{config.interesting_prefix}.nodes.jsonl"
+    edges_path = base_dir / f"{config.interesting_prefix}.edges.jsonl"
+    analysis_path = base_dir / config.interesting_analysis_file
+    missing = [p for p in (nodes_path, edges_path, analysis_path) if not p.exists()]
+
+    if missing:
+        print(
+            "Warning: Missing interesting polynomial files: "
+            + ", ".join(str(p) for p in missing)
+            + ". Falling back to randomly generated circuits."
+        )
+        INTERESTING_CACHE = []
+        return INTERESTING_CACHE
+
+    with nodes_path.open("r", encoding="utf-8") as handle:
+        node_exprs = {}
+        node_steps = {}
+        base_symbol_ids = []
+        constant_node_ids = set()
+        for line in handle:
+            record = json.loads(line)
+            node_id = record["id"]
+            expr_str = record.get("expr_str") or record.get("label") or node_id
+            expr = sympy.sympify(expr_str)
+            node_exprs[node_id] = expr
+            node_steps[node_id] = record.get("step", 0)
+            if record.get("step", 0) == 0 and isinstance(expr, sympy.Symbol):
+                base_symbol_ids.append(node_id)
+            if expr == sympy.Integer(1):
+                constant_node_ids.add(node_id)
+
+    with analysis_path.open("r", encoding="utf-8") as handle:
+        interesting_nodes = []
+        for line in handle:
+            record = json.loads(line)
+            shortest_length = record.get("shortest_length")
+            if shortest_length is None:
+                continue
+            if shortest_length > config.max_complexity:
+                continue
+            if config.interesting_only_multipath and not (
+                record.get("multiple_shortest_paths") or record.get("multiple_paths")
+            ):
+                continue
+            interesting_nodes.append((record["id"], shortest_length))
+
+    with edges_path.open("r", encoding="utf-8") as handle:
+        operations = {}
+        dedup = set()
+        for line in handle:
+            record = json.loads(line)
+            source = record.get("source")
+            target = record.get("target")
+            operand = record.get("operand")
+            op = record.get("op")
+            if not source or not target or operand is None:
+                continue
+            if op not in ("add", "mul"):
+                continue
+            ordered = tuple(sorted([source, operand]))
+            key = (target, op, ordered)
+            if key in dedup:
+                continue
+            dedup.add(key)
+            operations.setdefault(target, []).append((op, ordered[0], ordered[1]))
+
+    if len(base_symbol_ids) > config.n_variables:
+        raise ValueError(
+            f"Interesting polynomial data was generated with {len(base_symbol_ids)} variables "
+            f"but config only provisions {config.n_variables}. Please update Config.n_variables."
+        )
+
+    def build_actions_for_target(target_id: str):
+        actions = []
+        node_to_idx = {}
+
+        for input_idx in range(config.n_variables):
+            actions.append(("input", input_idx, -1))
+        for offset, node_id in enumerate(sorted(base_symbol_ids)):
+            node_to_idx[node_id] = offset
+
+        constant_idx = len(actions)
+        actions.append(("constant", -1, -1))
+        for node_id in constant_node_ids:
+            node_to_idx[node_id] = constant_idx
+
+        visiting = set()
+
+        def ensure_node(node_id: str):
+            if node_id in node_to_idx:
+                return node_to_idx[node_id]
+            if node_id in visiting:
+                raise RuntimeError(f"Cyclic dependency detected for {node_id}")
+
+            ops = operations.get(node_id, [])
+            if not ops:
+                raise KeyError(node_id)
+
+            visiting.add(node_id)
+            ops_sorted = sorted(
+                ops,
+                key=lambda entry: (
+                    max(
+                        node_steps.get(entry[1], math.inf),
+                        node_steps.get(entry[2], math.inf),
+                    ),
+                    entry[0],
+                    entry[1],
+                    entry[2],
+                ),
+            )
+            for op_type, left_id, right_id in ops_sorted:
+                try:
+                    left_idx = ensure_node(left_id)
+                    right_idx = ensure_node(right_id)
+                except KeyError:
+                    continue
+
+                node_index = len(actions)
+                action_type = "add" if op_type == "add" else "multiply"
+                actions.append((action_type, left_idx, right_idx))
+                node_to_idx[node_id] = node_index
+                visiting.remove(node_id)
+                return node_index
+
+            visiting.remove(node_id)
+            raise KeyError(node_id)
+
+        ensure_node(target_id)
+        return actions
+
+    interesting_data = []
+    failures = 0
+    seen = set()
+    for node_id, shortest_length in interesting_nodes:
+        if node_id in seen or node_id not in node_exprs:
+            continue
+        try:
+            actions = build_actions_for_target(node_id)
+        except (KeyError, RuntimeError):
+            failures += 1
+            continue
+
+        encoding = encode_actions_with_compact_encoder(actions, config).clone()
+        interesting_data.append(
+            {
+                "id": node_id,
+                "expr": node_exprs[node_id],
+                "actions": tuple(actions),
+                "encoding": encoding,
+                "shortest_length": shortest_length,
+            }
+        )
+        seen.add(node_id)
+        if len(interesting_data) >= config.max_interesting_samples:
+            break
+
+    if interesting_data:
+        print(
+            f"Loaded {len(interesting_data)} interesting polynomials from {analysis_path} "
+            f"(skipped {failures} nodes)."
+        )
+
+    INTERESTING_CACHE = interesting_data
+    return INTERESTING_CACHE
 
 # --- GNN Model ---
 class ArithmeticCircuitGNN(nn.Module):
@@ -279,44 +474,71 @@ class CircuitDataset(Dataset):
         C = self.config.max_complexity
         num_circuits = size // C if C > 0 else size
 
-        all_polynomials, all_circuits, _ = generate_random_polynomials(
+        interesting_entries = load_interesting_circuit_data(self.config)
+        if interesting_entries:
+            print(
+                f"Using {len(interesting_entries)} interesting polynomials for supervised data."
+            )
+            while len(dataset) < size:
+                entry = random.choice(interesting_entries)
+                target_encoding = entry["encoding"]
+                finished = self._add_examples_from_actions(
+                    dataset,
+                    list(entry["actions"]),
+                    target_encoding,
+                    size_limit=size,
+                )
+                if finished:
+                    break
+            return dataset[:size]
+
+        _, all_circuits, _ = generate_random_polynomials(
             n, C, num_polynomials=num_circuits, mod=self.config.mod
         )
 
         for i in tqdm.tqdm(range(len(all_circuits)), desc=f"Processing generated data"):
             actions = all_circuits[i]
             target_encoding = encode_actions_with_compact_encoder(actions, self.config)
-
-            n_base = n + 1
-
-            for i in range(n_base, len(actions)):
-                current_actions = actions[:i]
-                next_action = actions[i]
-                next_op, next_node1_id, next_node2_id = next_action
-
-                max_nodes = self.config.n_variables + self.config.max_complexity + 1
-                available_mask = self.get_available_actions_mask(
-                    current_actions, max_nodes
-                )
-                action_idx = encode_action(
-                    next_op, next_node1_id, next_node2_id, max_nodes
-                )
-
-                if action_idx >= len(available_mask):
-                    continue
-
-                dataset.append(
-                    {
-                        "actions": current_actions,
-                        "target_poly": target_encoding.clone(),
-                        "mask": available_mask.cpu(),
-                        "action": action_idx,
-                        "value": (len(actions) - i) / max(1, len(actions) - n_base),
-                    }
-                )
-                if len(dataset) >= size:
-                    return dataset
+            finished = self._add_examples_from_actions(
+                dataset, actions, target_encoding, size_limit=size
+            )
+            if finished:
+                return dataset
         return dataset
+
+    def _add_examples_from_actions(
+        self, dataset, actions, target_encoding, size_limit=None
+    ):
+        actions_list = list(actions)
+        n_base = self.config.n_variables + 1
+        max_nodes = self.config.n_variables + self.config.max_complexity + 1
+
+        for i in range(n_base, len(actions_list)):
+            current_actions = actions_list[:i]
+            next_action = actions_list[i]
+            next_op, next_node1_id, next_node2_id = next_action
+
+            available_mask = self.get_available_actions_mask(
+                current_actions, max_nodes
+            )
+            action_idx = encode_action(next_op, next_node1_id, next_node2_id, max_nodes)
+
+            if action_idx >= len(available_mask):
+                continue
+
+            dataset.append(
+                {
+                    "actions": current_actions,
+                    "target_poly": target_encoding.clone(),
+                    "mask": available_mask.cpu(),
+                    "action": action_idx,
+                    "value": (len(actions_list) - i)
+                    / max(1, len(actions_list) - n_base),
+                }
+            )
+            if size_limit is not None and len(dataset) >= size_limit:
+                return True
+        return False
 
     def get_available_actions_mask(self, actions, max_nodes):
         n_nodes = len(actions)
@@ -485,6 +707,12 @@ def train_ppo(model, config):
     optimizer = torch.optim.Adam(
         model.parameters(), lr=config.rl_learning_rate, eps=config.rl_eps
     )
+
+    interesting_entries = load_interesting_circuit_data(config)
+    if interesting_entries:
+        print(
+            f"PPO will sample targets from {len(interesting_entries)} interesting polynomials."
+        )
     
     current_complexity = 1
     recent_successes = []
@@ -505,17 +733,28 @@ def train_ppo(model, config):
             while collected_steps < config.steps_per_batch:
                 games_played += 1
                 n = config.n_variables
-                
-                actions_gen, polynomials_gen = generate_random_circuit(
-                    n, current_complexity, mod=config.mod
-                )
-                if not polynomials_gen:
-                    continue
 
-                target_poly_expr = polynomials_gen[-1]
-                target_poly_encoding = encode_actions_with_compact_encoder(
-                    actions_gen, config
-                ).unsqueeze(0)
+                if interesting_entries:
+                    eligible = [
+                        entry
+                        for entry in interesting_entries
+                        if entry["shortest_length"] <= current_complexity
+                    ]
+                    pool = eligible if eligible else interesting_entries
+                    entry = random.choice(pool)
+                    target_poly_expr = entry["expr"]
+                    target_poly_encoding = entry["encoding"].clone().unsqueeze(0)
+                else:
+                    actions_gen, polynomials_gen = generate_random_circuit(
+                        n, current_complexity, mod=config.mod
+                    )
+                    if not polynomials_gen:
+                        continue
+
+                    target_poly_expr = polynomials_gen[-1]
+                    target_poly_encoding = encode_actions_with_compact_encoder(
+                        actions_gen, config
+                    ).unsqueeze(0)
 
                 game = Game(
                     target_poly_expr,

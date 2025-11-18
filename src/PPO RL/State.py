@@ -135,28 +135,13 @@ class Game:
             return [0.0]
 
         last_poly = self.polynomials[-1]
+        step_penalty = getattr(self.config, "step_penalty", -0.1)
+        success_reward = getattr(self.config, "success_reward", 10.0)
 
-        # Reward for finding the exact polynomial
         if sympy.expand(last_poly - self.target_poly_expr) == 0:
-            return [10.0]  # High reward for success
+            return [success_reward]
 
-        # Penalty for exceeding complexity
         if len(self.actions) > self.config.n_variables + 1 + self.config.max_complexity:
-            return [-1.0]
+            return [step_penalty]
 
-        # Intermediate reward based on similarity (e.g., number of matching terms)
-        try:
-            target_terms = self.target_poly_expr.as_coefficients_dict()
-            current_terms = last_poly.as_coefficients_dict()
-
-            matching_terms = 0
-            for term, coeff in target_terms.items():
-                if term in current_terms and current_terms[term] == coeff:
-                    matching_terms += 1
-
-            total_target_terms = len(target_terms)
-            reward = (matching_terms / total_target_terms) * 0.5 - 0.1  # Small reward for progress, penalty for each step
-        except Exception:
-            reward = -0.1
-
-        return [reward]
+        return [step_penalty]
