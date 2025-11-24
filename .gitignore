@@ -5,3 +5,4 @@ __pycache__/
 .streamlit/
 .env
 MAIL/
+.DS_Store
