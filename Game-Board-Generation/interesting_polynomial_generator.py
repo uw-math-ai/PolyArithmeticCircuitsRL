@@ -35,6 +35,8 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from sympy import expand, srepr, symbols
 
+MAX_ALLOWED_STEPS = 5
+
 
 # ---------------------------------------------------------------------------
 # Canonical SymPy helpers
@@ -476,7 +478,13 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Generate polynomial game boards and surface interesting nodes."
     )
-    parser.add_argument("--steps", "-C", type=int, required=True, help="Number of expansion steps.")
+    parser.add_argument(
+        "--steps",
+        "-C",
+        type=int,
+        default=MAX_ALLOWED_STEPS,
+        help=f"Number of expansion steps (default: {MAX_ALLOWED_STEPS}).",
+    )
     parser.add_argument("--num-vars", "-V", type=int, default=1, help="Number of variables to seed.")
     parser.add_argument(
         "--prefix",
@@ -528,11 +536,18 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 def main(argv: Optional[Sequence[str]] = None) -> None:
     args = parse_args(argv)
 
-    prefix = args.prefix or f"game_board_C{args.steps}"
+    effective_steps = min(args.steps, MAX_ALLOWED_STEPS)
+    if args.steps > MAX_ALLOWED_STEPS:
+        print(
+            f"Requested steps {args.steps} exceed maximum of {MAX_ALLOWED_STEPS}; "
+            f"capping to {MAX_ALLOWED_STEPS}."
+        )
+
+    prefix = args.prefix or f"game_board_C{effective_steps}"
     base_path = args.output_dir / prefix
 
-    print(f"Building game board with C={args.steps}, N={args.num_vars} ...")
-    graph = build_game_graph(args.steps, args.num_vars)
+    print(f"Building game board with C={effective_steps}, N={args.num_vars} ...")
+    graph = build_game_graph(effective_steps, args.num_vars)
     print(f"Built DAG: nodes={graph.number_of_nodes()}, edges={graph.number_of_edges()}")
 
     graphml_path, json_path = save_graph_files(graph, base_path)
