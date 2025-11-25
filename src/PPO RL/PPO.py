@@ -5,6 +5,14 @@ import random
 import sys
 from pathlib import Path
 
+CURRENT_DIR = Path(__file__).resolve().parent
+SRC_ROOT = CURRENT_DIR.parent
+PROJECT_ROOT = SRC_ROOT.parent
+for path in (CURRENT_DIR, SRC_ROOT, PROJECT_ROOT):
+    path_str = str(path)
+    if path_str not in sys.path:
+        sys.path.insert(0, path_str)
+
 import numpy as np
 import sympy
 import torch
@@ -15,6 +23,7 @@ from PositionalEncoding import *
 from State import Game
 from encoders.compact_encoder import CompactOneHotGraphEncoder
 from generator import generate_random_circuit, generate_random_polynomials
+from mcts import MCTSPlanner
 from torch.distributions import Categorical
 from torch_geometric.data import Batch, Data, DataLoader
 from torch_geometric.nn import GCNConv, global_mean_pool
@@ -23,12 +32,6 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import Dataset, DataLoader
 from utils import encode_action
 
-CURRENT_DIR = Path(__file__).resolve().parent
-SRC_ROOT = CURRENT_DIR.parent
-PROJECT_ROOT = SRC_ROOT.parent
-if str(SRC_ROOT) not in sys.path:
-    sys.path.append(str(SRC_ROOT))
-
 # --- Setup ---
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
@@ -36,6 +39,8 @@ print(f"Using device: {device}")
 
 # --- Configuration ---
 class Config:
+    """Central configuration for the supervised + PPO pipeline."""
+
     def __init__(self):
         # --- Simplified Settings (Adjust as needed) ---
         self.n_variables = 3
@@ -72,6 +77,12 @@ class Config:
         self.action_temperature = 1.0
         self.step_penalty = -1.0
         self.success_reward = 100.0
+
+        # --- MCTS guidance (optional) ---
+        self.use_mcts = True
+        self.mcts_simulations = 64
+        self.mcts_exploration = 1.4
+        self.mcts_policy_mix = 0.35  # 0.0 -> policy only; 1.0 -> planner always
 
         # --- Curriculum Learning ---
         self.complexity_threshold = 0.6
@@ -271,6 +282,12 @@ def load_interesting_circuit_data(config: Config):
         try:
             actions = build_actions_for_target(node_id)
         except (KeyError, RuntimeError):
+            failures += 1
+            continue
+
+        # Skip circuits that exceed the configured complexity budget.
+        op_count = sum(1 for op, _, _ in actions if op in ("add", "multiply"))
+        if op_count > config.max_complexity:
             failures += 1
             continue
 
@@ -713,7 +730,8 @@ def train_ppo(model, config):
         print(
             f"PPO will sample targets from {len(interesting_entries)} interesting polynomials."
         )
-    
+
+    planner = MCTSPlanner(config) if getattr(config, "use_mcts", False) else None
     current_complexity = 1
     recent_successes = []
 
@@ -761,13 +779,21 @@ def train_ppo(model, config):
                     target_poly_encoding,
                     config,
                 ).to("cpu")
-                
+
                 traj_states, traj_actions, traj_log_probs, traj_rewards, traj_dones, traj_values = [], [], [], [], [], []
 
                 while not game.is_done():
                     state_tuple = game.observe()
+
+                    # Optionally defer to MCTS for low-depth lookahead during rollouts
+                    planner_action = None
+                    if planner is not None and random.random() < config.mcts_policy_mix:
+                        planner_action = planner.select_action(game)
+
                     action, log_prob, _, value = model.get_action_and_value(
-                        state_tuple, temperature=config.action_temperature
+                        state_tuple,
+                        action_idx=planner_action,
+                        temperature=config.action_temperature,
                     )
 
                     if action is None:
