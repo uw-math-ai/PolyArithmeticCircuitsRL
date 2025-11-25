@@ -44,7 +44,7 @@ class Config:
     def __init__(self):
         # --- Simplified Settings (Adjust as needed) ---
         self.n_variables = 3
-        self.max_complexity = 5  # Max operations allowed
+        self.max_complexity = 1  # Max operations allowed
         self.max_degree = self.max_complexity * 2 # Max degree of polynomials
         self.hidden_dim = 256
         self.embedding_dim = 256
@@ -54,7 +54,8 @@ class Config:
         self.transformer_dropout = 0.1
         self.train_size = 10000
         self.test_size = 2000
-        self.epochs = 50
+        # self.epochs = 50
+        self.epochs = 20
         # --- Standard Settings ---
         self.learning_rate = 0.0003
         self.batch_size = 128
@@ -94,10 +95,13 @@ class Config:
         ).size
 
         # --- Interesting polynomial data ---
+
+        # CHANGE THE PREFIX HERE TO THE COMPLEXITY LEVEL
         self.use_interesting_polynomials = True
         self.interesting_data_dir = PROJECT_ROOT / "Game-Board-Generation" / "pre-training-data"
-        self.interesting_prefix = "game_board_C4"
-        self.interesting_analysis_file = "path_analysis.jsonl"
+        self.interesting_prefix = "game_board_C1"
+        #CHANGE THE LINE BELOW TOO TO THE PROPER COMPLEXITY LEVEL FOR ANALYSIS
+        self.interesting_analysis_file = "game_board_C1.analysis.jsonl"
         self.max_interesting_samples = 5000
         self.interesting_only_multipath = True
 
