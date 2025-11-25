@@ -1,0 +1,189 @@
+<?xml version='1.0' encoding='utf-8'?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd"><key id="d6" for="edge" attr.name="label" attr.type="string"/>
+<key id="d5" for="edge" attr.name="operand" attr.type="string"/>
+<key id="d4" for="edge" attr.name="op" attr.type="string"/>
+<key id="d3" for="node" attr.name="label" attr.type="string"/>
+<key id="d2" for="node" attr.name="step" attr.type="long"/>
+<key id="d1" for="node" attr.name="key" attr.type="string"/>
+<key id="d0" for="node" attr.name="expr" attr.type="string"/>
+<graph edgedefault="directed"><node id="Symbol('x0')">
+  <data key="d0">x0</data>
+  <data key="d1">Symbol('x0')</data>
+  <data key="d2">0</data>
+  <data key="d3">x0</data>
+</node>
+<node id="Symbol('x1')">
+  <data key="d0">x1</data>
+  <data key="d1">Symbol('x1')</data>
+  <data key="d2">0</data>
+  <data key="d3">x1</data>
+</node>
+<node id="Symbol('x2')">
+  <data key="d0">x2</data>
+  <data key="d1">Symbol('x2')</data>
+  <data key="d2">0</data>
+  <data key="d3">x2</data>
+</node>
+<node id="Mul(Integer(2), Symbol('x0'))">
+  <data key="d0">2*x0</data>
+  <data key="d1">Mul(Integer(2), Symbol('x0'))</data>
+  <data key="d2">1</data>
+  <data key="d3">2*x0</data>
+</node>
+<node id="Pow(Symbol('x0'), Integer(2))">
+  <data key="d0">x0**2</data>
+  <data key="d1">Pow(Symbol('x0'), Integer(2))</data>
+  <data key="d2">1</data>
+  <data key="d3">x0**2</data>
+</node>
+<node id="Add(Symbol('x0'), Symbol('x1'))">
+  <data key="d0">x0 + x1</data>
+  <data key="d1">Add(Symbol('x0'), Symbol('x1'))</data>
+  <data key="d2">1</data>
+  <data key="d3">x0 + x1</data>
+</node>
+<node id="Mul(Symbol('x0'), Symbol('x1'))">
+  <data key="d0">x0*x1</data>
+  <data key="d1">Mul(Symbol('x0'), Symbol('x1'))</data>
+  <data key="d2">1</data>
+  <data key="d3">x0*x1</data>
+</node>
+<node id="Add(Symbol('x0'), Symbol('x2'))">
+  <data key="d0">x0 + x2</data>
+  <data key="d1">Add(Symbol('x0'), Symbol('x2'))</data>
+  <data key="d2">1</data>
+  <data key="d3">x0 + x2</data>
+</node>
+<node id="Mul(Symbol('x0'), Symbol('x2'))">
+  <data key="d0">x0*x2</data>
+  <data key="d1">Mul(Symbol('x0'), Symbol('x2'))</data>
+  <data key="d2">1</data>
+  <data key="d3">x0*x2</data>
+</node>
+<node id="Mul(Integer(2), Symbol('x1'))">
+  <data key="d0">2*x1</data>
+  <data key="d1">Mul(Integer(2), Symbol('x1'))</data>
+  <data key="d2">1</data>
+  <data key="d3">2*x1</data>
+</node>
+<node id="Pow(Symbol('x1'), Integer(2))">
+  <data key="d0">x1**2</data>
+  <data key="d1">Pow(Symbol('x1'), Integer(2))</data>
+  <data key="d2">1</data>
+  <data key="d3">x1**2</data>
+</node>
+<node id="Add(Symbol('x1'), Symbol('x2'))">
+  <data key="d0">x1 + x2</data>
+  <data key="d1">Add(Symbol('x1'), Symbol('x2'))</data>
+  <data key="d2">1</data>
+  <data key="d3">x1 + x2</data>
+</node>
+<node id="Mul(Symbol('x1'), Symbol('x2'))">
+  <data key="d0">x1*x2</data>
+  <data key="d1">Mul(Symbol('x1'), Symbol('x2'))</data>
+  <data key="d2">1</data>
+  <data key="d3">x1*x2</data>
+</node>
+<node id="Mul(Integer(2), Symbol('x2'))">
+  <data key="d0">2*x2</data>
+  <data key="d1">Mul(Integer(2), Symbol('x2'))</data>
+  <data key="d2">1</data>
+  <data key="d3">2*x2</data>
+</node>
+<node id="Pow(Symbol('x2'), Integer(2))">
+  <data key="d0">x2**2</data>
+  <data key="d1">Pow(Symbol('x2'), Integer(2))</data>
+  <data key="d2">1</data>
+  <data key="d3">x2**2</data>
+</node>
+<edge source="Symbol('x0')" target="Mul(Integer(2), Symbol('x0'))">
+  <data key="d4">add</data>
+  <data key="d5">Symbol('x0')</data>
+  <data key="d6">+</data>
+</edge>
+<edge source="Symbol('x0')" target="Pow(Symbol('x0'), Integer(2))">
+  <data key="d4">mul</data>
+  <data key="d5">Symbol('x0')</data>
+  <data key="d6">*</data>
+</edge>
+<edge source="Symbol('x0')" target="Add(Symbol('x0'), Symbol('x1'))">
+  <data key="d4">add</data>
+  <data key="d5">Symbol('x1')</data>
+  <data key="d6">+</data>
+</edge>
+<edge source="Symbol('x0')" target="Mul(Symbol('x0'), Symbol('x1'))">
+  <data key="d4">mul</data>
+  <data key="d5">Symbol('x1')</data>
+  <data key="d6">*</data>
+</edge>
+<edge source="Symbol('x0')" target="Add(Symbol('x0'), Symbol('x2'))">
+  <data key="d4">add</data>
+  <data key="d5">Symbol('x2')</data>
+  <data key="d6">+</data>
+</edge>
+<edge source="Symbol('x0')" target="Mul(Symbol('x0'), Symbol('x2'))">
+  <data key="d4">mul</data>
+  <data key="d5">Symbol('x2')</data>
+  <data key="d6">*</data>
+</edge>
+<edge source="Symbol('x1')" target="Add(Symbol('x0'), Symbol('x1'))">
+  <data key="d4">add</data>
+  <data key="d5">Symbol('x0')</data>
+  <data key="d6">+</data>
+</edge>
+<edge source="Symbol('x1')" target="Mul(Symbol('x0'), Symbol('x1'))">
+  <data key="d4">mul</data>
+  <data key="d5">Symbol('x0')</data>
+  <data key="d6">*</data>
+</edge>
+<edge source="Symbol('x1')" target="Mul(Integer(2), Symbol('x1'))">
+  <data key="d4">add</data>
+  <data key="d5">Symbol('x1')</data>
+  <data key="d6">+</data>
+</edge>
+<edge source="Symbol('x1')" target="Pow(Symbol('x1'), Integer(2))">
+  <data key="d4">mul</data>
+  <data key="d5">Symbol('x1')</data>
+  <data key="d6">*</data>
+</edge>
+<edge source="Symbol('x1')" target="Add(Symbol('x1'), Symbol('x2'))">
+  <data key="d4">add</data>
+  <data key="d5">Symbol('x2')</data>
+  <data key="d6">+</data>
+</edge>
+<edge source="Symbol('x1')" target="Mul(Symbol('x1'), Symbol('x2'))">
+  <data key="d4">mul</data>
+  <data key="d5">Symbol('x2')</data>
+  <data key="d6">*</data>
+</edge>
+<edge source="Symbol('x2')" target="Add(Symbol('x0'), Symbol('x2'))">
+  <data key="d4">add</data>
+  <data key="d5">Symbol('x0')</data>
+  <data key="d6">+</data>
+</edge>
+<edge source="Symbol('x2')" target="Mul(Symbol('x0'), Symbol('x2'))">
+  <data key="d4">mul</data>
+  <data key="d5">Symbol('x0')</data>
+  <data key="d6">*</data>
+</edge>
+<edge source="Symbol('x2')" target="Add(Symbol('x1'), Symbol('x2'))">
+  <data key="d4">add</data>
+  <data key="d5">Symbol('x1')</data>
+  <data key="d6">+</data>
+</edge>
+<edge source="Symbol('x2')" target="Mul(Symbol('x1'), Symbol('x2'))">
+  <data key="d4">mul</data>
+  <data key="d5">Symbol('x1')</data>
+  <data key="d6">*</data>
+</edge>
+<edge source="Symbol('x2')" target="Mul(Integer(2), Symbol('x2'))">
+  <data key="d4">add</data>
+  <data key="d5">Symbol('x2')</data>
+  <data key="d6">+</data>
+</edge>
+<edge source="Symbol('x2')" target="Pow(Symbol('x2'), Integer(2))">
+  <data key="d4">mul</data>
+  <data key="d5">Symbol('x2')</data>
+  <data key="d6">*</data>
+</edge>
+</graph></graphml>
