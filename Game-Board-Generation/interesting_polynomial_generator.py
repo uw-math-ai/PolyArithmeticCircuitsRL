@@ -14,6 +14,11 @@ Key pipeline:
      i.e. nodes with multiple distinct paths or multiple shortest paths.
   4. Optionally render a layered PNG visualization.
 
+Runtime controls:
+  --max-nodes                Hard cap on distinct polynomials in the DAG.
+  --max-successors-per-node  Limit per-node expansions to tame blow-up.
+  --analysis-max-step        Keep only nodes up to a target step/complexity.
+
 Example:
     python interesting_polynomial_generator.py --steps 4 --num-vars 2 \
         --output-dir Game-Board-Generation/pre-training-data \
@@ -57,9 +62,19 @@ def pretty_label(expr, max_len: int = 32) -> str:
 # Graph construction
 # ---------------------------------------------------------------------------
 
-def build_game_graph(steps: int, num_vars: int = 1) -> nx.DiGraph:
+def build_game_graph(
+    steps: int,
+    num_vars: int = 1,
+    max_nodes: Optional[int] = None,
+    max_successors_per_node: Optional[int] = None,
+) -> nx.DiGraph:
     """
     Build the arithmetic game DAG up to `steps` expansions.
+
+    The traversal can be bounded by:
+      - `max_nodes`: hard cap on total distinct polynomials.
+      - `max_successors_per_node`: deterministic cap on how many operand choices
+        each node expands against per step (helps tame blow-up for large graphs).
     """
     G = nx.DiGraph()
 
@@ -89,6 +104,7 @@ def build_game_graph(steps: int, num_vars: int = 1) -> nx.DiGraph:
     levels: Dict[int, list[str]] = {0: start_nodes}
     all_seen_by_step: Dict[int, list[str]] = {0: start_nodes}
 
+    op_cache: Dict[Tuple[str, str, str], Tuple[str, Any]] = {}
     for step in range(steps):
         next_level: list[str] = []
         operand_pool: list[str] = []
@@ -97,34 +113,47 @@ def build_game_graph(steps: int, num_vars: int = 1) -> nx.DiGraph:
 
         for node_id in levels.get(step, []):
             node_expr = G.nodes[node_id]["expr"]
-            for operand_id in operand_pool:
+            operands_iterable = operand_pool
+            if max_successors_per_node is not None:
+                operands_iterable = operand_pool[:max_successors_per_node]
+
+            for operand_id in operands_iterable:
                 operand_expr = G.nodes[operand_id]["expr"]
 
-                add_expr = expand(node_expr + operand_expr)
-                add_key = canon_key(add_expr)
-                if add_key not in G:
-                    G.add_node(
-                        add_key,
-                        expr=add_expr,
-                        key=add_key,
-                        step=step + 1,
-                        label=pretty_label(add_expr),
-                    )
-                    next_level.append(add_key)
-                G.add_edge(node_id, add_key, op="add", operand=operand_id, label="+")
+                for op_name, op_fn, edge_label in (
+                    ("add", lambda a, b: expand(a + b), "+"),
+                    ("mul", lambda a, b: expand(a * b), "*"),
+                ):
+                    cache_key = (op_name, *sorted((node_id, operand_id)))
+                    cached = op_cache.get(cache_key)
 
-                mul_expr = expand(node_expr * operand_expr)
-                mul_key = canon_key(mul_expr)
-                if mul_key not in G:
-                    G.add_node(
-                        mul_key,
-                        expr=mul_expr,
-                        key=mul_key,
-                        step=step + 1,
-                        label=pretty_label(mul_expr),
-                    )
-                    next_level.append(mul_key)
-                G.add_edge(node_id, mul_key, op="mul", operand=operand_id, label="*")
+                    if cached:
+                        expr_key, new_expr = cached
+                    else:
+                        new_expr = op_fn(node_expr, operand_expr)
+                        expr_key = canon_key(new_expr)
+                        op_cache[cache_key] = (expr_key, new_expr)
+
+                    if expr_key not in G:
+                        G.add_node(
+                            expr_key,
+                            expr=new_expr,
+                            key=expr_key,
+                            step=step + 1,
+                            label=pretty_label(new_expr),
+                        )
+                        next_level.append(expr_key)
+                    G.add_edge(node_id, expr_key, op=op_name, operand=operand_id, label=edge_label)
+
+                    if max_nodes is not None and G.number_of_nodes() >= max_nodes:
+                        break
+                if max_nodes is not None and G.number_of_nodes() >= max_nodes:
+                    break
+            if max_nodes is not None and G.number_of_nodes() >= max_nodes:
+                break
+
+        if max_nodes is not None and G.number_of_nodes() >= max_nodes:
+            break
 
         if not next_level:
             break
@@ -270,6 +299,7 @@ class NodeRecord:
 
 def build_analysis_structures(
     G: nx.DiGraph,
+    max_step: Optional[int] = None,
 ) -> Tuple[Dict[str, NodeRecord], Dict[str, Set[str]], Dict[str, int]]:
     """Convert the NetworkX graph into lightweight adjacency structures."""
     nodes: Dict[str, NodeRecord] = {}
@@ -277,6 +307,8 @@ def build_analysis_structures(
     in_degree: Dict[str, int] = defaultdict(int)
 
     for node_id, data in G.nodes(data=True):
+        if max_step is not None and data.get("step") is not None and data["step"] > max_step:
+            continue
         expr = data.get("expr")
         expr_str = str(expand(expr)) if expr is not None else data.get("expr_str")
         nodes[node_id] = NodeRecord(
@@ -287,6 +319,8 @@ def build_analysis_structures(
         )
 
     for source, target in G.edges():
+        if source not in nodes or target not in nodes:
+            continue
         forward[source].add(target)
         in_degree[target] += 1
         in_degree.setdefault(source, 0)
@@ -387,9 +421,10 @@ def analyze_graph(
     G: nx.DiGraph,
     max_samples: int,
     only_multipath: bool,
+    max_step: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Run the path multiplicity analysis."""
-    nodes, forward, in_degree = build_analysis_structures(G)
+    nodes, forward, in_degree = build_analysis_structures(G, max_step=max_step)
     order = topological_sort(forward, in_degree, nodes)
     roots = find_roots(nodes, in_degree)
 
@@ -487,6 +522,18 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument("--num-vars", "-V", type=int, default=1, help="Number of variables to seed.")
     parser.add_argument(
+        "--max-nodes",
+        type=int,
+        default=None,
+        help="Hard cap on the number of distinct polynomials generated.",
+    )
+    parser.add_argument(
+        "--max-successors-per-node",
+        type=int,
+        default=None,
+        help="Limit outgoing expansions per node per step to tame combinatorial blow-up.",
+    )
+    parser.add_argument(
         "--prefix",
         type=str,
         default=None,
@@ -514,6 +561,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         type=Path,
         default=None,
         help="Optional override for the analysis JSONL path.",
+    )
+    parser.add_argument(
+        "--analysis-max-step",
+        type=int,
+        default=None,
+        help="Only keep analysis records up to this step (matches RL complexity).",
     )
     parser.add_argument(
         "--with-labels",
@@ -547,7 +600,12 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     base_path = args.output_dir / prefix
 
     print(f"Building game board with C={effective_steps}, N={args.num_vars} ...")
-    graph = build_game_graph(effective_steps, args.num_vars)
+    graph = build_game_graph(
+        effective_steps,
+        args.num_vars,
+        max_nodes=args.max_nodes,
+        max_successors_per_node=args.max_successors_per_node,
+    )
     print(f"Built DAG: nodes={graph.number_of_nodes()}, edges={graph.number_of_edges()}")
 
     graphml_path, json_path = save_graph_files(graph, base_path)
@@ -564,6 +622,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         graph,
         max_samples=args.max_samples,
         only_multipath=args.only_multipath,
+        max_step=args.analysis_max_step,
     )
     analysis_path = args.analysis_output or base_path.with_suffix(".analysis.jsonl")
     analysis_path.parent.mkdir(parents=True, exist_ok=True)

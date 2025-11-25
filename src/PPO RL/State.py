@@ -6,6 +6,12 @@ from utils import decode_action, encode_action
 
 
 class Game:
+    """
+    Lightweight arithmetic-circuit environment used by PPO.
+
+    Nodes are appended as actions are taken; the environment tracks the symbolic
+    polynomial at each node and exposes a graph view for the policy network.
+    """
     def __init__(self, target_poly_expr, target_encoding, config):
         self.target_poly_expr = target_poly_expr
         self.target_encoding = target_encoding
