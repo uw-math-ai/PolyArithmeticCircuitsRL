@@ -1,0 +1,131 @@
+_wandb:
+    value:
+        cli_version: 0.23.0
+        e:
+            ct4u05u4bd43985jb9rhgx8osai1diyx:
+                args:
+                    - --n_variables
+                    - "2"
+                    - --max_degree
+                    - "3"
+                    - --max_nodes
+                    - "8"
+                    - --step_penalty
+                    - "-0.1"
+                    - --success_reward
+                    - "10.0"
+                    - --failure_penalty
+                    - "-5.0"
+                    - --hidden_dim
+                    - "256"
+                    - --mcts_simulations
+                    - "256"
+                    - --c_puct
+                    - "1.5"
+                    - --episodes_per_epoch
+                    - "64"
+                    - --epochs
+                    - "300"
+                    - --batch_size
+                    - "256"
+                    - --lr
+                    - "1e-4"
+                    - --value_coef
+                    - "0.5"
+                    - --num_workers
+                    - "32"
+                    - --virtual_loss
+                    - "1.0"
+                    - --checkpoint_path
+                    - codes/scripts/runs/polynomial_net_parallel.pth
+                    - --save_path
+                    - codes/scripts/runs/polynomial_net_curriculum.pth
+                    - --checkpoint_freq
+                    - "50"
+                    - --max_terms_start
+                    - "3"
+                    - --max_terms_end
+                    - "10"
+                codePath: codes/scripts/polynomial_train_curriculum.py
+                codePathLocal: codes/scripts/polynomial_train_curriculum.py
+                cpu_count: 4
+                cpu_count_logical: 8
+                cudaVersion: "12.8"
+                disk:
+                    /:
+                        total: "532608356352"
+                        used: "424474021888"
+                email: zengrf2000@gmail.com
+                executable: /home/ubuntu/miniconda3/envs/binary-forms/bin/python
+                git:
+                    commit: 9727d20732ceed34eac108c76e23316df32c4981
+                    remote: https://github.com/YiwenAI/OpenTensor.git
+                gpu: Tesla T4
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Turing
+                      cudaCores: 2560
+                      memoryTotal: "16106127360"
+                      name: Tesla T4
+                      uuid: GPU-1f93bb86-8101-69c5-c812-a1141aa19957
+                host: ip-172-31-24-232
+                memory:
+                    total: "33263812608"
+                os: Linux-6.8.0-1021-aws-x86_64-with-glibc2.35
+                program: /home/ubuntu/random/src/OpenTensor/codes/scripts/polynomial_train_curriculum.py
+                python: CPython 3.10.18
+                root: /home/ubuntu/random/src/OpenTensor
+                startedAt: "2025-11-21T17:47:03.474767Z"
+                writerId: ct4u05u4bd43985jb9rhgx8osai1diyx
+        m: []
+        python_version: 3.10.18
+        t:
+            "1":
+                - 1
+            "2":
+                - 1
+            "3":
+                - 2
+                - 3
+                - 13
+                - 16
+            "4": 3.10.18
+            "5": 0.23.0
+            "12": 0.23.0
+            "13": linux-x86_64
+batch_size:
+    value: 256
+checkpoint_path:
+    value: codes/scripts/runs/polynomial_net_parallel.pth
+curriculum:
+    value: true
+episodes_per_epoch:
+    value: 64
+epochs:
+    value: 300
+failure_penalty:
+    value: -5
+hidden_dim:
+    value: 256
+lr:
+    value: 0.0001
+max_degree:
+    value: 3
+max_nodes:
+    value: 8
+max_terms_end:
+    value: 10
+max_terms_start:
+    value: 3
+mcts_simulations:
+    value: 256
+n_variables:
+    value: 2
+num_workers:
+    value: 32
+step_penalty:
+    value: -0.1
+success_reward:
+    value: 10
+virtual_loss:
+    value: 1

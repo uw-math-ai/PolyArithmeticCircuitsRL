@@ -1,0 +1,1 @@
+{"epoch":300,"value_loss":2.844849109649658,"max_terms_max":10,"num_samples":319,"_wandb":{"runtime":113195},"_step":299,"max_terms_min":6,"policy_loss":0.07954149972647429,"avg_episode_reward":-5.1640625,"_timestamp":1.7638604199563203e+09,"avg_complexity":7.8125,"avg_episode_length":4.984375,"total_loss":1.5019660545513034,"_runtime":113195,"success_rate":0.015625}

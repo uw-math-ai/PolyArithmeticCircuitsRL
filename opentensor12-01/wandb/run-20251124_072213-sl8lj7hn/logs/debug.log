@@ -1,0 +1,26 @@
+2025-11-24 07:22:13,055 INFO    MainThread:2343140 [wandb_setup.py:_flush():80] Current SDK version is 0.23.0
+2025-11-24 07:22:13,055 INFO    MainThread:2343140 [wandb_setup.py:_flush():80] Configure stats pid to 2343140
+2025-11-24 07:22:13,055 INFO    MainThread:2343140 [wandb_setup.py:_flush():80] Loading settings from /home/ubuntu/.config/wandb/settings
+2025-11-24 07:22:13,055 INFO    MainThread:2343140 [wandb_setup.py:_flush():80] Loading settings from /home/ubuntu/random/src/OpenTensor/wandb/settings
+2025-11-24 07:22:13,055 INFO    MainThread:2343140 [wandb_setup.py:_flush():80] Loading settings from environment variables
+2025-11-24 07:22:13,055 INFO    MainThread:2343140 [wandb_init.py:setup_run_log_directory():713] Logging user logs to /home/ubuntu/random/src/OpenTensor/wandb/run-20251124_072213-sl8lj7hn/logs/debug.log
+2025-11-24 07:22:13,055 INFO    MainThread:2343140 [wandb_init.py:setup_run_log_directory():714] Logging internal logs to /home/ubuntu/random/src/OpenTensor/wandb/run-20251124_072213-sl8lj7hn/logs/debug-internal.log
+2025-11-24 07:22:13,056 INFO    MainThread:2343140 [wandb_init.py:init():840] calling init triggers
+2025-11-24 07:22:13,056 INFO    MainThread:2343140 [wandb_init.py:init():845] wandb.init called with sweep_config: {}
+config: {'n_variables': 3, 'max_degree': 3, 'max_nodes': 10, 'step_penalty': -0.1, 'success_reward': 10.0, 'failure_penalty': -5.0, 'hidden_dim': 256, 'mcts_simulations': 256, 'episodes_per_epoch': 64, 'epochs': 500, 'batch_size': 256, 'lr': 0.0003, 'num_workers': 32, 'virtual_loss': 1.0, 'checkpoint_path': 'None', 'curriculum_type': 'adaptive_complexity', 'no_constant_term': True, 'complexity_start': 1, 'complexity_end': 6, 'adaptive_threshold': 0.7, '_wandb': {}}
+2025-11-24 07:22:13,056 INFO    MainThread:2343140 [wandb_init.py:init():888] starting backend
+2025-11-24 07:22:13,274 INFO    MainThread:2343140 [wandb_init.py:init():891] sending inform_init request
+2025-11-24 07:22:13,278 INFO    MainThread:2343140 [wandb_init.py:init():899] backend started and connected
+2025-11-24 07:22:13,294 INFO    MainThread:2343140 [wandb_init.py:init():969] updated telemetry
+2025-11-24 07:22:13,299 INFO    MainThread:2343140 [wandb_init.py:init():993] communicating run to backend with 90.0 second timeout
+2025-11-24 07:22:13,741 INFO    MainThread:2343140 [wandb_init.py:init():1040] starting run threads in backend
+2025-11-24 07:22:13,837 INFO    MainThread:2343140 [wandb_run.py:_console_start():2504] atexit reg
+2025-11-24 07:22:13,837 INFO    MainThread:2343140 [wandb_run.py:_redirect():2352] redirect: wrap_raw
+2025-11-24 07:22:13,837 INFO    MainThread:2343140 [wandb_run.py:_redirect():2421] Wrapping output streams.
+2025-11-24 07:22:13,837 INFO    MainThread:2343140 [wandb_run.py:_redirect():2444] Redirects installed.
+2025-11-24 07:22:13,839 INFO    MainThread:2343140 [wandb_init.py:init():1080] run started, returning control to user process
+2025-11-27 23:08:22,037 INFO    MainThread:2343140 [wandb_run.py:_finish():2270] finishing run zengrf-university-of-washington/polynomial-mcts-training/sl8lj7hn
+2025-11-27 23:08:22,037 INFO    MainThread:2343140 [wandb_run.py:_atexit_cleanup():2469] got exitcode: 0
+2025-11-27 23:08:22,037 INFO    MainThread:2343140 [wandb_run.py:_restore():2451] restore
+2025-11-27 23:08:22,037 INFO    MainThread:2343140 [wandb_run.py:_restore():2457] restore done
+2025-11-27 23:08:22,799 INFO    MainThread:2343140 [wandb_run.py:_footer_sync_info():3853] logging synced files

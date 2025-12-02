@@ -1,0 +1,14 @@
+{"time":"2025-11-30T07:30:07.052416804Z","level":"INFO","msg":"stream: starting","core version":"0.23.0"}
+{"time":"2025-11-30T07:30:07.256220821Z","level":"INFO","msg":"stream: created new stream","id":"ym2tnwib"}
+{"time":"2025-11-30T07:30:07.256276398Z","level":"INFO","msg":"handler: started","stream_id":"ym2tnwib"}
+{"time":"2025-11-30T07:30:07.25636077Z","level":"INFO","msg":"stream: started","id":"ym2tnwib"}
+{"time":"2025-11-30T07:30:07.256383496Z","level":"INFO","msg":"writer: started","stream_id":"ym2tnwib"}
+{"time":"2025-11-30T07:30:07.256390883Z","level":"INFO","msg":"sender: started","stream_id":"ym2tnwib"}
+{"time":"2025-11-30T10:02:38.007201955Z","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": read tcp 172.31.24.232:47344->35.186.228.49:443: read: connection reset by peer"}
+{"time":"2025-11-30T18:07:39.672705887Z","level":"INFO","msg":"api: retrying error","error":"Post \"https://api.wandb.ai/graphql\": read tcp 172.31.24.232:48612->35.186.228.49:443: read: connection reset by peer"}
+{"time":"2025-12-01T20:09:09.450637972Z","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-12-01T20:09:09.701360781Z","level":"INFO","msg":"handler: operation stats","stats":{}}
+{"time":"2025-12-01T20:09:09.704667106Z","level":"INFO","msg":"stream: closing","id":"ym2tnwib"}
+{"time":"2025-12-01T20:09:09.704682736Z","level":"INFO","msg":"handler: closed","stream_id":"ym2tnwib"}
+{"time":"2025-12-01T20:09:09.704746066Z","level":"INFO","msg":"sender: closed","stream_id":"ym2tnwib"}
+{"time":"2025-12-01T20:09:09.704760054Z","level":"INFO","msg":"stream: closed","id":"ym2tnwib"}
