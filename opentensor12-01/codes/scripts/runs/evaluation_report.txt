@@ -1,0 +1,150 @@
+======================================================================
+POLYNOMIAL CIRCUIT MODEL EVALUATION
+======================================================================
+
+Testing models:
+  1. polynomial_net_parallel.pth (pre-curriculum, original training)
+  2. polynomial_net_curriculum.pth (curriculum learning, 300 epochs)
+
+======================================================================
+SPECIFIC POLYNOMIAL TESTS
+======================================================================
+
+----------------------------------------------------------------------
+Model: polynomial_net_parallel.pth
+----------------------------------------------------------------------
+
+Testing: x0
+Success: ✓ YES
+Total reward: 10.00
+Number of steps: 1
+
+Testing: x0 + x1
+Success: ✓ YES
+Total reward: 10.00
+Number of steps: 1
+
+Testing: x0 * x1
+Success: ✓ YES
+Total reward: 10.00
+Number of steps: 1
+
+Testing: x0**2 + x0 + 1
+Success: ✗ NO
+Total reward: -5.40
+Number of steps: 5
+
+Testing: x0*x1 + x0 + x1 + 1
+Success: ✗ NO
+Total reward: -5.40
+Number of steps: 5
+
+Testing: (x0 + x1)**2
+Success: ✗ NO
+Total reward: -5.40
+Number of steps: 5
+
+Testing: x0**2 + 2*x0*x1 + x1**2
+Success: ✗ NO
+Total reward: -5.40
+Number of steps: 5
+
+Testing: x0**3 + x0**2 + x0 + 1
+Success: ✗ NO
+Total reward: -5.40
+Number of steps: 5
+
+Testing: x0**2*x1 + x0*x1**2
+Success: ✗ NO
+Total reward: -5.40
+Number of steps: 5
+
+Testing: (x0 + 1) * (x1 + 1)
+Success: ✗ NO
+Total reward: -5.40
+Number of steps: 5
+
+======================================================================
+----------------------------------------------------------------------
+Model: polynomial_net_curriculum.pth
+----------------------------------------------------------------------
+
+Testing: x0
+Success: ✓ YES
+Total reward: 10.00
+Number of steps: 1
+
+Testing: x0 + x1
+Success: ✓ YES
+Total reward: 10.00
+Number of steps: 1
+
+Testing: x0 * x1
+Success: ✓ YES
+Total reward: 10.00
+Number of steps: 1
+
+Testing: x0**2 + x0 + 1
+Success: ✗ NO
+Total reward: -5.40
+Number of steps: 5
+
+Testing: x0*x1 + x0 + x1 + 1
+Success: ✗ NO
+Total reward: -5.40
+Number of steps: 5
+
+Testing: (x0 + x1)**2
+Success: ✗ NO
+Total reward: -5.40
+Number of steps: 5
+
+Testing: x0**2 + 2*x0*x1 + x1**2
+Success: ✗ NO
+Total reward: -5.40
+Number of steps: 5
+
+Testing: x0**3 + x0**2 + x0 + 1
+Success: ✗ NO
+Total reward: -5.40
+Number of steps: 5
+
+Testing: x0**2*x1 + x0*x1**2
+Success: ✗ NO
+Total reward: -5.40
+Number of steps: 5
+
+Testing: (x0 + 1) * (x1 + 1)
+Success: ✗ NO
+Total reward: -5.40
+Number of steps: 5
+
+======================================================================
+
+======================================================================
+RANDOM POLYNOMIAL BATCH TESTS (100 samples each)
+======================================================================
+
+----------------------------------------------------------------------
+Model: polynomial_net_parallel.pth
+----------------------------------------------------------------------
+SUMMARY
+================================================================================
+Total tests: 100
+Successes: 38
+Failures: 62
+Success rate: 38.0%
+
+----------------------------------------------------------------------
+Model: polynomial_net_curriculum.pth
+----------------------------------------------------------------------
+SUMMARY
+================================================================================
+Total tests: 100
+Successes: 38
+Failures: 62
+Success rate: 38.0%
+
+======================================================================
+EVALUATION COMPLETE
+======================================================================

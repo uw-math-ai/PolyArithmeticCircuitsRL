@@ -1,0 +1,9 @@
+Starting training from scratch (no checkpoint)
+Using 32 workers for parallel episode generation (file-based)
+Temp directory: /tmp/mcts_episodes_curriculum_9ttlpwqv
+
+Curriculum Learning:
+  Max terms: 2 → 8
+  Total epochs: 0
+
+Training finished. Final model saved to src/OpenTensor/codes/scripts/runs/polynomial_net_no_constant.pth

@@ -1,0 +1,2644 @@
+Using device: cuda
+GPU: Tesla T4
+wandb: Currently logged in as: zengrf (hchau-university-of-washington) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.23.0
+wandb: Run data is saved locally in /home/ubuntu/random/src/OpenTensor/wandb/run-20251130_073006-ym2tnwib
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run mcts_interesting_v3_d3
+wandb: ⭐️ View project at https://wandb.ai/zengrf-university-of-washington/polynomial-mcts-training
+wandb: 🚀 View run at https://wandb.ai/zengrf-university-of-washington/polynomial-mcts-training/runs/ym2tnwib
+Loading checkpoint from codes/scripts/runs/polynomial_net_complexity.pth
+✓ Checkpoint loaded successfully
+Using 32 workers for parallel episode generation
+
+Interesting Patterns Curriculum:
+  Starting complexity: 2
+  Max complexity: 6
+  Mixing 50% random / 50% interesting patterns
+
+Epoch 1/200 - Complexity: 2
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 1: loss=43.2234, reward=6.25, success=77.00%
+
+Epoch 2/200 - Complexity: 2
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 2: loss=43.3975, reward=7.03, success=82.00%
+
+Epoch 3/200 - Complexity: 2
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 3: loss=43.2402, reward=6.24, success=77.00%
+
+Epoch 4/200 - Complexity: 2
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 4: loss=39.7872, reward=6.88, success=81.00%
+
+Epoch 5/200 - Complexity: 2
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+
+  ✓ CURRICULUM ADVANCED! New complexity: 3
+  Epoch 5: loss=42.1170, reward=7.33, success=84.00%
+
+Epoch 6/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 6: loss=37.3023, reward=2.76, success=54.00%
+
+Epoch 7/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 7: loss=38.2356, reward=3.53, success=59.00%
+
+Epoch 8/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 8: loss=37.1136, reward=0.33, success=38.00%
+
+Epoch 9/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 9: loss=42.8618, reward=2.03, success=49.00%
+
+Epoch 10/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 10: loss=37.7728, reward=1.54, success=46.00%
+
+Epoch 11/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 11: loss=37.2659, reward=1.60, success=46.00%
+
+Epoch 12/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 12: loss=36.4366, reward=2.33, success=51.00%
+
+Epoch 13/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 13: loss=42.3539, reward=3.09, success=56.00%
+
+Epoch 14/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 14: loss=46.8809, reward=2.33, success=51.00%
+
+Epoch 15/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 15: loss=39.7607, reward=2.60, success=53.00%
+
+Epoch 16/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 16: loss=35.0793, reward=1.86, success=48.00%
+
+Epoch 17/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 17: loss=40.6321, reward=2.77, success=54.00%
+
+Epoch 18/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 18: loss=36.5875, reward=2.62, success=53.00%
+
+Epoch 19/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 19: loss=35.2947, reward=2.49, success=52.00%
+
+Epoch 20/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 20: loss=37.9407, reward=2.60, success=53.00%
+
+Epoch 21/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 21: loss=36.4733, reward=2.66, success=53.00%
+
+Epoch 22/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 22: loss=35.5406, reward=1.56, success=46.00%
+
+Epoch 23/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 23: loss=37.1222, reward=3.55, success=59.00%
+
+Epoch 24/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 24: loss=36.4671, reward=2.49, success=52.00%
+
+Epoch 25/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 25: loss=36.4368, reward=2.50, success=52.00%
+
+Epoch 26/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 26: loss=40.6198, reward=2.54, success=52.00%
+
+Epoch 27/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 27: loss=38.4256, reward=4.15, success=63.00%
+
+Epoch 28/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 28: loss=35.5189, reward=2.50, success=52.00%
+
+Epoch 29/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 29: loss=37.5895, reward=2.45, success=52.00%
+
+Epoch 30/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 30: loss=36.3661, reward=3.22, success=57.00%
+
+Epoch 31/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 31: loss=38.6996, reward=3.22, success=57.00%
+
+Epoch 32/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 32: loss=40.2520, reward=3.08, success=56.00%
+
+Epoch 33/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 33: loss=41.3753, reward=2.31, success=51.00%
+
+Epoch 34/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 34: loss=37.2397, reward=2.02, success=49.00%
+
+Epoch 35/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 35: loss=36.7792, reward=3.40, success=58.00%
+
+Epoch 36/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 36: loss=40.2237, reward=2.92, success=55.00%
+
+Epoch 37/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 37: loss=41.9266, reward=4.43, success=65.00%
+
+Epoch 38/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 38: loss=38.0888, reward=1.86, success=48.00%
+
+Epoch 39/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 39: loss=41.4381, reward=1.16, success=43.00%
+
+Epoch 40/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 40: loss=40.6952, reward=3.11, success=56.00%
+
+Epoch 41/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 41: loss=35.2356, reward=2.51, success=52.00%
+
+Epoch 42/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 42: loss=38.1395, reward=3.87, success=61.00%
+
+Epoch 43/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 43: loss=41.6687, reward=2.79, success=54.00%
+
+Epoch 44/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 44: loss=36.6965, reward=1.70, success=47.00%
+
+Epoch 45/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 45: loss=31.7495, reward=1.59, success=46.00%
+
+Epoch 46/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 46: loss=35.4821, reward=2.76, success=54.00%
+
+Epoch 47/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 47: loss=35.8544, reward=1.45, success=45.00%
+
+Epoch 48/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 48: loss=36.6639, reward=3.41, success=58.00%
+
+Epoch 49/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 49: loss=39.7633, reward=3.53, success=59.00%
+
+Epoch 50/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 50: loss=42.2458, reward=2.48, success=52.00%
+
+Epoch 51/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 51: loss=39.6363, reward=2.47, success=52.00%
+
+Epoch 52/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 52: loss=42.2203, reward=1.86, success=48.00%
+
+Epoch 53/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 53: loss=40.4774, reward=2.94, success=55.00%
+
+Epoch 54/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 54: loss=35.4311, reward=2.06, success=49.00%
+
+Epoch 55/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 55: loss=38.3209, reward=2.47, success=52.00%
+
+Epoch 56/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 56: loss=34.7662, reward=2.36, success=51.00%
+
+Epoch 57/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 57: loss=34.3385, reward=1.27, success=44.00%
+
+Epoch 58/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 58: loss=40.2541, reward=2.67, success=53.00%
+
+Epoch 59/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 59: loss=40.0832, reward=2.95, success=55.00%
+
+Epoch 60/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 60: loss=33.4054, reward=2.07, success=49.00%
+
+Epoch 61/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 61: loss=38.6185, reward=2.34, success=51.00%
+
+Epoch 62/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 62: loss=36.2881, reward=2.47, success=52.00%
+
+Epoch 63/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 63: loss=31.9742, reward=2.35, success=51.00%
+
+Epoch 64/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 64: loss=43.6111, reward=1.10, success=43.00%
+
+Epoch 65/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 65: loss=41.5882, reward=2.02, success=49.00%
+
+Epoch 66/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 66: loss=33.2921, reward=2.95, success=55.00%
+
+Epoch 67/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 67: loss=33.1280, reward=2.48, success=52.00%
+
+Epoch 68/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 68: loss=42.8932, reward=3.08, success=56.00%
+
+Epoch 69/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 69: loss=36.8669, reward=2.06, success=49.00%
+
+Epoch 70/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 70: loss=34.8625, reward=1.28, success=44.00%
+
+Epoch 71/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 71: loss=41.6561, reward=2.48, success=52.00%
+
+Epoch 72/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 72: loss=40.7503, reward=3.37, success=58.00%
+
+Epoch 73/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 73: loss=39.5440, reward=2.31, success=51.00%
+
+Epoch 74/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 74: loss=35.2822, reward=3.10, success=56.00%
+
+Epoch 75/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 75: loss=38.6522, reward=1.89, success=48.00%
+
+Epoch 76/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 76: loss=36.2272, reward=1.99, success=49.00%
+
+Epoch 77/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 77: loss=40.3876, reward=1.85, success=48.00%
+
+Epoch 78/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 78: loss=36.1793, reward=2.78, success=54.00%
+
+Epoch 79/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 79: loss=38.3588, reward=1.86, success=48.00%
+
+Epoch 80/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 80: loss=37.5007, reward=2.36, success=51.00%
+
+Epoch 81/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 81: loss=35.0841, reward=1.22, success=44.00%
+
+Epoch 82/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 82: loss=40.7179, reward=3.24, success=57.00%
+
+Epoch 83/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 83: loss=33.1900, reward=1.91, success=48.00%
+
+Epoch 84/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 84: loss=29.3890, reward=1.45, success=45.00%
+
+Epoch 85/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 85: loss=32.6508, reward=1.89, success=48.00%
+
+Epoch 86/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 86: loss=33.0551, reward=2.04, success=49.00%
+
+Epoch 87/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 87: loss=39.2581, reward=2.19, success=50.00%
+
+Epoch 88/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 88: loss=34.3432, reward=3.08, success=56.00%
+
+Epoch 89/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 89: loss=36.1478, reward=3.21, success=57.00%
+
+Epoch 90/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 90: loss=40.1222, reward=3.06, success=56.00%
+
+Epoch 91/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 91: loss=37.4169, reward=1.73, success=47.00%
+
+Epoch 92/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 92: loss=38.8779, reward=2.00, success=49.00%
+
+Epoch 93/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 93: loss=38.6081, reward=0.98, success=42.00%
+
+Epoch 94/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 94: loss=36.8323, reward=3.73, success=60.00%
+
+Epoch 95/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 95: loss=33.1775, reward=2.03, success=49.00%
+
+Epoch 96/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 96: loss=38.1584, reward=1.87, success=48.00%
+
+Epoch 97/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 97: loss=38.3168, reward=2.33, success=51.00%
+
+Epoch 98/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 98: loss=38.4423, reward=2.19, success=50.00%
+
+Epoch 99/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 99: loss=40.1742, reward=3.08, success=56.00%
+
+Epoch 100/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 100: loss=39.6948, reward=4.01, success=62.00%
+
+Epoch 101/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 101: loss=31.5752, reward=2.47, success=52.00%
+
+Epoch 102/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 102: loss=43.8483, reward=2.64, success=53.00%
+
+Epoch 103/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 103: loss=34.4792, reward=3.25, success=57.00%
+
+Epoch 104/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 104: loss=39.4459, reward=2.79, success=54.00%
+
+Epoch 105/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 105: loss=36.3190, reward=0.53, success=39.00%
+
+Epoch 106/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 106: loss=37.8485, reward=1.60, success=46.00%
+
+Epoch 107/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 107: loss=31.7204, reward=3.27, success=57.00%
+
+Epoch 108/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 108: loss=36.0590, reward=2.01, success=49.00%
+
+Epoch 109/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 109: loss=37.4833, reward=2.17, success=50.00%
+
+Epoch 110/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 110: loss=37.5950, reward=2.63, success=53.00%
+
+Epoch 111/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 111: loss=36.8646, reward=2.52, success=52.00%
+
+Epoch 112/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 112: loss=38.9099, reward=2.05, success=49.00%
+
+Epoch 113/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 113: loss=37.5995, reward=1.87, success=48.00%
+
+Epoch 114/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 114: loss=31.1040, reward=2.80, success=54.00%
+
+Epoch 115/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 115: loss=40.5019, reward=2.60, success=53.00%
+
+Epoch 116/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 116: loss=35.4691, reward=2.03, success=49.00%
+
+Epoch 117/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 117: loss=35.1524, reward=3.22, success=57.00%
+
+Epoch 118/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 118: loss=38.1093, reward=2.03, success=49.00%
+
+Epoch 119/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 119: loss=39.6530, reward=2.50, success=52.00%
+
+Epoch 120/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 120: loss=35.4903, reward=3.43, success=58.00%
+
+Epoch 121/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 121: loss=36.4839, reward=2.95, success=55.00%
+
+Epoch 122/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 122: loss=42.0946, reward=3.06, success=56.00%
+
+Epoch 123/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 123: loss=31.9500, reward=2.34, success=51.00%
+
+Epoch 124/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 124: loss=32.6230, reward=2.15, success=50.00%
+
+Epoch 125/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 125: loss=41.2249, reward=3.52, success=59.00%
+
+Epoch 126/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 126: loss=33.0135, reward=3.26, success=57.00%
+
+Epoch 127/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 127: loss=38.9645, reward=1.70, success=47.00%
+
+Epoch 128/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 128: loss=45.7182, reward=2.16, success=50.00%
+
+Epoch 129/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 129: loss=36.3031, reward=3.25, success=57.00%
+
+Epoch 130/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 130: loss=34.8833, reward=2.34, success=51.00%
+
+Epoch 131/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 131: loss=36.4075, reward=1.40, success=45.00%
+
+Epoch 132/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 132: loss=36.2601, reward=2.37, success=51.00%
+
+Epoch 133/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 133: loss=37.8580, reward=2.33, success=51.00%
+
+Epoch 134/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 134: loss=35.8658, reward=2.65, success=53.00%
+
+Epoch 135/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 135: loss=37.2090, reward=2.51, success=52.00%
+
+Epoch 136/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 136: loss=38.6801, reward=2.33, success=51.00%
+
+Epoch 137/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 137: loss=37.9935, reward=2.96, success=55.00%
+
+Epoch 138/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 138: loss=34.2272, reward=2.21, success=50.00%
+
+Epoch 139/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 139: loss=35.3054, reward=2.52, success=52.00%
+
+Epoch 140/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 140: loss=35.4141, reward=1.59, success=46.00%
+
+Epoch 141/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 141: loss=33.6417, reward=2.82, success=54.00%
+
+Epoch 142/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 142: loss=30.9181, reward=3.11, success=56.00%
+
+Epoch 143/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 143: loss=33.8747, reward=2.55, success=52.00%
+
+Epoch 144/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 144: loss=36.5514, reward=1.73, success=47.00%
+
+Epoch 145/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 145: loss=32.9700, reward=1.91, success=48.00%
+
+Epoch 146/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 146: loss=31.4532, reward=1.44, success=45.00%
+
+Epoch 147/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 147: loss=35.0922, reward=3.25, success=57.00%
+
+Epoch 148/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 148: loss=33.0184, reward=3.12, success=56.00%
+
+Epoch 149/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 149: loss=37.1320, reward=2.65, success=53.00%
+
+Epoch 150/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 150: loss=37.1577, reward=0.79, success=41.00%
+
+Epoch 151/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 151: loss=38.8504, reward=1.98, success=49.00%
+
+Epoch 152/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 152: loss=32.7399, reward=2.33, success=51.00%
+
+Epoch 153/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 153: loss=37.3096, reward=2.21, success=50.00%
+
+Epoch 154/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 154: loss=40.2765, reward=1.29, success=44.00%
+
+Epoch 155/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 155: loss=32.8670, reward=1.63, success=46.00%
+
+Epoch 156/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 156: loss=35.2297, reward=3.01, success=55.00%
+
+Epoch 157/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 157: loss=31.6655, reward=2.65, success=53.00%
+
+Epoch 158/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 158: loss=31.0425, reward=3.17, success=56.00%
+
+Epoch 159/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 159: loss=32.7651, reward=1.59, success=46.00%
+
+Epoch 160/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 160: loss=36.2260, reward=2.66, success=53.00%
+
+Epoch 161/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 161: loss=38.1893, reward=2.47, success=52.00%
+
+Epoch 162/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 162: loss=32.7173, reward=2.67, success=53.00%
+
+Epoch 163/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 163: loss=29.0164, reward=2.94, success=55.00%
+
+Epoch 164/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 164: loss=35.8086, reward=0.23, success=37.00%
+
+Epoch 165/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 165: loss=34.1994, reward=1.27, success=44.00%
+
+Epoch 166/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 166: loss=33.5647, reward=1.71, success=47.00%
+
+Epoch 167/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 167: loss=40.1382, reward=3.55, success=59.00%
+
+Epoch 168/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 168: loss=36.2261, reward=2.03, success=49.00%
+
+Epoch 169/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 169: loss=33.9652, reward=3.11, success=56.00%
+
+Epoch 170/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 170: loss=37.2780, reward=1.47, success=45.00%
+
+Epoch 171/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 171: loss=40.0052, reward=0.97, success=42.00%
+
+Epoch 172/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 172: loss=34.1442, reward=2.35, success=51.00%
+
+Epoch 173/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 173: loss=33.4709, reward=2.37, success=51.00%
+
+Epoch 174/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 174: loss=35.2212, reward=2.68, success=53.00%
+
+Epoch 175/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 175: loss=38.4220, reward=2.82, success=54.00%
+
+Epoch 176/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 176: loss=40.3626, reward=2.64, success=53.00%
+
+Epoch 177/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 177: loss=37.4621, reward=2.48, success=52.00%
+
+Epoch 178/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 178: loss=31.7660, reward=0.97, success=42.00%
+
+Epoch 179/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 179: loss=38.2354, reward=3.37, success=58.00%
+
+Epoch 180/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 180: loss=30.6686, reward=2.94, success=55.00%
+
+Epoch 181/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 181: loss=31.0887, reward=1.75, success=47.00%
+
+Epoch 182/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 182: loss=36.4094, reward=2.04, success=49.00%
+
+Epoch 183/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 183: loss=33.4030, reward=2.50, success=52.00%
+
+Epoch 184/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 184: loss=36.0911, reward=1.89, success=48.00%
+
+Epoch 185/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 185: loss=36.4860, reward=2.48, success=52.00%
+
+Epoch 186/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 186: loss=38.4815, reward=3.12, success=56.00%
+
+Epoch 187/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 187: loss=30.1572, reward=2.78, success=54.00%
+
+Epoch 188/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 188: loss=31.3830, reward=2.06, success=49.00%
+
+Epoch 189/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 189: loss=40.0081, reward=0.91, success=42.00%
+
+Epoch 190/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 190: loss=32.9443, reward=3.25, success=57.00%
+
+Epoch 191/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 191: loss=33.4853, reward=2.83, success=54.00%
+
+Epoch 192/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 192: loss=35.5447, reward=1.78, success=47.00%
+
+Epoch 193/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 193: loss=36.0726, reward=3.68, success=60.00%
+
+Epoch 194/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 194: loss=39.8434, reward=2.45, success=52.00%
+
+Epoch 195/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 195: loss=37.0362, reward=2.64, success=53.00%
+
+Epoch 196/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 196: loss=33.1576, reward=2.33, success=51.00%
+
+Epoch 197/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 197: loss=31.4493, reward=2.16, success=50.00%
+
+Epoch 198/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 198: loss=37.6757, reward=2.16, success=50.00%
+
+Epoch 199/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 199: loss=30.5334, reward=3.12, success=56.00%
+
+Epoch 200/200 - Complexity: 3
+    Generated 10/100 episodes
+    Generated 20/100 episodes
+    Generated 30/100 episodes
+    Generated 40/100 episodes
+    Generated 50/100 episodes
+    Generated 60/100 episodes
+    Generated 70/100 episodes
+    Generated 80/100 episodes
+    Generated 90/100 episodes
+    Generated 100/100 episodes
+  Epoch 200: loss=31.5830, reward=2.79, success=54.00%
+
+Training finished. Saved to codes/scripts/runs/polynomial_net_interesting.pth
+wandb: updating run metadata
+wandb: uploading history steps 199-199, summary, console lines 2599-2611
+wandb: 
+wandb: Run history:
+wandb: avg_episode_reward █▇█▂▃▄▂▂▄▂▁▂▂▁▂▂▂▂▂▂▂▄▂▂▂▃▃▁▂▁▃▂▂▂▃▂▂▃▃▃
+wandb: current_complexity ▁▁▁█████████████████████████████████████
+wandb:              epoch ▁▁▁▁▂▂▂▂▃▃▃▃▃▃▃▄▄▄▄▄▅▅▅▅▅▆▆▆▆▆▇▇▇▇▇▇████
+wandb:        policy_loss ▇█▃▆▅▅▄▅▄▃▄▅▅▅▄▅▆▃▄▅▃▃▄▄▃▄▅▃▄▃▂▄▁▂▃▂▃▃▁▂
+wandb:       success_rate ▅▄▅▅▅▇█▆▄▅▁▄▃▄▄▃▅▃▆▃▃▃▄▃▃▆▄▄▃▃▆▄▃▄▄▆▁▆▅▅
+wandb:         value_loss ▄▄▃▆█▆▃▇▆▂▃▅▃▄▅▄▁▄▄▅▃▅▃▆▂▃▄▁▄▂▂▃▁▂▂▂▅▅▁▁
+wandb: 
+wandb: Run summary:
+wandb: avg_episode_reward 2.792
+wandb: current_complexity 3
+wandb:              epoch 200
+wandb:        policy_loss 1.18112
+wandb:       success_rate 0.54
+wandb:         value_loss 30.40186
+wandb: 
+wandb: 🚀 View run mcts_interesting_v3_d3 at: https://wandb.ai/zengrf-university-of-washington/polynomial-mcts-training/runs/ym2tnwib
+wandb: ⭐️ View project at: https://wandb.ai/zengrf-university-of-washington/polynomial-mcts-training
+wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 11 other file(s)
+wandb: Find logs at: ./wandb/run-20251130_073006-ym2tnwib/logs

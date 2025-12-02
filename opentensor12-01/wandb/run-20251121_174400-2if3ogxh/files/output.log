@@ -1,0 +1,11 @@
+Loading checkpoint from codes/scripts/runs/polynomial_net_parallel.pth
+✓ Checkpoint loaded successfully
+Using 32 workers for parallel episode generation (file-based)
+Temp directory: /tmp/mcts_episodes_curriculum_4hlsm8ym
+
+Curriculum Learning:
+  Max terms: 3 → 10
+  Total epochs: 300
+
+Epoch 1/300 - Max terms range: (3, 3)
+  Generating 64 episodes...

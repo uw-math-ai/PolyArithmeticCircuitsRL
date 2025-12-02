@@ -1,0 +1,11 @@
+Loading checkpoint from codes/scripts/runs/polynomial_net_complexity.pth
+Traceback (most recent call last):
+  File "/home/ubuntu/random/src/OpenTensor/codes/scripts/polynomial_train_interesting.py", line 541, in <module>
+    train_loop(args)
+  File "/home/ubuntu/random/src/OpenTensor/codes/scripts/polynomial_train_interesting.py", line 347, in train_loop
+    net.load_state_dict(checkpoint)
+  File "/home/ubuntu/miniconda3/envs/binary-forms/lib/python3.10/site-packages/torch/nn/modules/module.py", line 2584, in load_state_dict
+    raise RuntimeError(
+RuntimeError: Error(s) in loading state_dict for PolynomialNet:
+	size mismatch for policy_head.weight: copying a param with shape torch.Size([110, 256]) from checkpoint, the shape in current model is torch.Size([156, 256]).
+	size mismatch for policy_head.bias: copying a param with shape torch.Size([110]) from checkpoint, the shape in current model is torch.Size([156]).
