@@ -6,6 +6,17 @@ This project implements a combined **Supervised Learning + PPO Reinforcement Lea
 
 The core task is: given a target polynomial, find the minimal sequence of addition and multiplication operations on input variables to construct that polynomial.
 
+## Visual Demo
+
+A lightweight Streamlit app (`demo_visualizer.py`) renders randomly generated arithmetic circuits and the intermediate polynomials they build. To run it locally:
+
+```
+pip install -r requirements.txt
+streamlit run demo_visualizer.py
+```
+
+The app highlights each node in the circuit graph (inputs, constant, add, multiply) and lists the step-by-step actions that lead to the final polynomial.
+
 ---
 
 ## Table of Contents

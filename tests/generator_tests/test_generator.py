@@ -5,7 +5,7 @@ import sys
 import os
 
 # Add project root to Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from transformer.generator import (
     generate_random_circuit,
@@ -162,11 +162,11 @@ def test_algebraic_correctness_of_circuit(config):
             reconstructed_polys.append(sympy.Integer(1))
         elif op == 'add':
             poly = reconstructed_polys[p1_idx] + reconstructed_polys[p2_idx]
-            poly = sympy.Poly(poly, symbols).map_coeffs(lambda c: c % mod).as_expr()
+            poly = sympy.Poly(poly, symbols, domain="ZZ").trunc(mod).as_expr()
             reconstructed_polys.append(poly)
         elif op == 'multiply':
             poly = reconstructed_polys[p1_idx] * reconstructed_polys[p2_idx]
-            poly = sympy.Poly(poly, symbols).map_coeffs(lambda c: c % mod).as_expr()
+            poly = sympy.Poly(poly, symbols, domain="ZZ").trunc(mod).as_expr()
             reconstructed_polys.append(poly)
             
         # Compare the reconstructed poly with the one from the generator
