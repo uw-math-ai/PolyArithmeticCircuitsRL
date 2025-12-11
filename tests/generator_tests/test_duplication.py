@@ -3,7 +3,7 @@ import os
 import time
 
 # Add project root to path to allow importing 'transformer'
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from transformer.generator import generate_random_polynomials
 
@@ -28,7 +28,8 @@ def test_duplication_rate(n=3, C=5, num_to_generate=100, mod=5):
         n=n,
         C=C,
         num_polynomials=num_to_generate,
-        mod=mod
+        mod=mod,
+        return_attempts=True,
     )
 
     end_time = time.time()
