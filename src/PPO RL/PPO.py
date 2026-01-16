@@ -44,7 +44,7 @@ class Config:
     def __init__(self):
         # --- Simplified Settings (Adjust as needed) ---
         self.n_variables = 3
-        self.max_complexity = 1  # Max operations allowed
+        self.max_complexity = 6  # Max operations allowed
         self.max_degree = self.max_complexity * 2 # Max degree of polynomials
         self.hidden_dim = 256
         self.embedding_dim = 256
@@ -81,7 +81,7 @@ class Config:
 
         # --- MCTS guidance (optional) ---
         self.use_mcts = True
-        self.mcts_simulations = 64
+        self.mcts_simulations = 256
         self.mcts_exploration = 1.4
         self.mcts_policy_mix = 0.35  # 0.0 -> policy only; 1.0 -> planner always
 
