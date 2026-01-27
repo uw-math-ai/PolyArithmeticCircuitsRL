@@ -1,0 +1,38 @@
+Generating synthetic dataset: 100%|██████████| 5000/5000 [00:03<00:00, 1582.24it/s]
+Prefilled replay buffer with 0 synthetic steps
+Collecting SAC rollouts: 100%|██████████| 4096/4096 [00:29<00:00, 137.13it/s]
+Iter 1: SR 30.0%, Q 6351.8007, Pi -9.6618, CE 3.2667, Buffer 4096
+  Ex 1: Fail (R: -1.00, Steps: 5) Target: x2 + 1
+  Ex 2: Fail (R: -1.00, Steps: 5) Target: 2*x2
+  Ex 3: Fail (R: -1.00, Steps: 5) Target: x0*x2
+  Ex 4: Fail (R: -1.00, Steps: 5) Target: x0*x1
+  Ex 5: Fail (R: 0.00, Steps: 4) Target: 1
+Collecting SAC rollouts: 100%|██████████| 4096/4096 [00:30<00:00, 135.10it/s]
+Iter 2: SR 37.9%, Q 4903.2165, Pi -31.4442, CE 3.6716, Buffer 8192
+  Ex 1: Success (R: 100.00, Steps: 5) Target: 2*x2
+  Ex 2: Fail (R: -1.00, Steps: 5) Target: x1*x2
+  Ex 3: Fail (R: -1.00, Steps: 5) Target: x0 + x1
+  Ex 4: Fail (R: 0.00, Steps: 4) Target: 1
+  Ex 5: Success (R: 100.00, Steps: 5) Target: x1*x2
+Collecting SAC rollouts: 100%|██████████| 4096/4096 [00:30<00:00, 135.65it/s]
+Iter 3: SR 39.5%, Q 4253.1965, Pi -48.8084, CE 4.1666, Buffer 12288
+  Ex 1: Success (R: 100.00, Steps: 5) Target: x0*x2
+  Ex 2: Success (R: 100.00, Steps: 5) Target: x0 + x2
+  Ex 3: Success (R: 100.00, Steps: 5) Target: x0 + x1
+  Ex 4: Success (R: 100.00, Steps: 5) Target: x1 + x2
+  Ex 5: Fail (R: 0.00, Steps: 4) Target: 1
+Collecting SAC rollouts: 100%|██████████| 4096/4096 [00:30<00:00, 135.86it/s]
+Iter 4: SR 39.0%, Q 4255.4391, Pi -58.1628, CE 4.6483, Buffer 16384
+  Ex 1: Fail (R: -1.00, Steps: 5) Target: 2*x0
+  Ex 2: Fail (R: -1.00, Steps: 5) Target: x1*x2
+  Ex 3: Fail (R: 0.00, Steps: 4) Target: 1
+  Ex 4: Fail (R: 0.00, Steps: 4) Target: 1
+  Ex 5: Fail (R: -1.00, Steps: 5) Target: x2**2
+Collecting SAC rollouts: 100%|██████████| 4096/4096 [00:30<00:00, 135.28it/s]
+Iter 5: SR 39.3%, Q 4456.1793, Pi -59.4258, CE 4.7489, Buffer 20480
+  Ex 1: Success (R: 100.00, Steps: 5) Target: x1 + 1
+  Ex 2: Fail (R: 0.00, Steps: 4) Target: 1
+  Ex 3: Fail (R: 0.00, Steps: 4) Target: 1
+  Ex 4: Success (R: 100.00, Steps: 5) Target: x0*x1
+  Ex 5: Fail (R: -1.00, Steps: 5) Target: x0*x1
+Collecting SAC rollouts:  22%|██▏       | 906/4096 [00:06<00:22, 143.36it/s]

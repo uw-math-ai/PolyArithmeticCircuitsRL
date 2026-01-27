@@ -44,7 +44,7 @@ class Game:
 
         # The target polynomial tensor is already computed, just needs to be on the right device
         target_encoding_dev = self.target_encoding.to(
-            next(torch.zeros(1)).device if torch.cuda.is_available() else "cpu"
+            torch.zeros(1).device if torch.cuda.is_available() else "cpu"
         )
 
         # The circuit actions are just the list of actions taken
