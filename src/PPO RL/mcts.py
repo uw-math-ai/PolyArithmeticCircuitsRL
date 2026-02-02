@@ -214,6 +214,24 @@ class MCTS:
         )
         return best_action
 
+    def root_action_distribution(self, temperature: float = 1.0) -> Dict[int, float]:
+        """Return a probability distribution over root actions from visit counts."""
+        if not self.root.children:
+            return {}
+        visit_counts = {
+            action: child.visit_count for action, child in self.root.children.items()
+        }
+        if temperature <= 0.0:
+            best_action = max(visit_counts.items(), key=lambda item: item[1])[0]
+            return {best_action: 1.0}
+
+        exponent = 1.0 / max(temperature, 1e-6)
+        scaled = {action: count ** exponent for action, count in visit_counts.items()}
+        total = sum(scaled.values())
+        if total <= 0.0:
+            return {}
+        return {action: value / total for action, value in scaled.items()}
+
 
 class MCTSPlanner:
     """Helper that wires up CircuitGameState + MCTS for PPO data collection."""
@@ -232,3 +250,18 @@ class MCTSPlanner:
         search = MCTS(root_state, exploration_constant=self.exploration_constant)
         search.run(self.num_simulations)
         return search.best_root_action()
+
+    def select_action_with_policy(
+        self, game: "Game", temperature: float = 1.0
+    ) -> Tuple[Optional[int], Dict[int, float]]:
+        """Return an action and visit-count distribution over root actions."""
+        if self.num_simulations <= 0:
+            return None, {}
+        root_state = CircuitGameState.from_game(game)
+        if root_state.is_terminal():
+            return None, {}
+        search = MCTS(root_state, exploration_constant=self.exploration_constant)
+        search.run(self.num_simulations)
+        policy = search.root_action_distribution(temperature=temperature)
+        action = max(policy.items(), key=lambda item: item[1])[0] if policy else None
+        return action, policy
