@@ -7,3 +7,4 @@ __pycache__/
 MAIL/
 .DS_Store
 .DS_Store
+wandb/
