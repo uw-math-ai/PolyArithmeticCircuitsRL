@@ -1,196 +1,167 @@
+"""
+Dataset generator for polynomial->circuit SymPy string pairs.
+
+Uses Game-Board-Generation JSONL dumps (nodes/edges/analysis) to reconstruct
+circuits, then emits training-ready examples.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
 import random
-import sympy
+from pathlib import Path
+from typing import Iterable, List, Sequence
 
-# --- SymPy Helpers ---
-
-_symbols = None
-
-
-def get_symbols(n: int):
-    """Get a cached list of SymPy symbols x0, x1, ..."""
-    global _symbols
-    if _symbols is None or len(_symbols) < n:
-        _symbols = sympy.symbols(f"x0:{n}")
-    return _symbols
+try:
+    from transformer.polynomial_to_circuit import build_dataset, CircuitExample
+    from transformer.build_training_data import generate_board
+except ModuleNotFoundError:
+    from polynomial_to_circuit import build_dataset, CircuitExample
+    from build_training_data import generate_board
 
 
-def _canonical_key(expr: sympy.Expr, symbols) -> str:
-    """
-    Creates a canonical string representation for a SymPy polynomial expression.
-    This key is used for deduplication.
-    """
-    expanded = sympy.expand(expr)
-    poly = sympy.Poly(expanded, *symbols, domain="QQ")
-    return sympy.srepr(poly.as_expr())
+def _analysis_matches_nodes(analysis_path: Path, nodes_path: Path, sample: int = 200) -> bool:
+    node_ids = set()
+    with nodes_path.open("r", encoding="utf-8") as handle:
+        for i, line in enumerate(handle):
+            if i >= sample:
+                break
+            node_ids.add(json.loads(line)["id"])
+
+    match = 0
+    with analysis_path.open("r", encoding="utf-8") as handle:
+        for i, line in enumerate(handle):
+            if i >= sample:
+                break
+            if json.loads(line).get("id") in node_ids:
+                match += 1
+    return match > 0
 
 
-def generate_random_circuit(n: int, C: int, mod: int = 2, rng: random.Random | None = None):
-    """
-    Generate a random arithmetic circuit using SymPy.
-
-    Returns:
-        actions: list of (op, input1_idx, input2_idx)
-        sympy_polynomials: list of SymPy expressions for each node
-    """
-    rng = rng or random
-    symbols = get_symbols(n)
-
-    actions: list[tuple[str, int | None, int | None]] = []
-    sympy_polynomials: list[sympy.Expr] = []
-
-    # Track canonical representations to avoid duplicate sub-circuits
-    seen_polynomials = set()
-
-    # Add variable nodes
-    for i in range(n):
-        actions.append(("input", i, -1))
-        expr = symbols[i]
-        sympy_polynomials.append(expr)
-        seen_polynomials.add(_canonical_key(expr, symbols))
-
-    # Add constant node (value 1)
-    actions.append(("constant", -1, -1))
-    expr = sympy.Integer(1)
-    sympy_polynomials.append(expr)
-    seen_polynomials.add(_canonical_key(expr, symbols))
-
-    # Add operations
-    for _ in range(C):
-        if len(sympy_polynomials) == 0:
-            continue
-
-        num_nodes = len(sympy_polynomials)
-        input1_idx = rng.randint(0, num_nodes - 1)
-        input2_idx = rng.randint(0, num_nodes - 1)
-        operation = rng.choice(["add", "multiply"])
-
-        poly1 = sympy_polynomials[input1_idx]
-        poly2 = sympy_polynomials[input2_idx]
-
-        if operation == "add":
-            new_expr = sympy.expand(poly1 + poly2)
-        else:  # multiply
-            new_expr = sympy.expand(poly1 * poly2)
-
-        # Apply modulo to coefficients
-        poly = sympy.Poly(new_expr, symbols, domain="ZZ")
-        new_expr = sympy.Poly({m: c % mod for m, c in poly.terms()}, symbols, domain="ZZ").as_expr()
-
-        # Deduplication check
-        key = _canonical_key(new_expr, symbols)
-        if key in seen_polynomials:
-            continue  # Skip adding this duplicate operation
-
-        actions.append((operation, input1_idx, input2_idx))
-        sympy_polynomials.append(new_expr)
-        seen_polynomials.add(key)
-
-    # Trim unused operations
-    final_actions, final_sympy_polynomials, _ = trim_circuit(actions, sympy_polynomials)
-
-    return final_actions, final_sympy_polynomials
+def _write_jsonl(path: Path, examples: Sequence[CircuitExample]) -> None:
+    with path.open("w", encoding="utf-8") as handle:
+        for ex in examples:
+            handle.write(json.dumps({"poly": ex.polynomial, "target": ex.circuit}) + "\n")
 
 
-def trim_circuit(actions, polynomials):
-    """
-    Trim unused operations from a circuit. This function works on the action list
-    and the list of polynomials (either vector or sympy format).
-    """
-    if not actions:
-        return [], [], {}
-
-    used = set()
-    num_inputs_constants = 0
-    for i, (op, _, _) in enumerate(actions):
-        if op in ("input", "constant"):
-            # These are always considered used initially
-            num_inputs_constants += 1
-
-    if len(actions) <= num_inputs_constants:
-        return actions, polynomials, {i: i for i in range(len(actions))}
-
-    # Start traversal from the final output node
-    stack = [len(actions) - 1]
-
-    while stack:
-        idx = stack.pop()
-        if idx in used:
-            continue
-
-        used.add(idx)
-
-        op, in1, in2 = actions[idx]
-        if op in ("add", "multiply"):
-            if in1 is not None:
-                stack.append(in1)
-            if in2 is not None:
-                stack.append(in2)
-
-    used_sorted = sorted(list(used))
-    remap = {old: new for new, old in enumerate(used_sorted)}
-
-    new_actions = []
-    new_polynomials = []
-    for old_idx in used_sorted:
-        op, in1, in2 = actions[old_idx]
-        if op in ("add", "multiply"):
-            if in1 in remap and in2 in remap:
-                new_actions.append((op, remap[in1], remap[in2]))
-                new_polynomials.append(polynomials[old_idx])
-        else:  # input or constant
-            new_actions.append((op, old_idx if op == "input" else -1, -1))
-            new_polynomials.append(polynomials[old_idx])
-
-    return new_actions, new_polynomials, remap
+def _split_examples(examples: List[CircuitExample], split: float) -> tuple[list[CircuitExample], list[CircuitExample]]:
+    if split <= 0.0 or split >= 1.0:
+        raise ValueError("split must be between 0 and 1")
+    idx = int(len(examples) * split)
+    return examples[:idx], examples[idx:]
 
 
-def generate_random_polynomials(
-    n,
-    C,
-    num_polynomials=10000,
-    mod=5,
-    rng: random.Random | None = None,
-    return_attempts: bool = False,
-):
-    """
-    Generate a dataset of random polynomials and their corresponding circuits.
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Build polynomial->circuit datasets")
+    parser.add_argument("--nodes", type=Path, default=None, help="Nodes JSONL path")
+    parser.add_argument("--edges", type=Path, default=None, help="Edges JSONL path")
+    parser.add_argument("--analysis", type=Path, default=None, help="Analysis JSONL path")
+    parser.add_argument("--board-dir", type=Path, default=None, help="Directory containing board JSONL files")
+    parser.add_argument("--prefix", type=str, default=None, help="Board prefix like game_board_C4")
+    parser.add_argument(
+        "--auto-generate-board",
+        action="store_true",
+        help="Generate a game board if inputs are missing",
+    )
+    parser.add_argument("--steps", type=int, default=None, help="Complexity steps for auto-generation")
+    parser.add_argument("--num-vars", type=int, default=1, help="Number of variables for auto-generation")
+    parser.add_argument(
+        "--board-out-dir",
+        type=Path,
+        default=Path("transformer/boards"),
+        help="Output directory for auto-generated boards",
+    )
+    parser.add_argument("--max-complexity", type=int, default=None, help="Max shortest path length")
+    parser.add_argument(
+        "--include-non-multipath",
+        action="store_true",
+        help="Include nodes without multiple paths (default: multipath-only)",
+    )
+    parser.add_argument(
+        "--allow-all",
+        action="store_true",
+        help="Allow building dataset without analysis JSONL",
+    )
+    parser.add_argument("--limit", type=int, default=None, help="Max number of examples")
+    parser.add_argument("--seed", type=int, default=7, help="RNG seed")
+    parser.add_argument("--output", type=Path, default=None, help="Write all examples to JSONL")
+    parser.add_argument("--train-out", type=Path, default=None, help="Write train split JSONL")
+    parser.add_argument("--val-out", type=Path, default=None, help="Write val split JSONL")
+    parser.add_argument("--split", type=float, default=0.9, help="Train split fraction")
+    return parser.parse_args()
 
-    Returns:
-        all_polynomials: list of SymPy expressions
-        all_circuits: list of action lists
-        attempts (optional): total attempts used, returned when return_attempts=True
-    """
-    rng = rng or random
-    all_polynomials: list[sympy.Expr] = []
-    all_circuits: list[list[tuple[str, int | None, int | None]]] = []
 
-    final_poly_keys = set()
-    symbols = get_symbols(n)
+def main() -> None:
+    args = _parse_args()
 
-    attempts = 0
-    max_attempts = num_polynomials * 5  # Stop if it's too hard to find new polys
+    nodes_path = args.nodes
+    edges_path = args.edges
+    analysis_path = args.analysis
+    if args.board_dir and args.prefix:
+        nodes_path = nodes_path or (args.board_dir / f"{args.prefix}.nodes.jsonl")
+        edges_path = edges_path or (args.board_dir / f"{args.prefix}.edges.jsonl")
+        analysis_path = analysis_path or (args.board_dir / f"{args.prefix}.analysis.jsonl")
 
-    while len(all_polynomials) < num_polynomials and attempts < max_attempts:
-        attempts += 1
-        circuit, polys = generate_random_circuit(n, C, mod, rng=rng)
+    if args.auto_generate_board and (nodes_path is None or edges_path is None):
+        if args.steps is None:
+            raise SystemExit("Auto-generate requested but --steps is missing.")
+        out_dir = args.board_dir or args.board_out_dir
+        prefix = args.prefix or f"game_board_C{args.steps}_V{args.num_vars}"
+        nodes_path, edges_path, analysis_path = generate_board(
+            steps=args.steps,
+            num_vars=args.num_vars,
+            output_dir=out_dir,
+            prefix=prefix,
+            max_nodes=None,
+            max_successors_per_node=None,
+            max_samples=5,
+            only_multipath=not args.include_non_multipath,
+            analysis_max_step=args.max_complexity,
+            skip_plot=True,
+        )
 
-        if not polys:
-            continue
+    if nodes_path is None or edges_path is None:
+        raise SystemExit("Must provide --nodes and --edges or --board-dir with --prefix")
 
-        final_poly = polys[-1]
+    if analysis_path is None and not args.allow_all:
+        raise SystemExit("Analysis JSONL missing. Provide --analysis or use --allow-all.")
 
-        key = _canonical_key(final_poly, symbols)
-        if key not in final_poly_keys:
-            all_circuits.append(circuit)
-            all_polynomials.append(final_poly)
-            final_poly_keys.add(key)
+    only_multipath = not args.include_non_multipath
+    if analysis_path is None:
+        only_multipath = False
+    elif not _analysis_matches_nodes(analysis_path, nodes_path):
+        raise SystemExit(
+            "Analysis JSONL does not match node IDs. "
+            "Double-check --analysis or regenerate the analysis for this board."
+        )
 
-            if len(all_polynomials) % 1000 == 0:
-                print(f"Generated {len(all_polynomials)}/{num_polynomials} unique polynomials...")
+    examples = build_dataset(
+        nodes_path=nodes_path,
+        edges_path=edges_path,
+        analysis_path=analysis_path,
+        max_complexity=args.max_complexity,
+        only_multipath=only_multipath,
+    )
 
-    if attempts >= max_attempts:
-        print(f"Warning: Stopped after {max_attempts} attempts. Generated {len(all_polynomials)} polynomials.")
+    random.seed(args.seed)
+    random.shuffle(examples)
 
-    if return_attempts:
-        return all_polynomials, all_circuits, attempts
-    return all_polynomials, all_circuits
+    if args.limit is not None:
+        examples = examples[: args.limit]
+
+    if args.output:
+        _write_jsonl(args.output, examples)
+
+    if args.train_out or args.val_out:
+        train_split, val_split = _split_examples(examples, args.split)
+        if args.train_out:
+            _write_jsonl(args.train_out, train_split)
+        if args.val_out:
+            _write_jsonl(args.val_out, val_split)
+
+    print(f"Built {len(examples)} examples")
+
+
+if __name__ == "__main__":
+    main()
