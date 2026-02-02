@@ -32,6 +32,7 @@ class Game:
 
         self.current_step = 0
         self.max_steps = self.config.max_complexity
+        self.prev_potential = 0.0
 
     def to(self, device):
         """Moves internal tensors to the specified device (currently only CPU)."""
@@ -44,7 +45,7 @@ class Game:
 
         # The target polynomial tensor is already computed, just needs to be on the right device
         target_encoding_dev = self.target_encoding.to(
-            next(torch.zeros(1)).device if torch.cuda.is_available() else "cpu"
+            torch.zeros(1).device if torch.cuda.is_available() else "cpu"
         )
 
         # The circuit actions are just the list of actions taken
@@ -136,6 +137,29 @@ class Game:
 
         return False
 
+    def is_success(self):
+        if not self.polynomials:
+            return False
+        last_poly = self.polynomials[-1]
+        return sympy.expand(last_poly - self.target_poly_expr) == 0
+
+    def _compute_potential(self):
+        if not self.polynomials:
+            return 0.0
+        last_poly = self.polynomials[-1]
+        try:
+            target_terms = self.target_poly_expr.as_coefficients_dict()
+            current_terms = last_poly.as_coefficients_dict()
+            if not target_terms:
+                return 0.0
+            matching_terms = 0
+            for term, coeff in target_terms.items():
+                if term in current_terms and current_terms[term] == coeff:
+                    matching_terms += 1
+            return matching_terms / max(1, len(target_terms))
+        except Exception:
+            return 0.0
+
     def compute_rewards(self):
         if not self.polynomials:
             return [0.0]
@@ -143,11 +167,15 @@ class Game:
         last_poly = self.polynomials[-1]
         step_penalty = getattr(self.config, "step_penalty", -0.1)
         success_reward = getattr(self.config, "success_reward", 10.0)
-
         if sympy.expand(last_poly - self.target_poly_expr) == 0:
+            self.prev_potential = 1.0
             return [success_reward]
 
         if len(self.actions) > self.config.n_variables + 1 + self.config.max_complexity:
             return [step_penalty]
 
-        return [step_penalty]
+        potential = self._compute_potential()
+        delta = potential - self.prev_potential
+        self.prev_potential = potential
+        reward = delta + step_penalty
+        return [reward]
