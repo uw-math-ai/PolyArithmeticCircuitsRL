@@ -43,7 +43,7 @@ class Config:
 
     def __init__(self):
         self.n_variables = 3
-        self.max_complexity = 1
+        self.max_complexity = 8
         self.max_degree = self.max_complexity * 2
         self.hidden_dim = 256
         self.embedding_dim = 256
@@ -63,22 +63,28 @@ class Config:
         self.min_buffer_size = 2000
         self.steps_per_iter = 4096
         self.updates_per_iter = 256
-        self.action_temperature = 1.0
+        self.action_temperature = 1.2
         self.rl_eps = 1e-8
-        self.step_penalty = -1.0
+        self.step_penalty = -0.05
         self.success_reward = 100.0
+        self.model_tag = "v4"
+        self.resume = True
+        self.resume_path = f"sac_model_v3_n{self.n_variables}_C{self.max_complexity}.pt"
 
         # MCTS guidance
         self.use_mcts = True
-        self.mcts_simulations = 64
+        self.mcts_simulations = 96
         self.mcts_exploration = 1.4
-        self.mcts_policy_mix = 0.35
+        self.mcts_policy_mix = 0.5
         self.mcts_policy_temperature = 1.0
         self.mcts_ce_coef = 0.5
 
         # Curriculum learning
         self.complexity_threshold = 0.6
-        self.complexity_window = 200
+        self.complexity_window = 300
+        self.sr_advance_threshold = 0.75
+        self.sr_backoff_threshold = 0.55
+        self.allow_complexity_backoff = True
 
         # Interesting polynomial data
         self.use_interesting_polynomials = False
@@ -107,7 +113,7 @@ class Config:
         self.show_progress_bars = False
 
         # Weights & Biases logging
-        self.use_wandb = True
+        self.use_wandb = False
         self.wandb_project = "SAC RL-MCTS"
         self.wandb_run_name = None
 
@@ -740,8 +746,9 @@ def build_target_pool(
     max_attempts = pool_size * 10
     while len(pool) < interesting_n + pattern_n and attempts < max_attempts:
         attempts += 1
+        sampled_complexity = random.randint(1, max(1, complexity))
         actions, target_expr, encoding = generate_mixed_circuit(
-            config, complexity, seen_polynomials=seen
+            config, sampled_complexity, seen_polynomials=seen
         )
         if target_expr is None or encoding is None:
             continue
@@ -750,8 +757,9 @@ def build_target_pool(
     attempts = 0
     while len(pool) < pool_size and attempts < max_attempts:
         attempts += 1
+        sampled_complexity = random.randint(1, max(1, complexity))
         actions_gen, polynomials_gen = generate_random_circuit(
-            config.n_variables, complexity, mod=config.mod
+            config.n_variables, sampled_complexity, mod=config.mod
         )
         if not polynomials_gen:
             continue
@@ -760,8 +768,9 @@ def build_target_pool(
         add_target(target_expr, encoding)
 
     if not pool:
+        sampled_complexity = random.randint(1, max(1, complexity))
         actions_gen, polynomials_gen = generate_random_circuit(
-            config.n_variables, complexity, mod=config.mod
+            config.n_variables, sampled_complexity, mod=config.mod
         )
         if polynomials_gen:
             pool.append(
@@ -830,21 +839,29 @@ def collect_experience(
             games_played += 1
             target_poly_expr = None
             target_poly_encoding = None
+            target_complexity = random.randint(1, max(1, current_complexity))
             for _ in range(50):
                 if config.training_target_mode == "pool" and target_pool:
                     target_poly_expr, target_poly_encoding = random.choice(target_pool)
                 elif config.training_target_mode == "dataset":
                     if interesting_entries:
-                        entry = random.choice(interesting_entries)
+                        eligible = [
+                            entry
+                            for entry in interesting_entries
+                            if entry.get("shortest_length", 0) <= target_complexity
+                        ]
+                        if not eligible:
+                            eligible = interesting_entries
+                        entry = random.choice(eligible)
                         target_poly_expr = entry["expr"]
                         target_poly_encoding = entry["encoding"].clone().unsqueeze(0)
                 elif config.training_target_mode == "mixed":
                     actions_gen, target_poly_expr, target_poly_encoding = generate_mixed_circuit(
-                        config, current_complexity, seen_polynomials=seen_polynomials
+                        config, target_complexity, seen_polynomials=seen_polynomials
                     )
                 else:
                     actions_gen, polynomials_gen = generate_random_circuit(
-                        config.n_variables, current_complexity, mod=config.mod
+                        config.n_variables, target_complexity, mod=config.mod
                     )
                     if not polynomials_gen:
                         continue
@@ -906,7 +923,7 @@ def collect_experience(
                 collected_steps += 1
                 pbar.update(1)
 
-            success = game.is_done() and reward > 5.0
+            success = game.is_success()
             if success:
                 success_count += 1
             iteration_successes.append(success)
@@ -1077,6 +1094,11 @@ def main():
     target_model = SACCircuitBuilder(config, config.compact_size).to(device)
     target_model.load_state_dict(model.state_dict())
 
+    if config.resume and os.path.exists(config.resume_path):
+        print(f"Loaded checkpoint: {config.resume_path}")
+        model.load_state_dict(torch.load(config.resume_path, map_location=device))
+        target_model.load_state_dict(model.state_dict())
+
     optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate, eps=config.rl_eps)
 
     buffer = ReplayBuffer(config.buffer_size)
@@ -1098,68 +1120,123 @@ def main():
 
     target_pool_by_complexity = {}
 
-    for iteration in range(1, 10001):
-        if config.training_target_mode == "pool":
-            pool = target_pool_by_complexity.get(current_complexity)
-            if pool is None:
-                pool = build_target_pool(
-                    config,
-                    current_complexity,
-                    load_interesting_circuit_data(config),
-                )
-                target_pool_by_complexity[current_complexity] = pool
-            target_pool = pool
-        else:
-            target_pool = None
+    last_iteration = 0
+    last_success_rate = 0.0
+    last_metrics = {}
+    best_success_rate = -1.0
+    best_iteration = 0
+    interrupted = False
 
-        success_rate, circuit_examples, iteration_successes = collect_experience(
-            model, config, planner, buffer, current_complexity, target_pool=target_pool
-        )
+    try:
+        for iteration in range(1, 10001):
+            if config.training_target_mode == "pool":
+                pool = target_pool_by_complexity.get(current_complexity)
+                if pool is None:
+                    pool = build_target_pool(
+                        config,
+                        current_complexity,
+                        load_interesting_circuit_data(config),
+                    )
+                    target_pool_by_complexity[current_complexity] = pool
+                target_pool = pool
+            else:
+                target_pool = None
 
-        recent_successes.extend(iteration_successes)
-        recent_successes = recent_successes[-config.complexity_window:]
-        if len(recent_successes) >= config.complexity_window // 2:
-            recent_success_rate = sum(recent_successes) / len(recent_successes)
-            if (
-                recent_success_rate > config.complexity_threshold
-                and current_complexity < config.max_complexity
-            ):
-                current_complexity += 1
-                recent_successes = []
-                print(
-                    f"*** Complexity Increased to {current_complexity} (SR: {recent_success_rate:.2f}) ***"
-                )
-
-        metrics = sac_update(model, target_model, optimizer, buffer, config)
-        print(
-            f"Iter {iteration}: SR {success_rate:.1f}%, "
-            f"Q {metrics.get('q_loss', 0.0):.4f}, "
-            f"Pi {metrics.get('policy_loss', 0.0):.4f}, "
-            f"CE {metrics.get('ce_loss', 0.0):.4f}, "
-            f"Buffer {len(buffer)}"
-        )
-        if config.use_wandb:
-            wandb.log(
-                {
-                    "success_rate": success_rate,
-                    "q_loss": metrics.get("q_loss", 0.0),
-                    "policy_loss": metrics.get("policy_loss", 0.0),
-                    "ce_loss": metrics.get("ce_loss", 0.0),
-                    "buffer_size": len(buffer),
-                    "complexity": current_complexity,
-                },
-                step=iteration,
+            success_rate, circuit_examples, iteration_successes = collect_experience(
+                model, config, planner, buffer, current_complexity, target_pool=target_pool
             )
-        for i, ex in enumerate(circuit_examples):
+
+            last_iteration = iteration
+            last_success_rate = success_rate
+            if success_rate > best_success_rate:
+                best_success_rate = success_rate
+                best_iteration = iteration
+
+            recent_successes.extend(iteration_successes)
+            recent_successes = recent_successes[-config.complexity_window:]
+            if len(recent_successes) >= config.complexity_window // 2:
+                recent_success_rate = sum(recent_successes) / len(recent_successes)
+                if (
+                    config.allow_complexity_backoff
+                    and recent_success_rate < config.sr_backoff_threshold
+                    and current_complexity > 1
+                ):
+                    current_complexity -= 1
+                    recent_successes = []
+                    print(
+                        f"*** Complexity Decreased to {current_complexity} (SR: {recent_success_rate:.2f}) ***"
+                    )
+                elif (
+                    recent_success_rate >= config.sr_advance_threshold
+                    and current_complexity < config.max_complexity
+                ):
+                    current_complexity += 1
+                    recent_successes = []
+                    print(
+                        f"*** Complexity Increased to {current_complexity} (SR: {recent_success_rate:.2f}) ***"
+                    )
+
+            metrics = sac_update(model, target_model, optimizer, buffer, config)
+            last_metrics = metrics
             print(
-                f"  Ex {i + 1}: {'Success' if ex['success'] else 'Fail'} "
-                f"(R: {ex['reward']:.2f}, Steps: {ex['steps']}) Target: {ex['target']}"
+                f"Iter {iteration}: SR {success_rate:.1f}%, "
+                f"Q {metrics.get('q_loss', 0.0):.4f}, "
+                f"Pi {metrics.get('policy_loss', 0.0):.4f}, "
+                f"CE {metrics.get('ce_loss', 0.0):.4f}, "
+                f"Buffer {len(buffer)}"
             )
+            if config.use_wandb:
+                wandb.log(
+                    {
+                        "success_rate": success_rate,
+                        "q_loss": metrics.get("q_loss", 0.0),
+                        "policy_loss": metrics.get("policy_loss", 0.0),
+                        "ce_loss": metrics.get("ce_loss", 0.0),
+                        "buffer_size": len(buffer),
+                        "complexity": current_complexity,
+                    },
+                    step=iteration,
+                )
+            for i, ex in enumerate(circuit_examples):
+                print(
+                    f"  Ex {i + 1}: {'Success' if ex['success'] else 'Fail'} "
+                    f"(R: {ex['reward']:.2f}, Steps: {ex['steps']}) Target: {ex['target']}"
+                )
 
-        if iteration % 50 == 0:
-            path = f"sac_model_n{config.n_variables}_C{config.max_complexity}.pt"
-            torch.save(model.state_dict(), path)
-            print(f"  Model saved to {path}")
+            if iteration % 50 == 0:
+                path = f"sac_model_{config.model_tag}_n{config.n_variables}_C{config.max_complexity}.pt"
+                torch.save(model.state_dict(), path)
+                print(f"  Model saved to {path}")
+    except KeyboardInterrupt:
+        interrupted = True
+        interrupt_path = (
+            f"sac_model_{config.model_tag}_n{config.n_variables}_C{config.max_complexity}_interrupt.pt"
+        )
+        torch.save(model.state_dict(), interrupt_path)
+        print(f"\nTraining interrupted. Model saved to {interrupt_path}")
+
+    if last_iteration == 0:
+        print("\n=== Training Summary ===")
+        print("No iterations completed.")
+        if interrupted:
+            print("Run status: interrupted")
+        return
+
+    print("\n=== Training Summary ===")
+    print(f"Total iterations: {last_iteration}")
+    print(f"Final complexity: {current_complexity}")
+    if best_success_rate >= 0:
+        print(f"Best SR: {best_success_rate:.1f}% (Iter {best_iteration})")
+    print(f"Final SR: {last_success_rate:.1f}%")
+    print(
+        "Final losses: "
+        f"Q {last_metrics.get('q_loss', 0.0):.4f}, "
+        f"Pi {last_metrics.get('policy_loss', 0.0):.4f}, "
+        f"CE {last_metrics.get('ce_loss', 0.0):.4f}"
+    )
+    print(f"Buffer size: {len(buffer)}")
+    if interrupted:
+        print("Run status: interrupted")
 
 
 if __name__ == "__main__":
