@@ -6,77 +6,45 @@
   },
   "summary": {
     "total_tests": 10,
-    "successes": 1,
-    "success_rate": 0.1,
-    "average_steps": 5.5
+    "successes": 0,
+    "success_rate": 0.0,
+    "average_steps": 6.0
   },
   "results": [
     {
       "test_id": 1,
-      "target_polynomial": "x1 + 2",
-      "success": false,
-      "steps": 6,
-      "final_polynomial": "x1 + x2",
-      "reference_circuit_length": 4
-    },
-    {
-      "test_id": 2,
-      "target_polynomial": "4*x1**3*x2",
+      "target_polynomial": "x1**2 + x2**2 + x2",
       "success": false,
       "steps": 6,
       "final_polynomial": "x0*x1",
       "reference_circuit_length": 6
     },
     {
-      "test_id": 3,
-      "target_polynomial": "x0**4*x1 + 2*x0**3*x1**2 + x0**2*x1**3",
+      "test_id": 2,
+      "target_polynomial": "x0**2 + x2",
       "success": false,
       "steps": 6,
-      "final_polynomial": "x0*x1",
-      "reference_circuit_length": 7
-    },
-    {
-      "test_id": 4,
-      "target_polynomial": "x0*x1",
-      "success": true,
-      "steps": 1,
-      "final_polynomial": "x0*x1",
-      "reference_circuit_length": 3
-    },
-    {
-      "test_id": 5,
-      "target_polynomial": "2*x1**2*x2 + 2*x1*x2**2 + 2*x1*x2",
-      "success": false,
-      "steps": 6,
-      "final_polynomial": "x0 + x2",
-      "reference_circuit_length": 8
-    },
-    {
-      "test_id": 6,
-      "target_polynomial": "2*x0 + 1",
-      "success": false,
-      "steps": 6,
-      "final_polynomial": "x0 + x1",
+      "final_polynomial": "x0*x2",
       "reference_circuit_length": 4
     },
     {
-      "test_id": 7,
-      "target_polynomial": "x0 + x2 + 1",
+      "test_id": 3,
+      "target_polynomial": "x0**2*x1",
       "success": false,
       "steps": 6,
-      "final_polynomial": "x0 + x2",
-      "reference_circuit_length": 5
+      "final_polynomial": "x0*x1",
+      "reference_circuit_length": 4
     },
     {
-      "test_id": 8,
-      "target_polynomial": "x0*x1 + x2",
+      "test_id": 4,
+      "target_polynomial": "x0 + 2*x1 + x2",
       "success": false,
       "steps": 6,
-      "final_polynomial": "x1*x2",
-      "reference_circuit_length": 5
+      "final_polynomial": "x0 + x1",
+      "reference_circuit_length": 6
     },
     {
-      "test_id": 9,
+      "test_id": 5,
       "target_polynomial": "x1*x2**2",
       "success": false,
       "steps": 6,
@@ -84,12 +52,44 @@
       "reference_circuit_length": 4
     },
     {
-      "test_id": 10,
-      "target_polynomial": "4*x1 + 2*x2",
+      "test_id": 6,
+      "target_polynomial": "2*x0**2 + x0*x2 + x0",
       "success": false,
       "steps": 6,
-      "final_polynomial": "x1 + x2",
+      "final_polynomial": "x0 + x2",
+      "reference_circuit_length": 6
+    },
+    {
+      "test_id": 7,
+      "target_polynomial": "2*x2",
+      "success": false,
+      "steps": 6,
+      "final_polynomial": "x0 + x2",
+      "reference_circuit_length": 2
+    },
+    {
+      "test_id": 8,
+      "target_polynomial": "x0**8*x2**2",
+      "success": false,
+      "steps": 6,
+      "final_polynomial": "x0*x1",
+      "reference_circuit_length": 7
+    },
+    {
+      "test_id": 9,
+      "target_polynomial": "2*x1 + 2*x2",
+      "success": false,
+      "steps": 6,
+      "final_polynomial": "x0 + x1",
       "reference_circuit_length": 5
+    },
+    {
+      "test_id": 10,
+      "target_polynomial": "x1 + 2*x2**2 + x2",
+      "success": false,
+      "steps": 6,
+      "final_polynomial": "x0*x1",
+      "reference_circuit_length": 6
     }
   ]
 }

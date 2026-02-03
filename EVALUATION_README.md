@@ -11,7 +11,7 @@ This script evaluates the trained PPO model (`ppo_model_n3_C6_curriculum.pt`) by
 ## Features
 
 ### What the Script Does
-1. Generates 10 unique random polynomial targets with complexity 6 and 3 variables
+1. Generates 10 unique random polynomial targets with complexity 6 and 3 variables    // from where?
 2. Creates reference circuits for each polynomial using the circuit generation algorithm
 3. Loads the trained PPO model from the specified checkpoint
 4. Evaluates the model on each polynomial:

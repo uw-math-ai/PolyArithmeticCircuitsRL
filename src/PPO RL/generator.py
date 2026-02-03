@@ -43,11 +43,11 @@ def generate_random_circuit(n: int, C: int, mod: int = 2):
         sympy_polynomials.append(expr)
         seen_polynomials.add(_canonical_key(expr, symbols))
 
-    # Add constant node (value 1)
-    actions.append(("constant", -1, -1))
-    expr = sympy.Integer(1)
-    sympy_polynomials.append(expr)
-    seen_polynomials.add(_canonical_key(expr, symbols))
+    # # Add constant node (value 1)
+    # actions.append(("constant", -1, -1))
+    # expr = sympy.Integer(1)
+    # sympy_polynomials.append(expr)
+    # seen_polynomials.add(_canonical_key(expr, symbols))
 
     # Add operations
     for _ in range(C):
