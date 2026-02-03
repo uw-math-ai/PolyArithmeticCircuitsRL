@@ -1,0 +1,10 @@
+{"epoch": 1, "loss": 0.6341940233892298, "val_loss": 0.06624285317245883, "val_equivalence": 0.0, "timestamp": 1770078136.4736469}
+{"epoch": 2, "loss": 0.06257132978681575, "val_loss": 0.012404817137354151, "val_equivalence": 0.0, "timestamp": 1770078586.194036}
+{"epoch": 3, "loss": 0.020317420866440006, "val_loss": 0.0033598058864234824, "val_equivalence": 0.0, "timestamp": 1770079033.0615866}
+{"epoch": 4, "loss": 0.012907343433502524, "val_loss": 0.0014309953545610242, "val_equivalence": 0.0, "timestamp": 1770079490.0468276}
+{"epoch": 5, "loss": 0.009042540271915894, "val_loss": 0.0006359368913335105, "val_equivalence": 0.0, "timestamp": 1770079938.2143333}
+{"epoch": 6, "loss": 0.006724167126791183, "val_loss": 0.0021278807167484726, "val_equivalence": 0.0, "timestamp": 1770079967.171914}
+{"epoch": 7, "loss": 0.006651502346338575, "val_loss": 0.00048464698945848247, "val_equivalence": 0.0, "timestamp": 1770080111.3590968}
+{"epoch": 8, "loss": 0.0061247152574223414, "val_loss": 0.000410380328265702, "val_equivalence": 0.0, "timestamp": 1770080334.62127}
+{"epoch": 9, "loss": 0.004672468300158018, "val_loss": 0.0008520606567399734, "val_equivalence": 0.0, "timestamp": 1770080410.4755328}
+{"epoch": 10, "loss": 0.004405697439747419, "val_loss": 0.0008895547573865232, "val_equivalence": 0.0, "timestamp": 1770080440.5919738}
