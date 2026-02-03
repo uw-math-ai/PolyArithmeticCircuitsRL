@@ -1,0 +1,30 @@
+nohup: ignoring input
+/home/ec2-user/miniconda/lib/python3.13/site-packages/torch/nn/modules/transformer.py:392: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.self_attn.batch_first was not True(use batch_first for better inference performance)
+  warnings.warn(
+Epoch 1/10 - loss: 0.6342
+  val loss: 0.0662 | val eq: 0.000
+Epoch 2/10 - loss: 0.0626
+  val loss: 0.0124 | val eq: 0.000
+Epoch 3/10 - loss: 0.0203
+  val loss: 0.0034 | val eq: 0.000
+Epoch 4/10 - loss: 0.0129
+  val loss: 0.0014 | val eq: 0.000
+Epoch 5/10 - loss: 0.0090
+  val loss: 0.0006 | val eq: 0.000
+Epoch 6/10 - loss: 0.0067
+  val loss: 0.0021 | val eq: 0.000
+Epoch 7/10 - loss: 0.0067
+  val loss: 0.0005 | val eq: 0.000
+Epoch 8/10 - loss: 0.0061
+  val loss: 0.0004 | val eq: 0.000
+Epoch 9/10 - loss: 0.0047
+  val loss: 0.0009 | val eq: 0.000
+Epoch 10/10 - loss: 0.0044
+  val loss: 0.0009 | val eq: 0.000
+Saved checkpoint to transformer_checkpoints/board_C4.pt
+Wrote plot to transformer_checkpoints/board_C4.training.png
+/home/ec2-user/miniconda/lib/python3.13/site-packages/torch/nn/modules/transformer.py:392: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.self_attn.batch_first was not True(use batch_first for better inference performance)
+  warnings.warn(
+Token-level cross-entropy: 0.000555
+Structural equivalence (val): 0/6648 = 0.000
+Structural equivalence (unseen): 0/200 = 0.000
