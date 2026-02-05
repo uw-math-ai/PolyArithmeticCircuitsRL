@@ -6,7 +6,8 @@ import sympy
 _symbols = None
 
 def get_symbols(n: int):
-    """Get a cached list of SymPy symbols x0, x1, ..."""
+    """Get a 
+    ached list of SymPy symbols x0, x1, ..."""
     global _symbols
     if _symbols is None or len(_symbols) < n:
         _symbols = sympy.symbols(f"x0:{n}")
