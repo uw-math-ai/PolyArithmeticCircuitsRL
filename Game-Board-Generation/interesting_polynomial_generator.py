@@ -38,7 +38,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import matplotlib.pyplot as plt
 import networkx as nx
-from sympy import expand, srepr, symbols
+from sympy import Integer, expand, srepr, symbols
 
 MAX_ALLOWED_STEPS = 5
 
@@ -67,6 +67,7 @@ def build_game_graph(
     num_vars: int = 1,
     max_nodes: Optional[int] = None,
     max_successors_per_node: Optional[int] = None,
+    include_constant: bool = True,
 ) -> nx.DiGraph:
     """
     Build the arithmetic game DAG up to `steps` expansions.
@@ -86,6 +87,8 @@ def build_game_graph(
         if num_vars == 1
         else list(symbols(f"x0:{num_vars}"))
     )
+    if include_constant:
+        start_exprs.append(Integer(1))
 
     start_nodes: list[str] = []
     for expr in start_exprs:
@@ -522,6 +525,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument("--num-vars", "-V", type=int, default=1, help="Number of variables to seed.")
     parser.add_argument(
+        "--no-constant",
+        action="store_true",
+        help="Disable seeding the constant 1 node.",
+    )
+    parser.add_argument(
         "--max-nodes",
         type=int,
         default=None,
@@ -605,6 +613,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         args.num_vars,
         max_nodes=args.max_nodes,
         max_successors_per_node=args.max_successors_per_node,
+        include_constant=not args.no_constant,
     )
     print(f"Built DAG: nodes={graph.number_of_nodes()}, edges={graph.number_of_edges()}")
 

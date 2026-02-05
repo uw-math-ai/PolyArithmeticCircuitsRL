@@ -24,6 +24,7 @@ try:
         CharTokenizer,
         Seq2SeqTransformer,
         build_dataset,
+        generate_square_subsequent_mask,
         greedy_decode,
         save_checkpoint,
     )
@@ -33,6 +34,7 @@ except ModuleNotFoundError:
         CharTokenizer,
         Seq2SeqTransformer,
         build_dataset,
+        generate_square_subsequent_mask,
         greedy_decode,
         save_checkpoint,
     )
@@ -127,6 +129,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--steps", type=int, default=None, help="Complexity steps for auto-generation")
     parser.add_argument("--num-vars", type=int, default=1, help="Number of variables for auto-generation")
     parser.add_argument(
+        "--no-constant",
+        action="store_true",
+        help="Disable seeding the constant 1 node when auto-generating a board",
+    )
+    parser.add_argument(
         "--board-out-dir",
         type=Path,
         default=Path("transformer/boards"),
@@ -144,6 +151,11 @@ def _parse_args() -> argparse.Namespace:
         help="Allow training without analysis JSONL",
     )
     parser.add_argument("--limit", type=int, default=None, help="Max number of examples")
+    parser.add_argument(
+        "--expand-circuit",
+        action="store_true",
+        help="Train on expanded polynomial targets instead of circuit expressions",
+    )
     parser.add_argument("--seed", type=int, default=7, help="RNG seed")
     parser.add_argument("--epochs", type=int, default=10, help="Training epochs")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
@@ -189,6 +201,7 @@ def main() -> None:
             only_multipath=not args.include_non_multipath,
             analysis_max_step=args.max_complexity,
             skip_plot=True,
+            include_constant=not args.no_constant,
         )
 
     if nodes_path is None or edges_path is None:
@@ -212,6 +225,7 @@ def main() -> None:
         analysis_path=analysis_path,
         max_complexity=args.max_complexity,
         only_multipath=only_multipath,
+        expand_circuit=args.expand_circuit,
     )
 
     random.seed(args.seed)
@@ -286,11 +300,13 @@ def main() -> None:
             tgt_out = tgt_out.to(device)
             src_mask = src_mask.to(device)
             tgt_mask = tgt_mask.to(device)
+            causal_mask = generate_square_subsequent_mask(tgt_in.size(0), device)
 
             optimizer.zero_grad(set_to_none=True)
             logits = model(
                 src,
                 tgt_in,
+                tgt_mask=causal_mask,
                 src_key_padding_mask=src_mask,
                 tgt_key_padding_mask=tgt_mask,
                 memory_key_padding_mask=src_mask,
@@ -327,10 +343,12 @@ def main() -> None:
                     tgt_out = tgt_out.to(device)
                     src_mask = src_mask.to(device)
                     tgt_mask = tgt_mask.to(device)
+                    causal_mask = generate_square_subsequent_mask(tgt_in.size(0), device)
 
                     logits = model(
                         src,
                         tgt_in,
+                        tgt_mask=causal_mask,
                         src_key_padding_mask=src_mask,
                         tgt_key_padding_mask=tgt_mask,
                         memory_key_padding_mask=src_mask,

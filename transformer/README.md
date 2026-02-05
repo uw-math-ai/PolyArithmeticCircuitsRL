@@ -11,6 +11,7 @@ At a high level:
 - **Outputs**: a circuit-style expression string that is algebraically equivalent and suitable
   for SymPy parsing
 - **Learning**: a Transformer is trained to map input strings to output strings
+Note: Game boards now seed the constant `1` by default, so polynomials with constants are supported.
 
 Key building blocks:
 - **Board generation**: `build_training_data.py` can generate JSONL boards.
@@ -61,6 +62,7 @@ Optional inputs:
 - `--metrics-out`: JSONL metrics output
 - `--plot-out`: training plot PNG
 - `--unseen-samples`, `--unseen-steps`, `--unseen-max-coeff`, `--unseen-seed`: unseen eval controls
+- `--no-constant`: disable seeding the constant `1` node
 
 ### Option B: Manual Steps
 #### 1) Generate a board (if you don’t already have one)
@@ -71,6 +73,8 @@ python -m transformer.build_training_data \
   --output-dir transformer/boards \
   --prefix game_board_C4_V1
 ```
+Optional:
+- `--no-constant`: disable seeding the constant `1` node
 Outputs:
 - `transformer/boards/game_board_C4_V1.nodes.jsonl`
 - `transformer/boards/game_board_C4_V1.edges.jsonl`
@@ -99,6 +103,7 @@ Optional inputs:
 - `--metrics-out`: JSONL metrics output
 - `--plot-out`: training plot PNG
 - `--device`: force `cpu` or `cuda`
+- `--no-constant`: disable seeding the constant `1` node when auto-generating a board
 
 #### 3) Evaluate
 ```
@@ -122,6 +127,7 @@ Optional inputs:
 - `--limit`: cap the number of evaluation examples
 - `--device`: force `cpu` or `cuda`
 - `--unseen-max-coeff`, `--unseen-seed`: unseen generation controls
+- `--no-constant`: disable seeding the constant `1` node when auto-generating a board
 
 #### 4) Inference
 ```

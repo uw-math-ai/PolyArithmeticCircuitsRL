@@ -32,6 +32,7 @@ def generate_board(
     only_multipath: bool = False,
     analysis_max_step: int | None = None,
     skip_plot: bool = False,
+    include_constant: bool = True,
 ) -> tuple[Path, Path, Path]:
     ipg = _load_generator_module()
 
@@ -43,6 +44,7 @@ def generate_board(
         num_vars=num_vars,
         max_nodes=max_nodes,
         max_successors_per_node=max_successors_per_node,
+        include_constant=include_constant,
     )
 
     ipg.save_graph_files(graph, base_path)
@@ -85,6 +87,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--max-samples", type=int, default=5, help="Max shortest-path samples per node")
     parser.add_argument("--only-multipath", action="store_true", help="Only emit multipath records")
     parser.add_argument(
+        "--no-constant",
+        action="store_true",
+        help="Disable seeding the constant 1 node.",
+    )
+    parser.add_argument(
         "--analysis-max-step",
         type=int,
         default=None,
@@ -107,6 +114,7 @@ def main() -> None:
         only_multipath=args.only_multipath,
         analysis_max_step=args.analysis_max_step,
         skip_plot=args.skip_plot,
+        include_constant=not args.no_constant,
     )
 
     print(f"Wrote {nodes_jsonl}")
