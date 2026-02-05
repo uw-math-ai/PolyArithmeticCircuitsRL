@@ -38,7 +38,7 @@ class EvaluationConfig(Config):
     def __init__(self):
         super().__init__()
         self.n_variables = 3
-        self.max_complexity = 6
+        self.max_complexity = 5 #was 6
 
 
 # def generate_target_polynomials(num_polynomials=10, n_variables=3, complexity=6):
@@ -205,11 +205,13 @@ def main():
         n=config.n_variables,
         C=config.max_complexity,
         mod=config.mod,
-        num_polynomials=10
+        num_polynomials=1000
     )
     
     # Load the trained model
-    model_path = Path("/home/ec2-user/DESKTOP/Naomi/PolyArithmeticCircuitsRL/ppo_model_n3_C6_curriculum.pt")
+    model_path = Path("/home/ec2-user/DESKTOP/Naomi/PolyArithmeticCircuitsRL/src/PPO RL/Trained Model/best_supervised_model_n3_C5.pt")
+        #/home/ec2-user/DESKTOP/Naomi/PolyArithmeticCircuitsRL/src/PPO RL/Trained Model/ppo_model_n3_C5_curriculum.pt")
+        #"/home/ec2-user/DESKTOP/Naomi/PolyArithmeticCircuitsRL/ppo_model_n3_C6_curriculum.pt")
     
     if not model_path.exists():
         print(f"Error: Model file not found at {model_path}")
