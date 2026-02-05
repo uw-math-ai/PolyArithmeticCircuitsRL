@@ -49,12 +49,14 @@ def load_game_board(
     Dict[str, List[Tuple[str, str, str]]],
     List[str],
     Dict[str, str],
+    Optional[str],
 ]:
     """Load nodes/edges and return data needed to reconstruct circuits."""
     node_exprs: Dict[str, sympy.Expr] = {}
     node_steps: Dict[str, int] = {}
     base_symbol_ids: List[str] = []
     node_expr_str: Dict[str, str] = {}
+    constant_node_id: Optional[str] = None
 
     with nodes_path.open("r", encoding="utf-8") as handle:
         for line in handle:
@@ -67,6 +69,8 @@ def load_game_board(
             node_expr_str[node_id] = expr_str
             if record.get("step", 0) == 0 and isinstance(expr, sympy.Symbol):
                 base_symbol_ids.append(node_id)
+            if record.get("step", 0) == 0 and isinstance(expr, sympy.Integer) and expr == 1:
+                constant_node_id = node_id
 
     operations: Dict[str, List[Tuple[str, str, str]]] = {}
     dedup = set()
@@ -89,7 +93,7 @@ def load_game_board(
             operations.setdefault(target, []).append((op, ordered[0], ordered[1]))
 
     base_symbol_ids = sorted(base_symbol_ids)
-    return node_exprs, node_steps, operations, base_symbol_ids, node_expr_str
+    return node_exprs, node_steps, operations, base_symbol_ids, node_expr_str, constant_node_id
 
 
 def resolve_node_id(
@@ -122,6 +126,7 @@ def build_actions_for_target(
     node_steps: Dict[str, int],
     base_symbol_ids: Sequence[str],
     include_constant: bool = False,
+    constant_node_id: Optional[str] = None,
 ) -> Tuple[List[Tuple[str, int, int]], List[str]]:
     """Reconstruct a circuit (actions list) for a target node id."""
     actions: List[Tuple[str, int, int]] = []
@@ -133,10 +138,10 @@ def build_actions_for_target(
         node_to_idx[node_id] = input_idx
         variable_names.append(node_id)
 
-    if include_constant:
+    if include_constant and constant_node_id is not None:
         constant_idx = len(actions)
         actions.append(("constant", -1, -1))
-        node_to_idx["CONST_1"] = constant_idx
+        node_to_idx[constant_node_id] = constant_idx
 
     visiting = set()
 
@@ -187,6 +192,7 @@ def build_actions_for_target(
 def actions_to_sympy_string(
     actions: Sequence[Tuple[str, int, int]],
     base_exprs: Sequence[sympy.Expr],
+    expand_circuit: bool = False,
 ) -> str:
     """Render the final circuit output as a SymPy expression string."""
     if not actions:
@@ -201,13 +207,14 @@ def actions_to_sympy_string(
         elif op == "constant":
             nodes.append(sympy.Integer(1))
         elif op == "add":
-            nodes.append(sympy.expand(nodes[in1] + nodes[in2]))
+            nodes.append(nodes[in1] + nodes[in2])
         elif op == "mul":
-            nodes.append(sympy.expand(nodes[in1] * nodes[in2]))
+            nodes.append(nodes[in1] * nodes[in2])
         else:
             raise ValueError(f"Unknown op: {op}")
 
-    return _format_sympy_string(sympy.expand(nodes[-1]))
+    expr = sympy.expand(nodes[-1]) if expand_circuit else nodes[-1]
+    return _format_sympy_string(expr)
 
 
 # ---------------------------
@@ -226,11 +233,18 @@ def build_dataset(
     analysis_path: Optional[Path] = None,
     max_complexity: Optional[int] = None,
     only_multipath: bool = False,
+    expand_circuit: bool = False,
+    include_constant: bool = True,
 ) -> List[CircuitExample]:
     """Build polynomial->circuit pairs from game-board dumps."""
-    node_exprs, node_steps, operations, base_symbol_ids, node_expr_str = load_game_board(
-        nodes_path, edges_path
-    )
+    (
+        node_exprs,
+        node_steps,
+        operations,
+        base_symbol_ids,
+        node_expr_str,
+        constant_node_id,
+    ) = load_game_board(nodes_path, edges_path)
 
     targets: List[Tuple[str, int]] = []
     if analysis_path and analysis_path.exists():
@@ -258,12 +272,17 @@ def build_dataset(
             continue
         try:
             actions, _ = build_actions_for_target(
-                node_id, operations, node_steps, base_symbol_ids
+                node_id,
+                operations,
+                node_steps,
+                base_symbol_ids,
+                include_constant=include_constant,
+                constant_node_id=constant_node_id,
             )
         except (KeyError, RuntimeError):
             continue
         base_exprs = [node_exprs[node_id] for node_id in base_symbol_ids]
-        circuit_str = actions_to_sympy_string(actions, base_exprs)
+        circuit_str = actions_to_sympy_string(actions, base_exprs, expand_circuit=expand_circuit)
         poly_str = node_expr_str.get(node_id) or str(node_exprs[node_id])
         poly_str = poly_str.replace("**", "^")
         examples.append(CircuitExample(polynomial=poly_str, circuit=circuit_str))
@@ -365,6 +384,7 @@ class Seq2SeqTransformer(nn.Module):
         self,
         src: torch.Tensor,
         tgt: torch.Tensor,
+        tgt_mask: Optional[torch.Tensor] = None,
         src_key_padding_mask: Optional[torch.Tensor] = None,
         tgt_key_padding_mask: Optional[torch.Tensor] = None,
         memory_key_padding_mask: Optional[torch.Tensor] = None,
@@ -374,6 +394,7 @@ class Seq2SeqTransformer(nn.Module):
         output = self.transformer(
             src_emb,
             tgt_emb,
+            tgt_mask=tgt_mask,
             src_key_padding_mask=src_key_padding_mask,
             tgt_key_padding_mask=tgt_key_padding_mask,
             memory_key_padding_mask=memory_key_padding_mask,
@@ -387,12 +408,14 @@ class Seq2SeqTransformer(nn.Module):
         self,
         tgt: torch.Tensor,
         memory: torch.Tensor,
+        tgt_mask: Optional[torch.Tensor] = None,
         tgt_key_padding_mask: Optional[torch.Tensor] = None,
         memory_key_padding_mask: Optional[torch.Tensor] = None,
     ):
         return self.transformer.decoder(
             self.pos_decoder(self.tgt_embed(tgt)),
             memory,
+            tgt_mask=tgt_mask,
             tgt_key_padding_mask=tgt_key_padding_mask,
             memory_key_padding_mask=memory_key_padding_mask,
         )
@@ -455,7 +478,8 @@ def greedy_decode(
     memory = model.encode(src)
     ys = torch.tensor([[bos_id]], device=device)
     for _ in range(max_len):
-        out = model.decode(ys, memory)
+        tgt_mask = generate_square_subsequent_mask(ys.size(0), device)
+        out = model.decode(ys, memory, tgt_mask=tgt_mask)
         logits = model.generator(out[-1])
         next_id = int(torch.argmax(logits, dim=-1).item())
         ys = torch.cat([ys, torch.tensor([[next_id]], device=device)], dim=0)
@@ -465,6 +489,10 @@ def greedy_decode(
     return tokenizer.decode(ys.squeeze(1).tolist())
 
 
+def generate_square_subsequent_mask(size: int, device: torch.device) -> torch.Tensor:
+    return torch.triu(torch.full((size, size), float("-inf"), device=device), diagonal=1)
+
+
 def translate_polynomial(
     poly_str: str,
     nodes_path: Path,
@@ -472,10 +500,17 @@ def translate_polynomial(
     analysis_path: Optional[Path] = None,
     checkpoint: Optional[Path] = None,
     max_len: int = 256,
+    expand_circuit: bool = False,
+    include_constant: bool = True,
 ) -> str:
-    node_exprs, node_steps, operations, base_symbol_ids, node_expr_str = load_game_board(
-        nodes_path, edges_path
-    )
+    (
+        node_exprs,
+        node_steps,
+        operations,
+        base_symbol_ids,
+        node_expr_str,
+        constant_node_id,
+    ) = load_game_board(nodes_path, edges_path)
 
     if checkpoint is not None and checkpoint.exists():
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -487,10 +522,15 @@ def translate_polynomial(
 
     target_id = resolve_node_id(poly_str, node_exprs, node_expr_str)
     actions, variable_names = build_actions_for_target(
-        target_id, operations, node_steps, base_symbol_ids
+        target_id,
+        operations,
+        node_steps,
+        base_symbol_ids,
+        include_constant=include_constant,
+        constant_node_id=constant_node_id,
     )
     base_exprs = [node_exprs[node_id] for node_id in base_symbol_ids]
-    return actions_to_sympy_string(actions, base_exprs)
+    return actions_to_sympy_string(actions, base_exprs, expand_circuit=expand_circuit)
 
 
 # ---------------------------
@@ -505,6 +545,16 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--analysis", type=Path, default=None, help="Analysis JSONL path")
     parser.add_argument("--checkpoint", type=Path, default=None, help="Transformer checkpoint")
     parser.add_argument("--max-len", type=int, default=256, help="Max decode length")
+    parser.add_argument(
+        "--expand-circuit",
+        action="store_true",
+        help="Expand circuit output to a flat polynomial",
+    )
+    parser.add_argument(
+        "--no-constant",
+        action="store_true",
+        help="Disable seeding the constant 1 node (for legacy boards)",
+    )
     return parser.parse_args()
 
 
@@ -517,6 +567,8 @@ def main() -> None:
         analysis_path=args.analysis,
         checkpoint=args.checkpoint,
         max_len=args.max_len,
+        expand_circuit=args.expand_circuit,
+        include_constant=not args.no_constant,
     )
     print(circuit)
 

@@ -21,6 +21,7 @@ try:
         CharTokenizer,
         Seq2SeqTransformer,
         build_dataset,
+        generate_square_subsequent_mask,
         load_checkpoint,
         greedy_decode,
     )
@@ -30,6 +31,7 @@ except ModuleNotFoundError:
         CharTokenizer,
         Seq2SeqTransformer,
         build_dataset,
+        generate_square_subsequent_mask,
         load_checkpoint,
         greedy_decode,
     )
@@ -85,6 +87,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--steps", type=int, default=None, help="Complexity steps for auto-generation")
     parser.add_argument("--num-vars", type=int, default=1, help="Number of variables for auto-generation")
     parser.add_argument(
+        "--no-constant",
+        action="store_true",
+        help="Disable seeding the constant 1 node when auto-generating a board",
+    )
+    parser.add_argument(
         "--board-out-dir",
         type=Path,
         default=Path("transformer/boards"),
@@ -94,6 +101,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--include-non-multipath", action="store_true")
     parser.add_argument("--allow-all", action="store_true")
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument(
+        "--expand-circuit",
+        action="store_true",
+        help="Evaluate against expanded polynomial targets instead of circuit expressions",
+    )
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--device", type=str, default=None)
@@ -184,6 +196,7 @@ def main() -> None:
             only_multipath=not args.include_non_multipath,
             analysis_max_step=args.max_complexity,
             skip_plot=True,
+            include_constant=not args.no_constant,
         )
 
     if nodes_path is None or edges_path is None:
@@ -202,6 +215,7 @@ def main() -> None:
         analysis_path=analysis_path,
         max_complexity=args.max_complexity,
         only_multipath=only_multipath,
+        expand_circuit=args.expand_circuit,
     )
     if args.limit is not None:
         examples = examples[: args.limit]
@@ -238,10 +252,12 @@ def main() -> None:
             tgt_out = tgt_out.to(device)
             src_mask = src_mask.to(device)
             tgt_mask = tgt_mask.to(device)
+            causal_mask = generate_square_subsequent_mask(tgt_in.size(0), device)
 
             logits = model(
                 src,
                 tgt_in,
+                tgt_mask=causal_mask,
                 src_key_padding_mask=src_mask,
                 tgt_key_padding_mask=tgt_mask,
                 memory_key_padding_mask=src_mask,

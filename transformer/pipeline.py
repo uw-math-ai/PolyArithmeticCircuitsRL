@@ -20,6 +20,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--steps", type=int, required=True, help="Board complexity C")
     parser.add_argument("--num-vars", type=int, choices=[1, 2], default=1, help="Number of variables")
     parser.add_argument(
+        "--no-constant",
+        action="store_true",
+        help="Disable seeding the constant 1 node",
+    )
+    parser.add_argument(
         "--board-out-dir",
         type=Path,
         default=Path("transformer/boards"),
@@ -65,6 +70,7 @@ def main() -> None:
         only_multipath=not args.include_non_multipath,
         analysis_max_step=args.max_complexity,
         skip_plot=True,
+        include_constant=not args.no_constant,
     )
 
     train_cmd = [
@@ -90,6 +96,8 @@ def main() -> None:
         train_cmd.append("--include-non-multipath")
     if args.limit is not None:
         train_cmd += ["--limit", str(args.limit)]
+    if args.no_constant:
+        train_cmd.append("--no-constant")
     if args.device:
         train_cmd += ["--device", args.device]
     if args.metrics_out:
@@ -130,6 +138,8 @@ def main() -> None:
         eval_cmd.append("--include-non-multipath")
     if args.limit is not None:
         eval_cmd += ["--limit", str(args.limit)]
+    if args.no_constant:
+        eval_cmd.append("--no-constant")
 
     _run(eval_cmd)
 
