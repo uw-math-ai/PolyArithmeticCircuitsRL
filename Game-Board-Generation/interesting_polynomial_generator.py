@@ -36,7 +36,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
-import matplotlib.pyplot as plt
 import networkx as nx
 from sympy import Integer, expand, srepr, symbols
 
@@ -230,6 +229,12 @@ def plot_graph(
     with_arrows: bool = False,
 ) -> None:
     """Render a layered layout of the DAG."""
+    try:
+        import matplotlib.pyplot as plt
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "matplotlib is required for plotting. Install it or run with plot disabled."
+        ) from exc
     for _, data in G.nodes(data=True):
         data.setdefault("step", 0)
 
