@@ -14,6 +14,11 @@ def generate_random_x_circuit(C: int):
     actions: list[tuple[str, int | None, int | None]] = []
     states: list[sympy.Expr] = [x] #store unique states
 
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
     # Add operations
     for i in range(C):
         if len(states) == 0: continue

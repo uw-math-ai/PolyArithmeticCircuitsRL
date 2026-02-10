@@ -38,6 +38,7 @@ class EvaluationConfig(Config):
     def __init__(self):
         super().__init__()
         self.n_variables = 3
+<<<<<<< HEAD
         self.max_complexity = 6
 
 
@@ -56,6 +57,77 @@ def generate_target_polynomials(num_polynomials=10, n_variables=3, complexity=6)
     while len(polynomials) < num_polynomials and attempts < max_attempts:
         attempts += 1
         actions, polys = generate_random_circuit(n_variables, complexity, mod=50)
+=======
+        self.max_complexity = 5 #was 6
+
+
+# def generate_target_polynomials(num_polynomials=10, n_variables=3, complexity=6):
+#     """Generate random target polynomials to test on."""
+#     polynomials = []
+#     circuits = []
+#     symbols = get_symbols(n_variables)
+#     seen_keys = set()
+#     
+#     attempts = 0
+#     max_attempts = num_polynomials * 20
+#     
+#     print(f"Generating {num_polynomials} random target polynomials...")
+#     
+#     while len(polynomials) < num_polynomials and attempts < max_attempts:
+#         attempts += 1
+#         actions, polys = generate_random_circuit(n_variables, complexity, mod=50)
+#         
+#         if not polys:
+#             continue
+#         
+#         final_poly = polys[-1]
+#         
+#         # Create canonical key to avoid duplicates
+#         expanded = sympy.expand(final_poly)
+#         try:
+#             poly_obj = sympy.Poly(expanded, symbols, domain='QQ')
+#             key = sympy.srepr(poly_obj.as_expr())
+#         except:
+#             continue
+#         
+#         if key not in seen_keys:
+#             polynomials.append(final_poly)
+#             circuits.append(actions)
+#             seen_keys.add(key)
+#     
+#     print(f"Generated {len(polynomials)} unique polynomials after {attempts} attempts\n")
+#     return polynomials, circuits
+
+
+def generate_target_polynomials(n: int, C: int, mod: int = 2, num_polynomials: int = 10):
+    """
+    Generate target polynomials using generate_random_circuit.
+    
+    Args:
+        n: Number of variables
+        C: Complexity level
+        mod: Modulo value for coefficients
+        num_polynomials: Number of unique polynomials to generate
+    
+    Returns:
+        polynomials: List of target polynomial expressions
+        circuits: List of corresponding circuit actions
+    """
+    polynomials = []
+    circuits = []
+    seen_keys = set()
+    
+    print(f"Generating {num_polynomials} random target polynomials with n={n}, C={C}, mod={mod}...")
+    
+    attempts = 0
+    max_attempts = num_polynomials * 50  # Allow many attempts to find unique polynomials
+    symbols = get_symbols(n)
+    
+    while len(polynomials) < num_polynomials and attempts < max_attempts:
+        attempts += 1
+        
+        actions, polys = generate_random_circuit(n, C, mod=mod)
+>>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
         
         if not polys:
             continue
@@ -63,8 +135,13 @@ def generate_target_polynomials(num_polynomials=10, n_variables=3, complexity=6)
         final_poly = polys[-1]
         
         # Create canonical key to avoid duplicates
+<<<<<<< HEAD
         expanded = sympy.expand(final_poly)
         try:
+=======
+        try:
+            expanded = sympy.expand(final_poly)
+>>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
             poly_obj = sympy.Poly(expanded, symbols, domain='QQ')
             key = sympy.srepr(poly_obj.as_expr())
         except:
@@ -75,7 +152,11 @@ def generate_target_polynomials(num_polynomials=10, n_variables=3, complexity=6)
             circuits.append(actions)
             seen_keys.add(key)
     
+<<<<<<< HEAD
     print(f"Generated {len(polynomials)} unique polynomials after {attempts} attempts\n")
+=======
+    print(f"Generated {len(polynomials)} unique polynomial(s) after {attempts} attempts\n")
+>>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
     return polynomials, circuits
 
 
@@ -151,6 +232,7 @@ def main():
     
     # Generate target polynomials
     target_polynomials, reference_circuits = generate_target_polynomials(
+<<<<<<< HEAD
         num_polynomials=10,
         n_variables=config.n_variables,
         complexity=config.max_complexity
@@ -158,6 +240,18 @@ def main():
     
     # Load the trained model
     model_path = Path("/home/ec2-user/DESKTOP/Naomi/PolyArithmeticCircuitsRL/ppo_model_n3_C6_curriculum.pt")
+=======
+        n=config.n_variables,
+        C=config.max_complexity,
+        mod=config.mod,
+        num_polynomials=1000
+    )
+    
+    # Load the trained model
+    model_path = Path("/home/ec2-user/DESKTOP/Naomi/PolyArithmeticCircuitsRL/src/PPO RL/Trained Model/best_supervised_model_n3_C5.pt")
+        #/home/ec2-user/DESKTOP/Naomi/PolyArithmeticCircuitsRL/src/PPO RL/Trained Model/ppo_model_n3_C5_curriculum.pt")
+        #"/home/ec2-user/DESKTOP/Naomi/PolyArithmeticCircuitsRL/ppo_model_n3_C6_curriculum.pt")
+>>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
     
     if not model_path.exists():
         print(f"Error: Model file not found at {model_path}")

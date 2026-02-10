@@ -6,7 +6,12 @@ import sympy
 _symbols = None
 
 def get_symbols(n: int):
+<<<<<<< HEAD
     """Get a cached list of SymPy symbols x0, x1, ..."""
+=======
+    """Get a 
+    ached list of SymPy symbols x0, x1, ..."""
+>>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
     global _symbols
     if _symbols is None or len(_symbols) < n:
         _symbols = sympy.symbols(f"x0:{n}")
@@ -43,11 +48,19 @@ def generate_random_circuit(n: int, C: int, mod: int = 2):
         sympy_polynomials.append(expr)
         seen_polynomials.add(_canonical_key(expr, symbols))
 
+<<<<<<< HEAD
     # Add constant node (value 1)
     actions.append(("constant", -1, -1))
     expr = sympy.Integer(1)
     sympy_polynomials.append(expr)
     seen_polynomials.add(_canonical_key(expr, symbols))
+=======
+    # # Add constant node (value 1)
+    # actions.append(("constant", -1, -1))
+    # expr = sympy.Integer(1)
+    # sympy_polynomials.append(expr)
+    # seen_polynomials.add(_canonical_key(expr, symbols))
+>>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
 
     # Add operations
     for _ in range(C):
