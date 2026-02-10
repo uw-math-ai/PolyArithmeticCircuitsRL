@@ -109,10 +109,30 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument(
+        "--unseen-only",
+        action="store_true",
+        help="Skip dataset loss/val evaluation and only run unseen accuracy.",
+    )
+    parser.add_argument(
+        "--skip-loss",
+        action="store_true",
+        help="Skip token-level cross-entropy over the dataset (faster).",
+    )
+    parser.add_argument(
+        "--skip-val-decode",
+        action="store_true",
+        help="Skip greedy decoding over validation set (faster).",
+    )
+    parser.add_argument(
+        "--val-limit",
+        type=int,
+        default=None,
+        help="Cap number of validation samples decoded (after any --limit).",
+    )
     parser.add_argument("--unseen-samples", type=int, default=0, help="Number of unseen polynomials to test")
     parser.add_argument("--unseen-steps", type=int, default=None, help="Random poly steps for unseen eval")
     parser.add_argument(
-<<<<<<< HEAD
         "--episodes",
         type=int,
         default=None,
@@ -125,8 +145,6 @@ def _parse_args() -> argparse.Namespace:
         help="Alias for unseen polynomial generation steps (PPO-style naming).",
     )
     parser.add_argument(
-=======
->>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
         "--unseen-max-coeff",
         type=int,
         default=5,
@@ -214,26 +232,28 @@ def main() -> None:
             include_constant=not args.no_constant,
         )
 
-    if nodes_path is None or edges_path is None:
+    if not args.unseen_only and (nodes_path is None or edges_path is None):
         raise SystemExit("Must provide --nodes and --edges or --board-dir with --prefix")
 
-    if analysis_path is None and not args.allow_all:
+    if not args.unseen_only and analysis_path is None and not args.allow_all:
         raise SystemExit("Analysis JSONL missing. Provide --analysis or use --allow-all.")
 
     only_multipath = not args.include_non_multipath
     if analysis_path is None:
         only_multipath = False
 
-    examples = build_dataset(
-        nodes_path=nodes_path,
-        edges_path=edges_path,
-        analysis_path=analysis_path,
-        max_complexity=args.max_complexity,
-        only_multipath=only_multipath,
-        expand_circuit=args.expand_circuit,
-    )
-    if args.limit is not None:
-        examples = examples[: args.limit]
+    examples = []
+    if not args.unseen_only:
+        examples = build_dataset(
+            nodes_path=nodes_path,
+            edges_path=edges_path,
+            analysis_path=analysis_path,
+            max_complexity=args.max_complexity,
+            only_multipath=only_multipath,
+            expand_circuit=args.expand_circuit,
+        )
+        if args.limit is not None:
+            examples = examples[: args.limit]
 
     if args.device:
         device = torch.device(args.device)
@@ -241,88 +261,98 @@ def main() -> None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model, tokenizer = load_checkpoint(args.checkpoint, device)
-    dataset = PolyCircuitDataset(examples, tokenizer)
+    dataset = None
+    loader = None
     pad_id = tokenizer.vocab["<pad>"]
-    loader = DataLoader(
-        dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        collate_fn=lambda batch: _collate(batch, pad_id),
-    )
+    if not args.unseen_only:
+        dataset = PolyCircuitDataset(examples, tokenizer)
+        loader = DataLoader(
+            dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            collate_fn=lambda batch: _collate(batch, pad_id),
+        )
 
-    loss_fn = nn.CrossEntropyLoss(ignore_index=pad_id)
-    model.eval()
-    total_loss = 0.0
-    total_tokens = 0
+        if args.skip_loss:
+            print("Token-level cross-entropy skipped (--skip-loss).")
+        else:
+            loss_fn = nn.CrossEntropyLoss(ignore_index=pad_id)
+            model.eval()
+            total_loss = 0.0
+            total_tokens = 0
 
-    with torch.no_grad():
-        for src, tgt_in, tgt_out, src_mask, tgt_mask in _progress(
-            loader,
-            desc="Eval loss",
-            unit="batch",
-            leave=False,
-        ):
-            src = src.to(device)
-            tgt_in = tgt_in.to(device)
-            tgt_out = tgt_out.to(device)
-            src_mask = src_mask.to(device)
-            tgt_mask = tgt_mask.to(device)
-            causal_mask = generate_square_subsequent_mask(tgt_in.size(0), device)
+            with torch.no_grad():
+                for src, tgt_in, tgt_out, src_mask, tgt_mask in _progress(
+                    loader,
+                    desc="Eval loss",
+                    unit="batch",
+                    leave=False,
+                ):
+                    src = src.to(device)
+                    tgt_in = tgt_in.to(device)
+                    tgt_out = tgt_out.to(device)
+                    src_mask = src_mask.to(device)
+                    tgt_mask = tgt_mask.to(device)
+                    causal_mask = generate_square_subsequent_mask(tgt_in.size(0), device)
 
-            logits = model(
-                src,
-                tgt_in,
-                tgt_mask=causal_mask,
-                src_key_padding_mask=src_mask,
-                tgt_key_padding_mask=tgt_mask,
-                memory_key_padding_mask=src_mask,
+                    logits = model(
+                        src,
+                        tgt_in,
+                        tgt_mask=causal_mask,
+                        src_key_padding_mask=src_mask,
+                        tgt_key_padding_mask=tgt_mask,
+                        memory_key_padding_mask=src_mask,
+                    )
+                    loss = loss_fn(logits.view(-1, logits.size(-1)), tgt_out.reshape(-1))
+                    tokens = (tgt_out != pad_id).sum().item()
+                    total_loss += float(loss.item()) * tokens
+                    total_tokens += tokens
+
+            avg_loss = total_loss / max(total_tokens, 1)
+            print(f"Token-level cross-entropy: {avg_loss:.6f}")
+
+    if args.unseen_only:
+        pass
+    elif args.skip_val_decode:
+        print("Val decode skipped (--skip-val-decode).")
+    else:
+        exact_eq = 0
+        decoded_total = 0
+        val_limit = args.val_limit if args.val_limit is not None else len(dataset)
+        with torch.no_grad():
+            pbar = _progress(
+                total=min(len(dataset), val_limit),
+                desc="Eval decode",
+                unit="sample",
+                leave=False,
             )
-            loss = loss_fn(logits.view(-1, logits.size(-1)), tgt_out.reshape(-1))
-            tokens = (tgt_out != pad_id).sum().item()
-            total_loss += float(loss.item()) * tokens
-            total_tokens += tokens
-
-    avg_loss = total_loss / max(total_tokens, 1)
-    print(f"Token-level cross-entropy: {avg_loss:.6f}")
-
-    exact_eq = 0
-    decoded_total = 0
-    with torch.no_grad():
-        pbar = _progress(
-            total=len(dataset),
-            desc="Eval decode",
-            unit="sample",
-            leave=False,
-        )
-        for src, _, tgt_out, _, _ in loader:
-            src = src.to(device)
-            batch_size = src.size(1)
-            for i in range(batch_size):
-                decoded = greedy_decode(model, src[:, i : i + 1], tokenizer)
-                target = tokenizer.decode(tgt_out[:, i].tolist())
-                if _equivalent(decoded, target):
-                    exact_eq += 1
-                decoded_total += 1
-                pbar.update(1)
-        pbar.close()
-    if decoded_total:
-<<<<<<< HEAD
-        val_success_pct = 100.0 * exact_eq / decoded_total
-        print(
-            f"Structural equivalence (val): {exact_eq}/{decoded_total} = {exact_eq / decoded_total:.3f}"
-        )
-        print(
-            f"Val success %: {val_success_pct:.2f}% "
-            f"(episodes={decoded_total}, steps/episode=N/A)"
-        )
+            for src, _, tgt_out, _, _ in loader:
+                src = src.to(device)
+                batch_size = src.size(1)
+                for i in range(batch_size):
+                    decoded = greedy_decode(model, src[:, i : i + 1], tokenizer)
+                    target = tokenizer.decode(tgt_out[:, i].tolist())
+                    if _equivalent(decoded, target):
+                        exact_eq += 1
+                    decoded_total += 1
+                    pbar.update(1)
+                    if decoded_total >= val_limit:
+                        break
+                if decoded_total >= val_limit:
+                    break
+            pbar.close()
+        if decoded_total:
+            val_success_pct = 100.0 * exact_eq / decoded_total
+            print(
+                f"Structural equivalence (val): {exact_eq}/{decoded_total} = {exact_eq / decoded_total:.3f}"
+            )
+            print(
+                f"Val success %: {val_success_pct:.2f}% "
+                f"(episodes={decoded_total}, steps/episode=N/A)"
+            )
 
     unseen_eval_episodes = args.episodes if args.episodes is not None else args.unseen_samples
     if unseen_eval_episodes > 0:
-=======
-        print(f"Structural equivalence (val): {exact_eq}/{decoded_total} = {exact_eq / decoded_total:.3f}")
-
-    if args.unseen_samples > 0:
->>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
         rng = random.Random(args.unseen_seed)
         board_keys = set()
         if nodes_path is not None and nodes_path.exists():
@@ -340,7 +370,6 @@ def main() -> None:
                         canon = sympy.srepr(sympy.expand(parsed))
                         board_keys.add(canon)
 
-<<<<<<< HEAD
         unseen_steps = (
             args.steps_per_episode
             if args.steps_per_episode is not None
@@ -350,22 +379,11 @@ def main() -> None:
         attempted = 0
         pbar = _progress(
             total=unseen_eval_episodes,
-=======
-        unseen_steps = args.unseen_steps or args.max_complexity or 3
-        unseen_hits = 0
-        attempted = 0
-        pbar = _progress(
-            total=args.unseen_samples,
->>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
             desc="Unseen",
             unit="sample",
             leave=False,
         )
-<<<<<<< HEAD
         while attempted < unseen_eval_episodes:
-=======
-        while attempted < args.unseen_samples:
->>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
             poly = _random_polynomial(args.num_vars, unseen_steps, args.unseen_max_coeff, rng)
             expr = _sympify(poly)
             if expr is None:
@@ -383,19 +401,16 @@ def main() -> None:
             pbar.update(1)
         pbar.close()
 
+        unseen_accuracy = unseen_hits / max(unseen_eval_episodes, 1)
         print(
-<<<<<<< HEAD
             f"Structural equivalence (unseen): {unseen_hits}/{unseen_eval_episodes} "
-            f"= {unseen_hits / max(unseen_eval_episodes, 1):.3f}"
+            f"= {unseen_accuracy:.3f}"
         )
         print(
-            f"Unseen success %: {100.0 * unseen_hits / max(unseen_eval_episodes, 1):.2f}% "
+            f"Unseen success %: {100.0 * unseen_accuracy:.2f}% "
             f"(episodes={unseen_eval_episodes}, steps/episode={unseen_steps})"
-=======
-            f"Structural equivalence (unseen): {unseen_hits}/{args.unseen_samples} "
-            f"= {unseen_hits / max(args.unseen_samples, 1):.3f}"
->>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
         )
+        print(f"Accuracy (unseen): {100.0 * unseen_accuracy:.2f}%")
 
 
 if __name__ == "__main__":
