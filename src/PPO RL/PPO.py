@@ -43,8 +43,11 @@ class Config:
 
     def __init__(self):
         # --- Simplified Settings (Adjust as needed) ---
-        self.n_variables = 3
-        self.max_complexity = 6  # Max operations allowed
+        self.n_variables = 2
+        self.max_complexity = 5  # Target complexity level (C5)
+        self.max_steps_per_episode = 10  # Hard step cap per episode
+        self.episodes_per_batch = 50  # Episodes to collect per PPO iteration
+        self.action_budget = max(self.max_complexity, self.max_steps_per_episode)
         self.max_degree = self.max_complexity * 2 # Max degree of polynomials
         self.hidden_dim = 256
         self.embedding_dim = 256
@@ -65,7 +68,7 @@ class Config:
 
         # --- PPO Hyperparameters ---
         self.rl_learning_rate = 1e-5
-        self.ppo_iterations = 2000
+        self.ppo_iterations = 1
         self.steps_per_batch = 4096
         self.ppo_epochs = 10
         self.ppo_minibatch_size = 128
@@ -78,6 +81,7 @@ class Config:
         self.action_temperature = 1.0
         self.step_penalty = -1.0
         self.success_reward = 100.0
+        self.force_ppo_run = True
 
         # --- MCTS guidance (optional) ---
         self.use_mcts = True
@@ -89,7 +93,7 @@ class Config:
         self.complexity_threshold = 0.6
         self.complexity_window = 200
         self.compact_size = CompactOneHotGraphEncoder(
-            N=self.max_complexity,
+            N=self.action_budget,
             P=self.mod,
             D=self.n_variables,
         ).size
@@ -97,7 +101,7 @@ class Config:
         # --- Interesting polynomial data ---
 
         # CHANGE THE PREFIX HERE TO THE COMPLEXITY LEVEL
-        self.use_interesting_polynomials = True
+        self.use_interesting_polynomials = False
         self.interesting_data_dir = PROJECT_ROOT / "Game-Board-Generation" / "pre-training-data"
         self.interesting_prefix = "game_board_C1"
         #CHANGE THE LINE BELOW TOO TO THE PROPER COMPLEXITY LEVEL FOR ANALYSIS
@@ -110,7 +114,7 @@ config = Config()
 def build_compact_encoder(config: Config) -> CompactOneHotGraphEncoder:
     """Helper to instantiate a fresh compact encoder for this config."""
     return CompactOneHotGraphEncoder(
-        N=config.max_complexity,
+        N=config.action_budget,
         P=config.mod,
         D=config.n_variables,
     )
@@ -376,7 +380,7 @@ class CircuitBuilder(nn.Module):
         self.transformer_decoder = nn.TransformerDecoder(
             decoder_layer, config.num_transformer_layers
         )
-        max_nodes = config.n_variables + config.max_complexity + 1
+        max_nodes = config.n_variables + config.action_budget + 1
         max_actions = (max_nodes * (max_nodes + 1) // 2) * 2
         self.action_head = nn.Linear(config.embedding_dim, max_actions)
         self.value_head = nn.Linear(config.embedding_dim, 1)
@@ -532,7 +536,7 @@ class CircuitDataset(Dataset):
     ):
         actions_list = list(actions)
         n_base = self.config.n_variables + 1
-        max_nodes = self.config.n_variables + self.config.max_complexity + 1
+        max_nodes = self.config.n_variables + self.config.action_budget + 1
 
         for i in range(n_base, len(actions_list)):
             current_actions = actions_list[:i]
@@ -738,6 +742,11 @@ def train_ppo(model, config):
     planner = MCTSPlanner(config) if getattr(config, "use_mcts", False) else None
     current_complexity = 1
     recent_successes = []
+    print(
+        f"PPO run config: episodes={config.episodes_per_batch}, "
+        f"steps/episode={config.max_steps_per_episode}, complexity={config.max_complexity}, "
+        f"variables={config.n_variables}"
+    )
 
     for ppo_iter in range(config.ppo_iterations):
         model.eval()
@@ -746,13 +755,24 @@ def train_ppo(model, config):
         collected_steps, games_played, success_count = 0, 0, 0
         circuit_examples = []
         iteration_successes = []
+        episode_lengths = []
 
         with torch.no_grad():
-            pbar = tqdm.tqdm(
-                total=config.steps_per_batch,
-                desc=f"PPO Iter {ppo_iter + 1} (C={current_complexity}) - Collecting",
+            collect_by_episodes = getattr(config, "episodes_per_batch", None) is not None
+            progress_total = (
+                config.episodes_per_batch if collect_by_episodes else config.steps_per_batch
             )
-            while collected_steps < config.steps_per_batch:
+            progress_desc = (
+                f"PPO Iter {ppo_iter + 1} (C={current_complexity}) - Episodes"
+                if collect_by_episodes
+                else f"PPO Iter {ppo_iter + 1} (C={current_complexity}) - Collecting"
+            )
+            pbar = tqdm.tqdm(total=progress_total, desc=progress_desc)
+            while (
+                games_played < config.episodes_per_batch
+                if collect_by_episodes
+                else collected_steps < config.steps_per_batch
+            ):
                 games_played += 1
                 n = config.n_variables
 
@@ -824,7 +844,8 @@ def train_ppo(model, config):
                     batch_rewards.extend(traj_rewards)
                     batch_dones.extend(traj_dones)
                     collected_steps += len(traj_states)
-                    pbar.update(len(traj_states))
+                    episode_lengths.append(len(traj_states))
+                    pbar.update(1 if collect_by_episodes else len(traj_states))
 
                     success = traj_dones[-1] and traj_rewards[-1] > 5.0
                     if success:
@@ -953,6 +974,9 @@ def train_ppo(model, config):
         avg_v_loss = total_v_loss / num_updates if num_updates > 0 else 0
         avg_ent_loss = total_ent_loss / num_updates if num_updates > 0 else 0
         success_rate = 100 * success_count / games_played if games_played > 0 else 0
+        avg_steps_per_episode = (
+            sum(episode_lengths) / len(episode_lengths) if episode_lengths else 0.0
+        )
         recent_sr = (
             100 * sum(recent_successes) / len(recent_successes)
             if recent_successes
@@ -963,6 +987,10 @@ def train_ppo(model, config):
         print(
             f"\nPPO Iter {ppo_iter + 1}: SR: {success_rate:.1f}% (Recent: {recent_sr:.1f}%), C: {current_complexity}, "
             f"Reward: {avg_reward:.3f}, PiL: {avg_pi_loss:.4f}, VL: {avg_v_loss:.4f}, Ent: {-avg_ent_loss:.4f}"
+        )
+        print(
+            f"  Episodes: {games_played}, Steps/Episode (limit): {config.max_steps_per_episode}, "
+            f"Avg Steps/Episode (actual): {avg_steps_per_episode:.2f}, Total Steps: {collected_steps}"
         )
         for i, ex in enumerate(circuit_examples):
             print(
@@ -1044,7 +1072,7 @@ def main():
     final_acc, _ = evaluate_model(model, test_dataset, config)
 
     # Conditionally start PPO Training
-    if final_acc > 15.0 or os.path.exists(ppo_model_path):
+    if config.force_ppo_run or final_acc > 15.0 or os.path.exists(ppo_model_path):
         if os.path.exists(ppo_model_path):
             print(f"\nLoading existing PPO model from {ppo_model_path}")
             model.load_state_dict(torch.load(ppo_model_path, map_location=device))

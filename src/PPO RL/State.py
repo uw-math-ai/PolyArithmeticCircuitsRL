@@ -20,7 +20,17 @@ class Game:
 
         self.actions = []
         self.polynomials = []
-        self.max_nodes = self.config.n_variables + self.config.max_complexity + 1
+        step_budget = int(
+            getattr(
+                self.config,
+                "action_budget",
+                max(
+                    self.config.max_complexity,
+                    getattr(self.config, "max_steps_per_episode", self.config.max_complexity),
+                ),
+            )
+        )
+        self.max_nodes = self.config.n_variables + step_budget + 1
 
         # Initialize with base nodes (variables and a constant)
         for i in range(self.config.n_variables):
@@ -31,7 +41,7 @@ class Game:
         self.polynomials.append(sympy.Integer(1))
 
         self.current_step = 0
-        self.max_steps = self.config.max_complexity
+        self.max_steps = int(getattr(self.config, "max_steps_per_episode", self.config.max_complexity))
         self.prev_potential = 0.0
 
     def to(self, device):
