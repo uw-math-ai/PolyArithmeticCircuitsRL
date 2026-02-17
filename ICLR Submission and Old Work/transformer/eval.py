@@ -112,7 +112,6 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--unseen-samples", type=int, default=0, help="Number of unseen polynomials to test")
     parser.add_argument("--unseen-steps", type=int, default=None, help="Random poly steps for unseen eval")
     parser.add_argument(
-<<<<<<< HEAD
         "--episodes",
         type=int,
         default=None,
@@ -125,8 +124,6 @@ def _parse_args() -> argparse.Namespace:
         help="Alias for unseen polynomial generation steps (PPO-style naming).",
     )
     parser.add_argument(
-=======
->>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
         "--unseen-max-coeff",
         type=int,
         default=5,
@@ -306,7 +303,6 @@ def main() -> None:
                 pbar.update(1)
         pbar.close()
     if decoded_total:
-<<<<<<< HEAD
         val_success_pct = 100.0 * exact_eq / decoded_total
         print(
             f"Structural equivalence (val): {exact_eq}/{decoded_total} = {exact_eq / decoded_total:.3f}"
@@ -318,11 +314,6 @@ def main() -> None:
 
     unseen_eval_episodes = args.episodes if args.episodes is not None else args.unseen_samples
     if unseen_eval_episodes > 0:
-=======
-        print(f"Structural equivalence (val): {exact_eq}/{decoded_total} = {exact_eq / decoded_total:.3f}")
-
-    if args.unseen_samples > 0:
->>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
         rng = random.Random(args.unseen_seed)
         board_keys = set()
         if nodes_path is not None and nodes_path.exists():
@@ -340,7 +331,6 @@ def main() -> None:
                         canon = sympy.srepr(sympy.expand(parsed))
                         board_keys.add(canon)
 
-<<<<<<< HEAD
         unseen_steps = (
             args.steps_per_episode
             if args.steps_per_episode is not None
@@ -350,22 +340,11 @@ def main() -> None:
         attempted = 0
         pbar = _progress(
             total=unseen_eval_episodes,
-=======
-        unseen_steps = args.unseen_steps or args.max_complexity or 3
-        unseen_hits = 0
-        attempted = 0
-        pbar = _progress(
-            total=args.unseen_samples,
->>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
             desc="Unseen",
             unit="sample",
             leave=False,
         )
-<<<<<<< HEAD
         while attempted < unseen_eval_episodes:
-=======
-        while attempted < args.unseen_samples:
->>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
             poly = _random_polynomial(args.num_vars, unseen_steps, args.unseen_max_coeff, rng)
             expr = _sympify(poly)
             if expr is None:
@@ -384,17 +363,12 @@ def main() -> None:
         pbar.close()
 
         print(
-<<<<<<< HEAD
             f"Structural equivalence (unseen): {unseen_hits}/{unseen_eval_episodes} "
             f"= {unseen_hits / max(unseen_eval_episodes, 1):.3f}"
         )
         print(
             f"Unseen success %: {100.0 * unseen_hits / max(unseen_eval_episodes, 1):.2f}% "
             f"(episodes={unseen_eval_episodes}, steps/episode={unseen_steps})"
-=======
-            f"Structural equivalence (unseen): {unseen_hits}/{args.unseen_samples} "
-            f"= {unseen_hits / max(args.unseen_samples, 1):.3f}"
->>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
         )
 
 
