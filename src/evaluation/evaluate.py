@@ -3,17 +3,15 @@
 from typing import Dict, List, Optional
 
 import torch
-import numpy as np
 
 from ..config import Config
-from ..models.policy_value_net import PolicyValueNet
 from ..environment.circuit_game import CircuitGame
 from ..game_board.generator import sample_target, build_game_board
 from ..algorithms.mcts import MCTS
 
 
 def evaluate_model(
-    model: PolicyValueNet,
+    model,
     config: Config,
     algorithm: str = "ppo",
     complexities: Optional[List[int]] = None,
@@ -24,9 +22,9 @@ def evaluate_model(
     """Evaluate a trained model across complexity levels.
 
     Args:
-        model: trained PolicyValueNet
+        model: trained model (PolicyValueNet or SAC actor)
         config: configuration
-        algorithm: "ppo" (greedy policy) or "alphazero" (MCTS)
+        algorithm: "ppo"/"sac" (greedy policy) or "alphazero" (MCTS)
         complexities: list of complexity levels to test
         num_trials: number of trials per complexity
         device: torch device
@@ -61,13 +59,14 @@ def evaluate_model(
                 if algorithm == "alphazero" and mcts is not None:
                     action, _ = mcts.get_action_probs(env, temperature=0)
                 else:
-                    # Greedy policy (PPO evaluation)
+                    # Greedy policy evaluation (PPO/SAC)
                     obs_device = {
                         k: v.to(device) if isinstance(v, torch.Tensor) else v
                         for k, v in obs.items()
                     }
                     with torch.no_grad():
-                        logits, _ = model(obs_device)
+                        output = model(obs_device)
+                        logits = output[0] if isinstance(output, tuple) else output
                     action = logits.argmax(dim=-1).item()
 
                 obs, reward, done, info = env.step(action)

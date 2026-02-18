@@ -34,6 +34,46 @@ class Config:
     steps_per_update: int = 2048
     max_grad_norm: float = 0.5
 
+    # SAC (discrete, masked)
+    sac_actor_lr: float = 1e-4
+    sac_critic_lr: float = 3e-4
+    sac_alpha_lr: float = 1e-4
+    sac_tau: float = 0.01
+    sac_batch_size: int = 256
+    sac_steps_per_iter: int = 2048
+    sac_update_to_data_ratio: float = 1.0
+    sac_replay_size: int = 100000
+    sac_min_replay_size: int = 10000
+    sac_initial_random_steps: int = 2000
+    sac_n_step: int = 3
+
+    # State-dependent entropy target: -scale * log(|A_valid(s)|)
+    sac_target_entropy_scale: float = 0.98
+    sac_alpha_init: float = 0.2
+    sac_alpha_min: float = 1e-4
+    sac_alpha_max: float = 10.0
+
+    # Replay sampling mix
+    sac_current_complexity_fraction: float = 0.5
+    sac_success_fraction: float = 0.2
+    sac_recent_fraction: float = 0.2
+    sac_recent_window: int = 20000
+
+    # Optional stabilizers
+    sac_use_cql: bool = False
+    sac_cql_alpha: float = 0.0
+
+    # Optional BC warm start from board-derived demonstrations
+    sac_bc_warmstart_enabled: bool = False
+    sac_bc_samples: int = 5000
+    sac_bc_steps: int = 1000
+    sac_bc_batch_size: int = 128
+
+    # Optional fixed-complexity warm-up before adaptive curriculum
+    sac_fixed_complexities: List[int] = field(default_factory=lambda: [3, 4])
+    sac_fixed_complexity_iters: int = 20
+    sac_curriculum_window: int = 50
+
     # AlphaZero / MCTS
     mcts_simulations: int = 100
     mcts_c_puct: float = 1.4
