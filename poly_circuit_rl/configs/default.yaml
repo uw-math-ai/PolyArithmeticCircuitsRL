@@ -1,0 +1,49 @@
+# Default configuration for poly_circuit_rl training.
+# Override via command-line args: python scripts/train.py --n_vars 3 --max_ops 6
+
+# --- Environment ---
+n_vars: 2             # number of polynomial variables (x0, x1, ...)
+max_ops: 4            # max ADD/MUL operations per episode
+L: 16                 # max visible nodes in observation
+max_nodes: 20         # hard cap on circuit nodes
+m: 16                 # number of evaluation points (Schwartz-Zippel fingerprint)
+eval_low: -3          # eval point range lower bound
+eval_high: 3          # eval point range upper bound
+step_cost: 0.05       # reward penalty per ADD/MUL operation
+
+# --- Transformer ---
+d_pos: 8              # embedding dim for parent/position indices
+d_model: 64           # transformer hidden dimension
+n_heads: 4            # number of attention heads
+n_layers: 3           # number of transformer layers
+dropout: 0.1          # dropout rate
+
+# --- DQN ---
+lr: 0.001             # Adam learning rate
+gamma: 0.99           # discount factor
+batch_size: 256       # replay buffer batch size
+buffer_size: 100000   # replay buffer capacity
+eps_start: 1.0        # initial epsilon (exploration)
+eps_end: 0.1          # final epsilon
+eps_decay_steps: 50000
+target_update_tau: 0.005  # soft target update rate
+train_freq: 4         # train every N env steps
+learning_starts: 1000 # start training after N steps
+
+# --- HER (Hindsight Experience Replay) ---
+her_k: 4              # number of HER relabeled goals per transition
+
+# --- Curriculum ---
+curriculum_levels: [1, 2, 3, 4]  # max_ops per level
+curriculum_window: 200            # rolling window for success rate
+curriculum_threshold: 0.80        # advance when SR >= this
+
+# --- Training ---
+total_steps: 500000   # total environment steps
+eval_every: 5000      # evaluate every N steps
+eval_episodes: 50     # episodes per evaluation
+seed: 42
+log_dir: "runs/"
+
+# --- Mixed sampling ---
+interesting_ratio: 0.7  # fraction of interesting polys at curriculum level >= 1

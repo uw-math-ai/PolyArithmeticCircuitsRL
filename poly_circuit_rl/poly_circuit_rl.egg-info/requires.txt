@@ -1,0 +1,9 @@
+torch>=2.0
+numpy>=1.24
+gymnasium>=0.29
+
+[dev]
+pytest>=7.0
+
+[interesting]
+sympy>=1.12

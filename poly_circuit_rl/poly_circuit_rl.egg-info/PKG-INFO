@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: poly-circuit-rl
+Version: 0.1.0
+Summary: RL agent for discovering optimal polynomial arithmetic circuits
+Requires-Python: >=3.10
+Requires-Dist: torch>=2.0
+Requires-Dist: numpy>=1.24
+Requires-Dist: gymnasium>=0.29
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Provides-Extra: interesting
+Requires-Dist: sympy>=1.12; extra == "interesting"

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "poly-circuit-rl"
+version = "0.1.0"
+description = "RL agent for discovering optimal polynomial arithmetic circuits"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.0",
+    "numpy>=1.24",
+    "gymnasium>=0.29",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+interesting = ["sympy>=1.12", "networkx>=3.0"]   # needed for InterestingPolynomialSampler + auto-generation
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+# Note: if pytest fails due to a hydra plugin conflict in your environment, run:
+#   python -m unittest discover -s tests -p 'test_*.py' -v
+[tool.pytest.ini_options]
+testpaths = ["tests"]
