@@ -5,6 +5,7 @@ Learning to construct minimal arithmetic circuits for target polynomials using r
 Two algorithms are implemented for comparison:
 - **PPO** (Proximal Policy Optimization) — a policy-gradient baseline
 - **AlphaZero** — MCTS guided by a learned neural network (primary method)
+- **SAC** (Soft Actor-Critic, discrete masked-action variant) — off-policy baseline
 
 ---
 
@@ -58,6 +59,7 @@ src/
 │   └── policy_value_net.py       # Shared policy-value network (GNN + target encoder)
 ├── algorithms/
 │   ├── ppo.py                    # PPO training loop with GAE
+│   ├── sac.py                    # Discrete SAC with masked actions + stratified replay
 │   ├── mcts.py                   # Neural MCTS (AlphaZero-style, no random rollouts)
 │   └── alphazero.py              # AlphaZero self-play + training
 ├── evaluation/
@@ -492,6 +494,20 @@ All commands are run from the project root directory.
 python -m src.main --algorithm ppo --iterations 100
 ```
 
+### Training with SAC
+
+```bash
+python -m src.main --algorithm sac --iterations 100
+```
+
+Optional SAC stabilizers:
+
+```bash
+# Enable CQL-lite regularization and BC warm start from board demonstrations
+python -m src.main --algorithm sac --iterations 100 \
+    --sac-use-cql --sac-cql-alpha 0.1 --sac-bc-warmstart
+```
+
 ### Training with AlphaZero
 
 ```bash
@@ -516,6 +532,7 @@ python -m src.main --algorithm ppo --hidden-dim 256 --seed 123
 
 ```bash
 python -m src.main --eval-only --checkpoint checkpoint.pt --algorithm ppo
+python -m src.main --eval-only --checkpoint checkpoint.pt --algorithm sac
 python -m src.main --eval-only --checkpoint checkpoint.pt --algorithm alphazero
 ```
 
