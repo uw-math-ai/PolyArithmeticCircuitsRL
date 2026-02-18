@@ -1,33 +1,43 @@
-# configs/ — Hyperparameter Reference
+# configs/ - Hyperparameter reference
 
-`default.yaml` documents all hyperparameters and their defaults. It is **not** loaded automatically — the defaults live in `Config` (see [config.py](../src/poly_circuit_rl/config.py)).
+`default.yaml` is a reference template. Training uses values from `Config` in `poly_circuit_rl/config.py` unless explicitly overridden in code/CLI.
 
-Use this file as a reference when running experiments or as a template for overriding settings via `scripts/train.py` arguments.
+Use `default.yaml` for experiment notes and quick copy/paste, but treat `Config` as the source of truth for runtime defaults.
 
-## Hyperparameter Groups
+## Parameter groups
 
 ### Environment
-Controls the task difficulty and observation space size.
-- `n_vars`: number of polynomial variables. Increasing this exponentially increases polynomial complexity.
-- `max_ops`: max ADD/MUL operations per episode. Curriculum advances from 1 → max_ops.
-- `L`: max visible nodes (obs size scales with L). Increase if circuits run out of space.
-- `m`: evaluation point count. Higher = more reliable polynomial identity checks.
+- `n_vars`, `max_ops`, `L`, `max_nodes`, `m`, `eval_low`, `eval_high`
+- `step_cost`: base penalty for `ADD`/`MUL`
+- `shaping_coeff`: eval-distance shaping bonus strength
+- `eval_norm_scale`: tanh normalization scale for eval vectors in observations
+- `max_episode_steps`: optional hard cap on episode length (`None` uses derived default)
 
 ### Transformer
-Controls model capacity.
-- `d_model`: main hidden dimension. 64 is a good start; 128 for harder tasks.
-- `n_heads`: attention heads. Must divide `d_model`.
-- `n_layers`: transformer depth. 3 layers works well for max_ops ≤ 4.
+- `d_pos`, `d_model`, `n_heads`, `n_layers`, `dropout`
 
 ### DQN
-Standard DQN hyperparameters — usually don't need tuning.
-- `eps_decay_steps`: how long epsilon anneals from 1.0 → 0.1. Increase for harder tasks.
-- `learning_starts`: steps before training begins. Gives the buffer time to fill.
+- `lr`, `gamma`, `batch_size`, `buffer_size`
+- `eps_start`, `eps_end`, `eps_decay_steps`
+- `target_update_tau`, `train_freq`, `learning_starts`
+
+### HER
+- `her_k`: number of relabeled future-goal samples per transition
 
 ### Curriculum
-- `curriculum_levels`: list of max_ops values the agent advances through.
-- `curriculum_threshold`: success rate needed to advance (0.80 = 80%).
-- `curriculum_window`: rolling window size for computing success rate.
+- `curriculum_levels`: default `(1,2,3,4,5,6)`
+- `curriculum_window`, `curriculum_threshold`
 
-### Mixed Sampling
-- `interesting_ratio`: fraction of episodes using interesting polynomials (those with multiple optimal circuits). Only active at curriculum level ≥ 1.
+### Training
+- `total_steps`, `eval_every`, `eval_episodes`, `seed`, `log_dir`
+
+### Sampling
+- `interesting_ratio`: interesting/random mix at higher curriculum levels
+- `auto_interesting`: enable fallback auto-generation when no JSONL is provided
+- `gen_max_graph_nodes`: auto-generation graph size cap
+- `gen_max_successors`: auto-generation branching cap
+
+## Notes
+
+- `scripts/train.py` exposes only a subset of config fields as CLI flags.
+- For full control (for example custom curriculum arrays), instantiate `Config(...)` directly in Python.

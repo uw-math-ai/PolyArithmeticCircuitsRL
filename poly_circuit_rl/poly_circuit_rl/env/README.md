@@ -1,64 +1,71 @@
-# env/ — Gymnasium Environment and Observation Encoding
+# env/ - Gym environment, observation encoding, and samplers
 
-This module implements the polynomial circuit construction environment as a standard Gymnasium environment, plus observation encoding and target polynomial samplers.
+This module defines the goal-conditioned environment and target-polynomial samplers.
 
 ## Files
 
-### circuit_env.py — PolyCircuitEnv
+### `circuit_env.py` - `PolyCircuitEnv`
 
-A goal-conditioned Gymnasium environment where the agent builds arithmetic circuits step by step.
+Environment where the agent incrementally builds arithmetic circuits.
 
-**Episode flow:**
-1. `reset()` — sample a target polynomial, create an empty circuit with input variables `(x0, x1, ..., const_1)`
-2. Agent picks actions: `ADD(i,j)`, `MUL(i,j)`, `SET_OUTPUT(i)`, or `STOP`
-3. Episode ends when: the output node matches the target (+1.0 reward), the operation budget runs out (truncated), or the agent stops
+Observation dict:
+- `obs`: flat `float32` vector `(obs_dim,)`
+- `action_mask`: binary mask `(action_dim,)`
 
-**Observation space** (Dict):
-- `"obs"`: flat float32 vector of shape `(obs_dim,)` — see obs.py
-- `"action_mask"`: int8 vector of shape `(action_dim,)` — 1 for valid actions, 0 for invalid
+Actions:
+- `ADD(i,j)`, `MUL(i,j)`, `SET_OUTPUT(i)`, `STOP`
 
-**Reward:**
-- `-step_cost` for each ADD/MUL operation (default: -0.05)
-- `+1.0` when output matches target polynomial
-- `-1.0` for invalid actions (should not happen with mask)
+Reward:
+- `ADD`/`MUL`: `-step_cost`
+- optional shaping: `+ shaping_coeff * progress` when a newly created (non-reused) node improves best eval-distance to target
+- solve bonus: `+1.0` when output polynomial equals target
+- invalid action: `-1.0` and immediate truncation
 
-**Key methods:**
-- `reset(options={"max_ops": 3, "target_poly": poly})` — start new episode
-- `step(action_id)` — execute one action
-- `get_trajectory()` — returns episode history (used by HER)
+Termination and truncation:
+- `terminated=True` on solve
+- `truncated=True` on `STOP`
+- op-budget truncation after post-budget resolve step
+- hard episode cap at `max_episode_steps` (or derived default if unset)
 
-### obs.py — Observation Encoding
+### `obs.py` - observation encoder
 
-Encodes the circuit state as a flat numpy array for the neural network.
+Per-node layout (`d_node_raw`):
 
-**Per-node layout** (`d_node_raw` floats):
-```
-[type_onehot(3) | op_onehot(2) | parent1_idx(1) | parent2_idx(1) | pos_idx(1) | leaf_id(n_leaf) | eval_vector(m)]
-```
-
-- `type_onehot`: [input, op, empty] — distinguishes variable/constant nodes, operation nodes, and empty padding slots
-- `op_onehot`: [add, mul] — which operation (zero for non-op nodes)
-- `parent1_idx, parent2_idx`: raw integer indices of parent nodes (the network embeds these via `nn.Embedding`). Sentinel value `L` for leaf nodes
-- `pos_idx`: node position in construction order
-- `leaf_id`: one-hot identifying which variable (x0, x1, ...) or constant
-- `eval_vector`: polynomial evaluated at `m` fixed random points
-
-**Full observation:**
-```
-[L nodes × d_node_raw | target_eval(m) | steps_left(1)]
+```text
+[type_onehot(3) | op_onehot(2) | parent1_idx | parent2_idx | pos_idx | leaf_id(n_vars+1) | eval_vector(m)]
 ```
 
-**Goal functions** (used by HER):
-- `extract_goal(obs, config)` → target eval vector
-- `replace_goal(obs, new_goal, config)` → obs with new target
+Full observation:
 
-### samplers.py — Target Polynomial Samplers
+```text
+[L * d_node_raw | target eval vector (m) | steps_left_norm]
+```
 
-**RandomCircuitSampler**: builds a random circuit with `max_steps` operations and picks a random node's polynomial as the target. This is the default sampler — fast and diverse, but most targets only have one construction path.
+Normalization:
+- node and target eval vectors use tanh normalization: `tanh(v / eval_norm_scale)`
+- set `eval_norm_scale <= 0` to disable normalization
 
-**InterestingPolynomialSampler**: loads pre-computed polynomials from analysis JSONL files (from `Game-Board-Generation/`). These polynomials have *multiple shortest paths* — multiple distinct optimal circuits. The sampler:
-- Converts SymPy expression strings to our internal `Poly` format
-- Groups polynomials by `shortest_length` for curriculum-aware sampling
-- `sample(rng, max_ops)` returns polynomials with `shortest_length ≤ max_ops`
+Utilities:
+- `extract_goal(obs, config)`
+- `replace_goal(obs, new_goal, config)`
+- `get_num_real_nodes(obs, config)`
 
-Requires `sympy` (install via `pip install -e ".[interesting]"`).
+### `samplers.py` - target samplers
+
+- `RandomCircuitSampler`: random circuit targets
+- `InterestingPolynomialSampler`: loads precomputed JSONL (typically from `Game-Board-Generation`)
+- `GenerativeInterestingPolynomialSampler`:
+  - lazy graph construction up to needed curriculum depth
+  - path-multiplicity filtering (`only_multipath`)
+  - grouped sampling by `shortest_length <= max_ops`
+
+Dependencies for interesting samplers:
+- `sympy`
+- `networkx` (for generative sampler)
+
+### `graph_enumeration.py`
+
+Pure-Python graph enumeration + path analysis used by `GenerativeInterestingPolynomialSampler`.
+Contains:
+- game-graph construction (`build_game_graph`)
+- shortest/total path multiplicity analysis (`analyze_graph`)

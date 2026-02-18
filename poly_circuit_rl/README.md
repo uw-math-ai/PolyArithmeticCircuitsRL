@@ -1,135 +1,136 @@
 # poly_circuit_rl
 
-RL agent for discovering optimal polynomial arithmetic circuits using DQN + Hindsight Experience Replay (HER).
+RL agent for discovering short polynomial arithmetic circuits with DQN + Hindsight Experience Replay (HER).
 
-Given a target polynomial (e.g. `x0^2 + x0*x1`), the agent learns to construct a minimal-step arithmetic circuit using only addition and multiplication operations over input variables.
+Given a target polynomial (for example `x0^2 + x0*x1`), the agent builds a circuit using only `ADD` / `MUL` over input variables and `const_1`, then chooses an output node.
 
-## Architecture
+## Architecture at a glance
 
-```
-STATE: Node token matrix  X ∈ R^{L × d_node}
-  Per node: type_onehot | op_onehot | parent_embeddings | pos_embedding | leaf_id | eval_vector
-  + Target eval vector → TargetEncoder → target_embed
-  + Steps left (normalized)
+- State: flat observation with `L` node slots + target eval vector + normalized `steps_left`
+- Node features: type/op one-hots, parent indices, position index, leaf id, eval vector
+- Target representation: eval vector at fixed random points
+- Encoder: transformer with causal mask (construction order)
+- Action head: bilinear scores for `ADD(i,j)` and `MUL(i,j)`, linear scores for `SET_OUTPUT(i)` and `STOP`
+- Action selection: invalid actions masked before argmax
 
-ENCODER: Transformer with causal mask (construction order)
-  Input projection → N layers × TransformerEncoderLayer → node embeddings H
+## Project layout
 
-ACTION HEAD: Bilinear structured scoring
-  Q_add[i,j] = h_i^T W_add h_j     (for all pairs i ≤ j)
-  Q_mul[i,j] = h_i^T W_mul h_j
-  Q_set_output[i] = w_out^T h_i
-  Q_stop = w_stop^T mean_pool(H)
-  → Flatten to action_dim Q-values → mask invalid actions → argmax
-```
-
-Key design choices:
-- **Parent pointer embeddings**: encode DAG structure in O(N) via learned index embeddings
-- **Eval vectors**: polynomial evaluated at m random points (Schwartz-Zippel lemma ensures uniqueness)
-- **Step cost reward**: -0.05 per ADD/MUL + 1.0 on solve → incentivizes minimal circuits
-- **HER**: relabels failed episodes with achievable goals → dense reward signal
-- **Curriculum**: starts with 1-op targets, advances to 4-op when success rate > 80%
-
-## Project Structure
-
-```
+```text
 poly_circuit_rl/
-├── pyproject.toml              # Package metadata and dependencies
+├── pyproject.toml
 ├── configs/
-│   └── default.yaml            # Default hyperparameters (reference)
+│   ├── default.yaml
+│   └── README.md
 ├── scripts/
-│   ├── train.py                # Training entrypoint
-│   └── evaluate.py             # Evaluation entrypoint
-├── src/poly_circuit_rl/        # Main package
-│   ├── config.py               # Config dataclass with all hyperparameters
-│   ├── core/                   # Polynomial math and circuit primitives
-│   ├── env/                    # Gymnasium environment and observation encoding
-│   └── rl/                     # DQN agent, transformer network, replay buffer
-└── tests/                      # Unit tests (32 tests)
+│   ├── train.py
+│   ├── evaluate.py
+│   └── README.md
+├── poly_circuit_rl/
+│   ├── config.py
+│   ├── core/
+│   │   └── README.md
+│   ├── env/
+│   │   └── README.md
+│   └── rl/
+│       └── README.md
+└── tests/
+    └── README.md
 ```
 
-See each module's README for details:
-- [core/README.md](src/poly_circuit_rl/core/README.md) — polynomial arithmetic, circuit builder, action encoding
-- [env/README.md](src/poly_circuit_rl/env/README.md) — gymnasium environment, observation layout, target samplers
-- [rl/README.md](src/poly_circuit_rl/rl/README.md) — transformer Q-network, DQN agent, HER replay buffer, training loop
+## Module docs
 
-## Quick Start
+- [core/README.md](poly_circuit_rl/core/README.md)
+- [env/README.md](poly_circuit_rl/env/README.md)
+- [rl/README.md](poly_circuit_rl/rl/README.md)
+- [scripts/README.md](scripts/README.md)
+- [configs/README.md](configs/README.md)
+- [tests/README.md](tests/README.md)
 
-### Install
+## Install
 
 ```bash
 cd poly_circuit_rl
 pip install -e .
 
-# For interesting polynomial data (requires sympy):
-pip install -e ".[interesting]"
-
-# For running tests:
-pip install -e ".[dev]"
+# Optional extras:
+pip install -e ".[interesting]"  # sympy + networkx
+pip install -e ".[dev]"          # pytest
 ```
 
-### Train
+## Train
 
 ```bash
-# Basic training with default config
+# Basic training
 python scripts/train.py
 
-# With interesting polynomial data for mixed sampling
-python scripts/train.py --interesting ../Game-Board-Generation/pre-training-data/game_board_C4.analysis.jsonl
+# Use precomputed interesting-polynomial JSONL
+python scripts/train.py \
+  --interesting ../Game-Board-Generation/pre-training-data/game_board_C4.analysis.jsonl
 
-# Override hyperparameters
-python scripts/train.py --n_vars 2 --max_ops 4 --d_model 64 --total_steps 500000 --log_dir runs/exp1
+# Disable auto-generated interesting polynomials
+python scripts/train.py --no-auto-interesting
+
+# Bound auto-generation graph size
+python scripts/train.py --gen-max-graph-nodes 20000 --gen-max-successors 30
+
+# Adjust shaping reward strength
+python scripts/train.py --shaping_coeff 0.2
 ```
 
-### Evaluate
+## Evaluate
 
 ```bash
 python scripts/evaluate.py --checkpoint runs/best_lvl2.pt --max_ops 4 --episodes 200
 ```
 
-### Run Tests
+## Reward and termination
+
+| Event | Reward / effect |
+|---|---|
+| `ADD` / `MUL` | `-step_cost` + optional shaping bonus |
+| `SET_OUTPUT` | `0.0` |
+| `STOP` | `0.0`, truncates episode |
+| Output matches target | `+1.0` and terminates |
+| Invalid action | `-1.0` and truncates |
+
+Shaping bonus is controlled by `shaping_coeff` and is given only when a newly created node improves best eval-distance-to-target.
+
+Episode can truncate by:
+- explicit `STOP`
+- exhausting op budget after a post-budget resolve step
+- hard step cap (`max_episode_steps`, default derived from `max_ops + max_nodes + 5` when unset)
+
+## Target polynomial sources
+
+1. `RandomCircuitSampler` (default): random circuits, random node target.
+2. `InterestingPolynomialSampler`: precomputed JSONL with path-multiplicity metadata.
+3. `GenerativeInterestingPolynomialSampler`: auto-generates interesting targets from graph enumeration when JSONL is not provided and auto-generation is enabled.
+
+At curriculum levels `>= 1`, training can mix interesting and random targets via `interesting_ratio`.
+
+## Config highlights (`poly_circuit_rl/config.py`)
+
+| Parameter | Default | Purpose |
+|---|---|---|
+| `n_vars` | `2` | Number of polynomial variables |
+| `max_ops` | `4` | Max `ADD`/`MUL` budget per episode |
+| `L` | `16` | Visible node slots in observation |
+| `m` | `16` | Eval-point count for fingerprints |
+| `shaping_coeff` | `0.3` | Eval-distance shaping strength |
+| `eval_norm_scale` | `100.0` | `tanh(v/scale)` normalization for eval vectors |
+| `max_episode_steps` | `None` | Hard episode step cap override |
+| `curriculum_levels` | `(1,2,3,4,5,6)` | Curriculum op levels |
+| `auto_interesting` | `True` | Enable fallback auto-generation |
+| `gen_max_graph_nodes` | `100000` | Auto-generation graph node cap |
+| `gen_max_successors` | `50` | Auto-generation per-node expansion cap |
+| `total_steps` | `500000` | Total environment steps |
+
+## Tests
 
 ```bash
-# From the poly_circuit_rl/ directory
-python -m pytest tests/ -v
-
-# If pytest fails due to a hydra plugin conflict in your environment:
+# From poly_circuit_rl/
 python -m unittest discover -s tests -p 'test_*.py' -v
+
+# Optional
+python -m pytest tests/ -v
 ```
-
-## Reward Design
-
-| Event | Reward |
-|-------|--------|
-| ADD or MUL operation | -0.05 (step cost) |
-| SET_OUTPUT or STOP | 0.0 |
-| Output matches target | +1.0 |
-
-A k-step optimal circuit earns total return: `1.0 - k × 0.05`
-
-## Training Data
-
-Two sources of target polynomials:
-
-1. **RandomCircuitSampler** (default): builds random circuits and picks a random node's polynomial as the target. Fast, but most targets only have one construction path.
-
-2. **InterestingPolynomialSampler** (optional): loads pre-computed polynomials from analysis JSONL files where each polynomial has *multiple* shortest construction paths. These are more interesting for learning optimal circuits.
-
-At curriculum level >= 1, training uses a mix: 70% interesting polynomials + 30% random (configurable via `interesting_ratio`).
-
-## Config
-
-All hyperparameters are in `Config` (see [config.py](src/poly_circuit_rl/config.py)):
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| n_vars | 2 | Number of polynomial variables |
-| max_ops | 4 | Max ADD/MUL operations per episode |
-| L | 16 | Max visible nodes in observation |
-| m | 16 | Number of eval points (fingerprint) |
-| d_model | 64 | Transformer hidden dimension |
-| n_heads | 4 | Number of attention heads |
-| n_layers | 3 | Number of transformer layers |
-| step_cost | 0.05 | Per-operation reward penalty |
-| total_steps | 500,000 | Total environment steps |
-| curriculum_levels | (1,2,3,4) | Max ops per curriculum level |
