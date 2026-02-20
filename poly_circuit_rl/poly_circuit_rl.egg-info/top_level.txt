@@ -1,4 +1,6 @@
 configs
 poly_circuit_rl
+runs
 scripts
 tests
+wandb

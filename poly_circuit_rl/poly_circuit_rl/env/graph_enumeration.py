@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import networkx as nx
-from sympy import expand, srepr, symbols
+from sympy import Poly as SympyPoly, expand, srepr, symbols
 
 
 # ---------------------------------------------------------------------------
@@ -24,6 +24,30 @@ from sympy import expand, srepr, symbols
 def canon_key(expr) -> str:
     """Canonical, hashable string for a polynomial expression."""
     return srepr(expand(expr))
+
+
+def estimate_naive_ops(expr, num_vars: int = 2) -> int:
+    """Estimate operations for naive term-by-term polynomial construction.
+
+    For each monomial with total degree d: max(0, d-1) multiplications.
+    To combine n terms: n-1 additions.
+    """
+    expanded = expand(expr)
+    var_syms = (
+        [symbols("x")]
+        if num_vars == 1
+        else list(symbols(f"x0:{num_vars}"))
+    )
+    try:
+        sp = SympyPoly(expanded, *var_syms)
+    except Exception:
+        return 0
+    terms = sp.as_dict()
+    if not terms:
+        return 0
+    mul_ops = sum(max(0, sum(monom) - 1) for monom in terms)
+    add_ops = max(0, len(terms) - 1)
+    return mul_ops + add_ops
 
 
 # ---------------------------------------------------------------------------
@@ -235,8 +259,11 @@ def find_roots(nodes: Dict[str, NodeRecord], in_degree: Dict[str, int]) -> Set[s
 
 def analyze_graph(
     G: nx.DiGraph,
-    only_multipath: bool = True,
+    only_multipath: bool = False,
+    only_shortcut: bool = True,
+    min_shortcut_gap: int = 2,
     max_step: Optional[int] = None,
+    num_vars: int = 2,
 ) -> List[Dict[str, Any]]:
     """Run path-multiplicity analysis, returning records for interesting nodes.
 
@@ -246,8 +273,14 @@ def analyze_graph(
         Game-board graph from :func:`build_game_graph`.
     only_multipath : bool
         If True, only return nodes with multiple total or shortest paths.
+    only_shortcut : bool
+        If True, only return nodes where naive_ops - shortest_length >= min_shortcut_gap.
+    min_shortcut_gap : int
+        Minimum gap between naive and optimal cost to qualify as a shortcut.
     max_step : int | None
         Filter to nodes at or below this step.
+    num_vars : int
+        Number of polynomial variables (for naive cost estimation).
     """
     nodes, forward, in_degree = build_analysis_structures(G, max_step=max_step)
     order = topological_sort(forward, in_degree, nodes)
@@ -284,6 +317,11 @@ def analyze_graph(
         if math.isinf(shortest_length):
             shortest_length = None
 
+        # Compute naive cost and shortcut gap
+        expr = G.nodes[node_id].get("expr") if node_id in G else None
+        naive_ops = estimate_naive_ops(expr, num_vars) if expr is not None else 0
+        shortcut_gap = (naive_ops - shortest_length) if shortest_length is not None else 0
+
         record: Dict[str, Any] = {
             "id": node.node_id,
             "expr_str": node.expr_str,
@@ -294,8 +332,14 @@ def analyze_graph(
             "total_path_count": total_paths[node_id],
             "multiple_shortest_paths": shortest_count[node_id] > 1,
             "multiple_paths": total_paths[node_id] > 1,
+            "naive_ops": naive_ops,
+            "shortcut_gap": shortcut_gap,
+            "has_shortcut": shortcut_gap >= min_shortcut_gap,
         }
 
+        # Apply filters
+        if only_shortcut and not record["has_shortcut"]:
+            continue
         if only_multipath and not (
             record["multiple_shortest_paths"] or record["multiple_paths"]
         ):

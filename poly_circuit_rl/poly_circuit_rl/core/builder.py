@@ -173,6 +173,22 @@ class CircuitBuilder:
             raise ValueError(f"Invalid output node {node_id}")
         self.output_node = node_id
 
+    def clone(self) -> CircuitBuilder:
+        """Return a deep copy suitable for MCTS tree search.
+
+        Nodes are immutable dataclasses so a list copy suffices.
+        """
+        cloned = object.__new__(CircuitBuilder)
+        cloned.n_vars = self.n_vars
+        cloned.eval_points = self.eval_points  # shared ref (immutable)
+        cloned.nodes = list(self.nodes)
+        cloned.signature_to_id = dict(self.signature_to_id)
+        cloned.num_add = self.num_add
+        cloned.num_mul = self.num_mul
+        cloned.depth = self.depth
+        cloned.output_node = self.output_node
+        return cloned
+
     def _validate_ids(self, left_id: int, right_id: int) -> None:
         max_id = len(self.nodes) - 1
         if left_id < 0 or right_id < 0 or left_id > max_id or right_id > max_id:

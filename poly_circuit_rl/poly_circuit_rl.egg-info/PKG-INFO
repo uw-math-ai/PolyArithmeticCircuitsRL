@@ -10,3 +10,6 @@ Provides-Extra: dev
 Requires-Dist: pytest>=7.0; extra == "dev"
 Provides-Extra: interesting
 Requires-Dist: sympy>=1.12; extra == "interesting"
+Requires-Dist: networkx>=3.0; extra == "interesting"
+Provides-Extra: wandb
+Requires-Dist: wandb>=0.16; extra == "wandb"

@@ -36,7 +36,8 @@ her_k: 4              # number of HER relabeled goals per transition
 # --- Curriculum ---
 curriculum_levels: [1, 2, 3, 4]  # max_ops per level
 curriculum_window: 200            # rolling window for success rate
-curriculum_threshold: 0.80        # advance when SR >= this
+curriculum_train_threshold: 0.40  # rolling train SR gate (exploratory policy)
+curriculum_eval_threshold: 0.80   # deterministic eval SR gate
 
 # --- Training ---
 total_steps: 500000   # total environment steps

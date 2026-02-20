@@ -47,6 +47,18 @@ def main():
     parser.add_argument("--total_steps", type=int, default=500_000, help="Total env steps")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--log_dir", type=str, default="runs/", help="Checkpoint directory")
+    parser.add_argument(
+        "--curriculum_train_threshold",
+        type=float,
+        default=0.40,
+        help="Advance gate: rolling training success-rate threshold",
+    )
+    parser.add_argument(
+        "--curriculum_eval_threshold",
+        type=float,
+        default=0.80,
+        help="Advance gate: deterministic eval success-rate threshold",
+    )
 
     # Data
     parser.add_argument("--interesting", type=str, default=None,
@@ -58,6 +70,24 @@ def main():
     parser.add_argument("--gen-max-successors", type=int, default=None,
                         help="Per-node expansion cap during auto-generation")
 
+    # MCTS
+    parser.add_argument("--no-mcts", action="store_true",
+                        help="Disable MCTS (use epsilon-greedy instead)")
+    parser.add_argument("--mcts_simulations", type=int, default=50,
+                        help="Number of MCTS simulations per action")
+    parser.add_argument("--mcts_c_puct", type=float, default=1.5,
+                        help="PUCT exploration constant")
+    parser.add_argument("--mcts_temperature", type=float, default=1.0,
+                        help="Temperature for MCTS action selection")
+
+    # Wandb
+    parser.add_argument("--wandb_project", type=str, default=None,
+                        help="W&B project name (enables wandb logging)")
+    parser.add_argument("--wandb_entity", type=str, default=None,
+                        help="W&B entity (team or username)")
+    parser.add_argument("--wandb_run_name", type=str, default=None,
+                        help="W&B run name (auto-generated if not set)")
+
     args = parser.parse_args()
 
     config = Config(
@@ -66,7 +96,6 @@ def main():
         L=args.L,
         m=args.m,
         step_cost=args.step_cost,
-        shaping_coeff=args.shaping_coeff,
         d_model=args.d_model,
         n_heads=args.n_heads,
         n_layers=args.n_layers,
@@ -77,9 +106,15 @@ def main():
         total_steps=args.total_steps,
         seed=args.seed,
         log_dir=args.log_dir,
+        curriculum_train_threshold=args.curriculum_train_threshold,
+        curriculum_eval_threshold=args.curriculum_eval_threshold,
         auto_interesting=not args.no_auto_interesting,
         gen_max_graph_nodes=args.gen_max_graph_nodes,
         gen_max_successors=args.gen_max_successors,
+        use_mcts=not args.no_mcts,
+        mcts_simulations=args.mcts_simulations,
+        mcts_c_puct=args.mcts_c_puct,
+        mcts_temperature=args.mcts_temperature,
     )
 
     print(f"Config: n_vars={config.n_vars}, L={config.L}, m={config.m}")
@@ -87,7 +122,13 @@ def main():
     print(f"  d_model={config.d_model}, n_heads={config.n_heads}, n_layers={config.n_layers}")
     print(f"  total_steps={config.total_steps}, seed={config.seed}")
 
-    train(config=config, interesting_jsonl=args.interesting)
+    train(
+        config=config,
+        interesting_jsonl=args.interesting,
+        wandb_project=args.wandb_project,
+        wandb_entity=args.wandb_entity,
+        wandb_run_name=args.wandb_run_name,
+    )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/home/ec2-user/DESKTOP/Kaijie/PolyArithmeticCircuitsRL/poly_circuit_rl/scripts/train.py", line 122, in <module>
+    main()
+    ~~~~^^
+  File "/home/ec2-user/DESKTOP/Kaijie/PolyArithmeticCircuitsRL/poly_circuit_rl/scripts/train.py", line 83, in main
+    config = Config(
+        n_vars=args.n_vars,
+    ...<19 lines>...
+        gen_max_successors=args.gen_max_successors,
+    )
+TypeError: Config.__init__() got an unexpected keyword argument 'shaping_coeff'

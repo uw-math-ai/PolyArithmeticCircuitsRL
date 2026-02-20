@@ -42,6 +42,7 @@ Incremental DAG builder with canonical deduplication:
 - pre-populates leaves (`x0..x{n-1}`, optional constants)
 - `add_add(i, j)` / `add_mul(i, j)`
 - `set_output(node_id)`
+- `clone()` - creates a deep copy for MCTS state snapshots (nodes are immutable dataclasses, so list copy suffices)
 
 Commutativity is handled in signatures, so structurally equivalent `ADD/MUL` nodes are reused.
 

@@ -165,13 +165,17 @@ class GenerativeInterestingPolynomialSampler:
         self,
         n_vars: int,
         max_steps: int = 4,
-        only_multipath: bool = True,
+        only_multipath: bool = False,
+        only_shortcut: bool = True,
+        min_shortcut_gap: int = 2,
         max_graph_nodes: Optional[int] = None,
         max_successors_per_node: Optional[int] = None,
     ):
         self.n_vars = n_vars
         self.max_steps = max_steps
         self.only_multipath = only_multipath
+        self.only_shortcut = only_shortcut
+        self.min_shortcut_gap = min_shortcut_gap
         self.max_graph_nodes = max_graph_nodes
         self.max_successors_per_node = max_successors_per_node
 
@@ -203,7 +207,10 @@ class GenerativeInterestingPolynomialSampler:
         records = analyze_graph(
             G,
             only_multipath=self.only_multipath,
+            only_shortcut=self.only_shortcut,
+            min_shortcut_gap=self.min_shortcut_gap,
             max_step=target_steps,
+            num_vars=self.n_vars,
         )
 
         # Reset caches — a graph at step N subsumes all lower steps

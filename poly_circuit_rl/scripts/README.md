@@ -4,12 +4,12 @@ Command-line wrappers for training and checkpoint evaluation.
 
 ## `train.py`
 
-Runs curriculum DQN+HER training.
+Runs curriculum DQN+HER+MCTS training.
 
 ### Examples
 
 ```bash
-# Basic
+# Basic (MCTS enabled by default)
 python scripts/train.py
 
 # Use precomputed interesting-polynomial JSONL
@@ -22,8 +22,14 @@ python scripts/train.py --no-auto-interesting
 # Bound auto-generation graph growth
 python scripts/train.py --gen-max-graph-nodes 20000 --gen-max-successors 30
 
-# Tune shaping reward
-python scripts/train.py --shaping_coeff 0.2
+# Disable MCTS (fall back to epsilon-greedy)
+python scripts/train.py --no-mcts
+
+# Tune MCTS parameters
+python scripts/train.py --mcts_simulations 100 --mcts_c_puct 2.0 --mcts_temperature 0.5
+
+# Enable Weights & Biases logging
+python scripts/train.py --wandb_project poly-circuit-rl --wandb_entity your-team
 ```
 
 ### Key arguments
@@ -35,7 +41,7 @@ python scripts/train.py --shaping_coeff 0.2
 | `--L` | `16` | Visible node slots |
 | `--m` | `16` | Eval-point count |
 | `--step_cost` | `0.05` | Base penalty for `ADD`/`MUL` |
-| `--shaping_coeff` | `0.3` | Eval-distance shaping bonus scale |
+| `--shaping_coeff` | `0.3` | Eval-distance shaping bonus scale (disabled in config default) |
 | `--d_model` | `64` | Transformer hidden size |
 | `--n_heads` | `4` | Attention heads |
 | `--n_layers` | `3` | Transformer layers |
@@ -50,6 +56,13 @@ python scripts/train.py --shaping_coeff 0.2
 | `--no-auto-interesting` | `False` | Disable fallback auto-generation |
 | `--gen-max-graph-nodes` | `None` | Auto-generation graph node cap |
 | `--gen-max-successors` | `None` | Auto-generation per-node expansion cap |
+| `--no-mcts` | `False` | Disable MCTS (use epsilon-greedy instead) |
+| `--mcts_simulations` | `50` | Number of MCTS simulations per action |
+| `--mcts_c_puct` | `1.5` | PUCT exploration constant |
+| `--mcts_temperature` | `1.0` | Temperature for MCTS action selection |
+| `--wandb_project` | `None` | W&B project name (enables logging) |
+| `--wandb_entity` | `None` | W&B team/user namespace |
+| `--wandb_run_name` | `None` | Optional run name override |
 
 If `--interesting` is omitted and auto-generation is enabled, training uses `GenerativeInterestingPolynomialSampler` as fallback.
 

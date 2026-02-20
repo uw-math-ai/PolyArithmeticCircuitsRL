@@ -9,7 +9,8 @@ Use `default.yaml` for experiment notes and quick copy/paste, but treat `Config`
 ### Environment
 - `n_vars`, `max_ops`, `L`, `max_nodes`, `m`, `eval_low`, `eval_high`
 - `step_cost`: base penalty for `ADD`/`MUL`
-- `shaping_coeff`: eval-distance shaping bonus strength
+- `shaping_coeff`: eval-distance shaping bonus strength (default `0.0`, disabled — can mislead toward naive term-by-term construction)
+- `factor_shaping_coeff`: penalty for `ADD` producing factorizable results (default `0.1`). Uses SymPy to check if the result of an ADD could have been built more efficiently via MUL of its factors.
 - `eval_norm_scale`: tanh normalization scale for eval vectors in observations
 - `max_episode_steps`: optional hard cap on episode length (`None` uses derived default)
 
@@ -26,7 +27,7 @@ Use `default.yaml` for experiment notes and quick copy/paste, but treat `Config`
 
 ### Curriculum
 - `curriculum_levels`: default `(1,2,3,4,5,6)`
-- `curriculum_window`, `curriculum_threshold`
+- `curriculum_window`, `curriculum_train_threshold`, `curriculum_eval_threshold`
 
 ### Training
 - `total_steps`, `eval_every`, `eval_episodes`, `seed`, `log_dir`
@@ -36,6 +37,12 @@ Use `default.yaml` for experiment notes and quick copy/paste, but treat `Config`
 - `auto_interesting`: enable fallback auto-generation when no JSONL is provided
 - `gen_max_graph_nodes`: auto-generation graph size cap
 - `gen_max_successors`: auto-generation branching cap
+
+### MCTS
+- `use_mcts`: enable MCTS for action selection (default `True`)
+- `mcts_simulations`: number of tree simulations per action (default `50`)
+- `mcts_c_puct`: PUCT exploration constant (default `1.5`)
+- `mcts_temperature`: temperature for visit-count action selection (default `1.0`)
 
 ## Notes
 

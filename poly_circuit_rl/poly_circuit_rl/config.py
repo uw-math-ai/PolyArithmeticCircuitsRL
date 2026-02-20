@@ -29,7 +29,8 @@ class Config:
         DQN:          lr, gamma, batch_size, buffer_size, eps_*, target_update_tau,
                       train_freq, learning_starts
         HER:          her_k
-        Curriculum:   curriculum_levels, curriculum_window, curriculum_threshold
+        Curriculum:   curriculum_levels, curriculum_window,
+                      curriculum_train_threshold, curriculum_eval_threshold
         Training:     total_steps, eval_every, eval_episodes, seed, log_dir
         Sampling:     interesting_ratio
     """
@@ -42,7 +43,8 @@ class Config:
     eval_low: int = -3
     eval_high: int = 3
     step_cost: float = 0.05   # per-op penalty for ADD/MUL
-    shaping_coeff: float = 0.3  # eval-distance reward shaping bonus
+    shaping_coeff: float = 0.0  # eval-distance reward shaping bonus (disabled; can mislead toward naive paths)
+    factor_shaping_coeff: float = 0.1  # penalty for ADD producing factorizable result
     eval_norm_scale: float = _DEFAULT_EVAL_NORM_SCALE  # tanh(v/scale) applied to eval vectors in obs
     max_episode_steps: Optional[int] = None  # hard cap; None → max_ops + max_nodes + 5
 
@@ -76,7 +78,8 @@ class Config:
     # --- Curriculum ---
     curriculum_levels: Tuple[int, ...] = (1, 2, 3, 4, 5, 6)
     curriculum_window: int = 200
-    curriculum_threshold: float = 0.80
+    curriculum_train_threshold: float = 0.40
+    curriculum_eval_threshold: float = 0.80
 
     # --- Training ---
     total_steps: int = 500_000
@@ -92,6 +95,12 @@ class Config:
     auto_interesting: bool = True               # auto-generate when no JSONL provided
     gen_max_graph_nodes: Optional[int] = 100_000  # safety cap on graph size (None = unlimited)
     gen_max_successors: Optional[int] = 50        # per-node expansion cap (None = unlimited)
+
+    # --- MCTS ---
+    use_mcts: bool = True               # use MCTS for action selection
+    mcts_simulations: int = 50          # number of MCTS simulations per action
+    mcts_c_puct: float = 1.5            # PUCT exploration constant
+    mcts_temperature: float = 1.0       # temperature for visit-count action selection
 
     @property
     def n_leaf_types(self) -> int:

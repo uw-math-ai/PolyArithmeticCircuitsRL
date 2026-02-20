@@ -72,6 +72,9 @@ class PolyCircuitEnv(gym.Env):
         # Trajectory for HER
         self._trajectory: List[Dict[str, Any]] = []
 
+        # Simulation mode: skip expensive shaping during MCTS
+        self._simulation = False
+
     # ------------------------------------------------------------------
     # Gymnasium API
     # ------------------------------------------------------------------
@@ -123,6 +126,7 @@ class PolyCircuitEnv(gym.Env):
 
         # Reward shaping: track best eval distance to target across all nodes
         self._best_eval_dist = self._compute_best_eval_dist()
+        self._simulation = False
 
         obs_dict = self._obs_dict()
         return obs_dict, {"solved": False}
@@ -167,6 +171,8 @@ class PolyCircuitEnv(gym.Env):
             reward = -self.config.step_cost
             budget_just_exhausted = (self.steps_left <= 0)
             reward += self._shaping_reward(result)
+            if not self._simulation:
+                reward += self._factor_shaping_reward(result)
         elif decoded.kind == ACTION_MUL:
             result = self.builder.add_mul(decoded.i, decoded.j)
             self.steps_left -= 1
@@ -211,6 +217,23 @@ class PolyCircuitEnv(gym.Env):
     def get_trajectory(self) -> List[Dict[str, Any]]:
         """Full episode trajectory for HER processing."""
         return self._trajectory
+
+    def get_state(self) -> Dict[str, Any]:
+        """Snapshot current env state for MCTS simulation."""
+        return {
+            "builder": self.builder.clone(),
+            "steps_left": self.steps_left,
+            "episode_step_count": self._episode_step_count,
+            "best_eval_dist": self._best_eval_dist,
+        }
+
+    def set_state(self, state: Dict[str, Any]) -> None:
+        """Restore env state from snapshot (enters simulation mode)."""
+        self.builder = state["builder"]
+        self.steps_left = state["steps_left"]
+        self._episode_step_count = state["episode_step_count"]
+        self._best_eval_dist = state["best_eval_dist"]
+        self._simulation = True
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -267,6 +290,40 @@ class PolyCircuitEnv(gym.Env):
             dist = sum(abs(float(a) - float(b)) for a, b in zip(evals, self.target_evals))
             best = min(best, dist)
         return best
+
+    def _factor_shaping_reward(self, result) -> float:
+        """Penalize ADD when the result is factorizable (should have used MUL)."""
+        if self.config.factor_shaping_coeff <= 0 or result.reused:
+            return 0.0
+        node = self.builder.nodes[result.node_id]
+        poly = node.poly
+        if len(poly) <= 1:
+            return 0.0
+        try:
+            from sympy import factor, expand, symbols as sym_symbols
+            from functools import reduce
+            from operator import mul as op_mul
+            n = self.config.n_vars
+            var_syms = (
+                [sym_symbols("x")]
+                if n == 1
+                else list(sym_symbols(f"x0:{n}"))
+            )
+            # Convert internal Poly dict to SymPy expression
+            terms = []
+            for mono, coeff in poly.items():
+                term = int(coeff)
+                for v, e in zip(var_syms, mono):
+                    if e > 0:
+                        term = term * v ** e
+                terms.append(term)
+            expr = reduce(lambda a, b: a + b, terms)
+            factored = factor(expr)
+            if factored != expand(expr):
+                return -self.config.factor_shaping_coeff
+        except Exception:
+            pass
+        return 0.0
 
     def _shaping_reward(self, result) -> float:
         """Eval-distance reward shaping for a newly created node."""
