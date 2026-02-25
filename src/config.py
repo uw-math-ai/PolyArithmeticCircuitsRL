@@ -4,17 +4,48 @@ from typing import List, Tuple
 
 @dataclass
 class Config:
-    # Environment
-    n_variables: int = 2
-    mod: int = 5
-    max_complexity: int = 6  # max operations allowed
-    max_steps: int = 10  # max episode steps
-    max_degree: int = -1  # max degree per variable (-1 = auto: max_complexity)
+    """Centralised configuration dataclass for all hyperparameters.
 
+    Groups settings by concern: environment geometry, reward shaping, factor
+    library, neural network architecture, and per-algorithm training knobs.
+
+    Derived properties (max_nodes, max_actions, effective_max_degree,
+    target_size) are computed from the base fields and should not be set
+    directly.
+    """
+
+    # -------------------------------------------------------------------------
+    # Environment
+    # -------------------------------------------------------------------------
+    n_variables: int = 2        # Number of polynomial input variables (e.g., 2 → F_p[x0,x1])
+    mod: int = 5                # Prime modulus p for F_p arithmetic
+    max_complexity: int = 6     # Maximum number of operations allowed per episode
+    max_steps: int = 10         # Hard step limit per episode (terminates if reached)
+    max_degree: int = -1        # Max degree per variable in dense representation
+                                # (-1 = auto: set to max_complexity)
+
+    # -------------------------------------------------------------------------
     # Rewards
-    success_reward: float = 10.0
-    step_penalty: float = -0.1
-    use_reward_shaping: bool = True
+    # -------------------------------------------------------------------------
+    success_reward: float = 10.0        # Reward given when the target is matched exactly
+    step_penalty: float = -0.1          # Per-step penalty to encourage shorter circuits
+    use_reward_shaping: bool = True     # Enable potential-based shaping (Ng et al., 1999)
+
+    # -------------------------------------------------------------------------
+    # Factor library and subgoal rewards
+    # -------------------------------------------------------------------------
+    # When enabled, the target polynomial is factorized at each episode reset
+    # (using SymPy over Z). Non-trivial factors become subgoals: the agent is
+    # rewarded for building them as intermediate circuit nodes.
+    factor_library_enabled: bool = True
+    # Bonus reward for constructing any non-trivial factor of the current target.
+    # Applied once per factor per episode (cannot be collected twice for the same
+    # factor in one episode).
+    factor_subgoal_reward: float = 1.0
+    # Additional bonus when the constructed factor is already in the library
+    # (i.e., was built in a previous successful episode). Stacks on top of
+    # factor_subgoal_reward to further incentivise reuse of known sub-circuits.
+    factor_library_bonus: float = 0.5
 
     # Model
     hidden_dim: int = 128

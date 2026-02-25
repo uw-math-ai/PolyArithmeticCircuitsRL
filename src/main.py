@@ -51,6 +51,12 @@ def main():
     parser.add_argument("--sac-bc-steps", type=int, default=None)
     parser.add_argument("--sac-fixed-complexity-iters", type=int, default=None)
     parser.add_argument("--sac-target-entropy-scale", type=float, default=None)
+    parser.add_argument("--no-factor-library", action="store_true",
+                        help="Disable the factor library and subgoal rewards")
+    parser.add_argument("--factor-subgoal-reward", type=float, default=None,
+                        help="Bonus reward for building a factor of the target polynomial")
+    parser.add_argument("--factor-library-bonus", type=float, default=None,
+                        help="Additional bonus for building a factor that is already in the library")
 
     args = parser.parse_args()
 
@@ -87,6 +93,12 @@ def main():
         config.sac_fixed_complexity_iters = args.sac_fixed_complexity_iters
     if args.sac_target_entropy_scale is not None:
         config.sac_target_entropy_scale = args.sac_target_entropy_scale
+    if args.no_factor_library:
+        config.factor_library_enabled = False
+    if args.factor_subgoal_reward is not None:
+        config.factor_subgoal_reward = args.factor_subgoal_reward
+    if args.factor_library_bonus is not None:
+        config.factor_library_bonus = args.factor_library_bonus
 
     # Auto-detect device
     if config.device == "cpu" and torch.cuda.is_available():

@@ -51,7 +51,8 @@ src/
 │   ├── fast_polynomial.py        # Fast numpy-based polynomial arithmetic (primary backend)
 │   ├── polynomial_utils.py       # SymPy helpers + SymPy↔FastPoly conversions
 │   ├── action_space.py           # Action encoding/decoding with O(1) closed-form inverse
-│   └── circuit_game.py           # Core game environment (Gymnasium-style API)
+│   ├── circuit_game.py           # Core game environment (Gymnasium-style API)
+│   └── factor_library.py         # Session-level factor cache + subgoal reward logic
 ├── game_board/
 │   └── generator.py              # BFS DAG builder and target polynomial sampling
 ├── models/
@@ -89,6 +90,14 @@ A single `@dataclass Config` holding every hyperparameter. Derived properties co
 | `target_size` | $(d + 1)^{n}$ | Dimension of the flattened coefficient vector |
 
 For defaults ($n=2$, $C_{\max}=6$, $d=6$): `max_nodes = 9`, `max_actions = 90`, `target_size = 49`.
+
+**Factor library parameters** (new):
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `factor_library_enabled` | `True` | Enable factor subgoal rewards and library accumulation |
+| `factor_subgoal_reward` | `1.0` | Reward for building a non-trivial factor of the current target |
+| `factor_library_bonus` | `0.5` | Extra reward when that factor was built in a previous episode |
 
 ---
 
@@ -151,6 +160,33 @@ $$j = i + (\text{pair\_idx} - \text{pair\_idx}(i, i))$$
 This is $O(1)$ rather than the $O(N)$ linear search in the old codebase.
 
 **`get_valid_actions_mask(num_current_nodes, max_nodes)`** — Returns a boolean tensor where action $(\mathrm{op}, i, j)$ is valid iff both $i < n_{\text{current}}$ and $j < n_{\text{current}}$.
+
+---
+
+### `src/environment/factor_library.py` — Factor Library
+
+An in-memory cache that accumulates knowledge about sub-computations across episodes within a single training run. It enables two complementary mechanisms:
+
+**Subgoal detection** — At the start of each episode, the target polynomial is factorized over $\mathbb{Z}$ (integers) using SymPy's `factor_list`. Non-trivial polynomial factors (degree $\geq 1$, not equal to any base input node) are stored as per-episode subgoals. The agent is rewarded for constructing them as intermediate circuit nodes.
+
+**Reuse bonus** — When a factor subgoal is also present in the library (meaning it was built in a past successful episode), the agent earns an extra library bonus reward on top of the standard subgoal reward. This creates a positive feedback loop that encourages the agent to rediscover previously learned sub-computations.
+
+**Key design choices:**
+- No disk I/O — the library lives entirely in RAM for one training session, avoiding unbounded growth across runs.
+- SymPy is called exactly once per episode (at `reset()`), never during `step()`. Per-step checks are O(1) set lookups on canonical keys.
+- Factorization is over $\mathbb{Z}$ (not over $\mathbb{F}_p$) for numerical stability. Factors are then reduced mod $p$ when converted to FastPoly.
+- Each subgoal can only be rewarded once per episode (tracked via `_subgoals_hit`).
+- After each successful episode, all agent-built nodes are registered in the library.
+
+**Example:** For target $3(x_0+1)^2$, `sympy.factor_list` returns `(3, [(x_0+1, 2)])`. The scalar 3 is filtered out; the base-node check passes $(x_0+1)$ through. The subgoal becomes $\{x_0+1\}$. If the agent builds `x0 + 1` during the episode, it receives `factor_subgoal_reward`. If `x0 + 1` was already registered from a previous episode, it also receives `factor_library_bonus`.
+
+| Method | Description |
+|--------|-------------|
+| `factorize_target(target)` | Factorize over Z, return non-trivial FastPoly factors mod p |
+| `filter_known(factors)` | Return canonical keys of factors already in the library |
+| `register(poly, step_num)` | Add/update one polynomial in the library |
+| `register_episode_nodes(nodes, n_initial)` | Bulk-register all agent-built nodes after success |
+| `contains(poly)` | O(1) membership test |
 
 ---
 
@@ -289,18 +325,70 @@ Each episode is a Markov Decision Process:
 
 **Reward function:**
 
-$$r_t = r_{\text{step}} + r_{\text{success}} + r_{\text{shaping}}$$
+$$r_t = r_{\text{step}} + r_{\text{success}} + r_{\text{shaping}} + r_{\text{factor}} + r_{\text{library}}$$
 
 where:
 - $r_{\text{step}} = -0.1$ (per-step penalty to encourage short circuits)
 - $r_{\text{success}} = +10.0$ if the target is matched, else $0$
-- $r_{\text{shaping}} = \gamma \cdot \phi(s_{t+1}) - \phi(s_t)$ (potential-based shaping)
+- $r_{\text{shaping}} = \gamma \cdot \phi(s_{t+1}) - \phi(s_t)$ (potential-based shaping, when enabled)
+- $r_{\text{factor}} \in \{0, r_f\}$: bonus for building a non-trivial factor of the target (default $r_f = 1.0$)
+- $r_{\text{library}} \in \{0, r_b\}$: additional bonus if that factor was also previously seen in the factor library (default $r_b = 0.5$)
 
 The shaping potential is:
 
 $$\phi(s) = \max_{v \in \text{nodes}(s)} \text{term\_similarity}(v, f^*)$$
 
-By the **potential-based shaping theorem** (Ng et al., 1999), this preserves the optimal policy while providing denser learning signal.
+By the **potential-based shaping theorem** (Ng et al., 1999), $r_{\text{shaping}}$ preserves the optimal policy while providing denser learning signal.
+
+The factor rewards $r_{\text{factor}}$ and $r_{\text{library}}$ are additive subgoal bonuses. Each distinct factor subgoal can be collected at most once per episode to prevent exploitation.
+
+---
+
+### Factor Library and Subgoal Rewards
+
+**File:** `src/environment/factor_library.py`
+
+#### Motivation
+
+Many target polynomials share common factors. For example, both $(x_0+1)^2$ and $(x_0+1)^3$ require building $x_0+1$ as an intermediate node. Once the agent has learned to construct $x_0+1$ efficiently, it should be guided to reuse that sub-circuit whenever $x_0+1$ appears as a factor of a new target.
+
+#### Mechanism
+
+**At episode start (`reset`):**
+1. The target polynomial is factorized over $\mathbb{Z}$ using SymPy's `factor_list`.
+2. Non-trivial polynomial factors (total degree $\geq 1$, not a base input node) are collected as the **subgoal set** $\mathcal{F}$ for the episode.
+3. Subgoals already present in the factor library (from previous successful episodes) are marked as **library-known**.
+
+**During the episode (`step`):**
+- When the agent constructs node $v_k$ with $v_k \in \mathcal{F}$ and $v_k$ not yet rewarded this episode:
+
+$$r_{\text{factor}} = r_f \quad (\text{default } +1.0)$$
+
+- If $v_k$ is also library-known:
+
+$$r_{\text{library}} = r_b \quad (\text{default } +0.5, \text{ stacks on } r_f)$$
+
+**At episode end (on success):**
+- All agent-constructed nodes $v_{n_{\text{init}}}, \ldots, v_{N-1}$ are registered in the factor library, available as subgoals in future episodes.
+
+#### Example
+
+Target: $(x_0+1)(x_0^2+2x_0+1) = (x_0+1)^3$
+
+1. `factor_list` returns $(1,\, [(x_0+1,\, 3)])$.
+2. Subgoal: $\{x_0+1\}$.
+3. Episode 1: agent builds $x_0+1$ → earns $r_f = +1.0$. Library now contains $\{x_0+1\}$.
+4. Episode 2 (same or similar target): agent builds $x_0+1$ → earns $r_f + r_b = +1.5$.
+
+#### Configuration
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `factor_library_enabled` | `True` | Enable/disable the entire feature |
+| `factor_subgoal_reward` | `1.0` | Bonus for constructing any factor of the target |
+| `factor_library_bonus` | `0.5` | Extra bonus when that factor was previously seen |
+
+CLI overrides: `--no-factor-library`, `--factor-subgoal-reward`, `--factor-library-bonus`.
 
 ---
 
@@ -526,6 +614,19 @@ python -m src.main --algorithm alphazero --iterations 100 --no-curriculum
 
 # Custom hidden dimension and seed
 python -m src.main --algorithm ppo --hidden-dim 256 --seed 123
+```
+
+### Factor Library Options
+
+The factor library is enabled by default. To adjust or disable it:
+
+```bash
+# Disable factor library entirely (no subgoal rewards)
+python -m src.main --algorithm ppo --iterations 100 --no-factor-library
+
+# Tune reward magnitudes
+python -m src.main --algorithm sac --iterations 200 \
+    --factor-subgoal-reward 2.0 --factor-library-bonus 1.0
 ```
 
 ### Evaluation Only

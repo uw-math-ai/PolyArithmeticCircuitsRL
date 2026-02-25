@@ -1,4 +1,15 @@
-"""Discrete SAC trainer with masked actions for circuit construction."""
+"""Discrete SAC trainer with masked actions for circuit construction.
+
+Implements Soft Actor-Critic for discrete action spaces (Christodoulou 2019)
+with:
+  - Masked action logits (invalid actions set to -inf)
+  - Twin-Q critics for reduced overestimation bias
+  - Stratified replay buffer (current-complexity / success / recent mix)
+  - Adaptive entropy temperature tuning
+  - Optional CQL-lite conservative regularisation
+  - Optional behaviour-cloning warm start from board demonstrations
+  - Optional factor library and subgoal rewards (see FactorLibrary)
+"""
 
 from __future__ import annotations
 
@@ -17,6 +28,7 @@ from ..config import Config
 from ..environment.action_space import encode_action
 from ..environment.circuit_game import CircuitGame
 from ..environment.fast_polynomial import FastPoly
+from ..environment.factor_library import FactorLibrary
 from ..evaluation.evaluate import evaluate_model
 from ..game_board.generator import build_game_board, sample_target
 from ..models.gnn_encoder import CircuitGNN
@@ -415,9 +427,38 @@ def reconstruct_actions_from_board(
 
 
 class SACTrainer:
-    """Discrete SAC training loop with curriculum and stratified replay."""
+    """Discrete SAC training loop with curriculum, stratified replay, and factor library.
 
-    def __init__(self, config: Config, device: str = "cpu"):
+    Orchestrates the experience-collection → critic-update → actor-update cycle
+    for discrete masked-action SAC. An adaptive curriculum adjusts target complexity
+    and a stratified replay buffer over-samples successful and recently-seen episodes.
+
+    The optional FactorLibrary is created here (once per training run) and shared
+    with the CircuitGame environment. It grows as the agent succeeds, providing
+    increasingly rich subgoal guidance to the policy.
+
+    Attributes:
+        config (Config): Shared hyperparameter configuration.
+        device (str): PyTorch device string.
+        actor (SACActor): Policy network.
+        critic (SACCritic): Twin-Q critic network.
+        target_critic (SACCritic): Exponentially-averaged target critic.
+        env (CircuitGame): Circuit construction environment.
+        replay (StratifiedReplayBuffer): Off-policy experience replay buffer.
+        factor_library (FactorLibrary | None): Session-level factor cache.
+    """
+
+    def __init__(self, config: Config, device: str = "cpu") -> None:
+        """Initialise the SAC trainer.
+
+        Constructs actor, critic, and target-critic networks; creates optimisers for
+        each network and for the entropy temperature log_alpha; initialises the
+        environment (with FactorLibrary if enabled) and the replay buffer.
+
+        Args:
+            config: Configuration dataclass with all hyperparameters.
+            device: PyTorch device to use ('cpu', 'cuda', or 'mps').
+        """
         self.config = config
         self.device = device
 
@@ -430,12 +471,28 @@ class SACTrainer:
         self.critic_optimizer = optim.Adam(
             self.critic.parameters(), lr=config.sac_critic_lr
         )
+        # log_alpha is a learnable scalar; alpha = exp(log_alpha) is the entropy temperature.
         self.log_alpha = torch.tensor(
-            math.log(config.sac_alpha_init), dtype=torch.float32, device=device, requires_grad=True
+            math.log(config.sac_alpha_init),
+            dtype=torch.float32,
+            device=device,
+            requires_grad=True,
         )
         self.alpha_optimizer = optim.Adam([self.log_alpha], lr=config.sac_alpha_lr)
 
-        self.env = CircuitGame(config)
+        # Create the factor library once per training session if the feature is enabled.
+        # The library persists across all episodes within this run (in-memory only).
+        factor_library: Optional[FactorLibrary] = None
+        if config.factor_library_enabled:
+            factor_library = FactorLibrary(
+                mod=config.mod,
+                n_vars=config.n_variables,
+                max_degree=config.effective_max_degree,
+            )
+
+        self.env = CircuitGame(config, factor_library=factor_library)
+        self.factor_library = factor_library
+
         self.replay = StratifiedReplayBuffer(
             capacity=config.sac_replay_size,
             recent_window=config.sac_recent_window,
@@ -448,6 +505,7 @@ class SACTrainer:
         )
         self.success_history: List[bool] = []
         self.total_env_steps = 0
+        # Lazily-built BFS game boards per complexity level.
         self._boards = {}
 
     @property
@@ -585,11 +643,23 @@ class SACTrainer:
                 )
 
     def _collect_experience(self) -> dict:
+        """Run the current actor in the environment and add transitions to the replay buffer.
+
+        Collects at least sac_steps_per_iter environment steps across potentially
+        multiple episodes. Each episode uses a freshly sampled target polynomial.
+        Transitions are aggregated into n-step returns before being stored.
+
+        Returns:
+            Dict with episode statistics: 'episodes', 'success_rate', 'avg_reward',
+            'complexity', 'replay_size', 'factor_hits', 'library_hits', 'library_size'.
+        """
         self.actor.eval()
         steps_collected = 0
         episodes = 0
         successes = 0
         total_reward = 0.0
+        factor_hits = 0   # Steps where a factor subgoal was hit this iteration.
+        library_hits = 0  # Subset of factor_hits where the factor was library-known.
 
         while steps_collected < self.config.sac_steps_per_iter:
             board = self._get_board(self.current_complexity)
@@ -608,6 +678,12 @@ class SACTrainer:
                 steps_collected += 1
                 episode_reward += reward
 
+                # Track factor subgoal statistics for logging.
+                if info.get("factor_hit", False):
+                    factor_hits += 1
+                if info.get("library_hit", False):
+                    library_hits += 1
+
                 raw_steps.append(
                     RawStep(
                         obs=self._clone_obs(obs),
@@ -618,6 +694,7 @@ class SACTrainer:
                     )
                 )
 
+                # Flush completed n-step windows as they fill.
                 if len(raw_steps) >= self.config.sac_n_step:
                     episode_nstep.append(
                         build_n_step_transition(
@@ -628,9 +705,12 @@ class SACTrainer:
 
                 obs = next_obs
 
+            # Drain any remaining partial n-step windows at episode end.
             while raw_steps:
                 episode_nstep.append(
-                    build_n_step_transition(raw_steps, self.config.sac_n_step, self.config.gamma)
+                    build_n_step_transition(
+                        raw_steps, self.config.sac_n_step, self.config.gamma
+                    )
                 )
                 raw_steps.popleft()
 
@@ -658,6 +738,9 @@ class SACTrainer:
             "avg_reward": total_reward / max(episodes, 1),
             "complexity": self.current_complexity,
             "replay_size": len(self.replay),
+            "factor_hits": factor_hits,
+            "library_hits": library_hits,
+            "library_size": len(self.factor_library) if self.factor_library else 0,
         }
 
     def _soft_update_target(self):
@@ -861,6 +944,12 @@ class SACTrainer:
 
             if iteration % self.config.log_interval == 0:
                 phase = "fixed" if in_fixed_phase else "curriculum"
+                lib_str = (
+                    f"lib={rollout_info['library_size']} "
+                    f"fhits={rollout_info['factor_hits']} "
+                    f"lhits={rollout_info['library_hits']} "
+                    if self.config.factor_library_enabled else ""
+                )
                 print(
                     f"[SAC iter {iteration}] "
                     f"phase={phase} "
@@ -868,6 +957,7 @@ class SACTrainer:
                     f"success={rollout_info['success_rate']:.2%} "
                     f"reward={rollout_info['avg_reward']:.3f} "
                     f"buffer={rollout_info['replay_size']} "
+                    f"{lib_str}"
                     f"critic={loss_info['critic_loss']:.4f} "
                     f"actor={loss_info['actor_loss']:.4f} "
                     f"alpha={loss_info['alpha']:.4f} "
