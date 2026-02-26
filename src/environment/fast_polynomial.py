@@ -54,6 +54,16 @@ class FastPoly:
     def __add__(self, other: "FastPoly") -> "FastPoly":
         return FastPoly((self.coeffs + other.coeffs), self.mod)
 
+    def __sub__(self, other: "FastPoly") -> "FastPoly":
+        """Subtract other from self, reducing coefficients mod p.
+
+        Used to compute additive residuals T - v during dynamic subgoal
+        discovery. Equivalent to adding the negation (a - b = a + (p - b) mod p),
+        but implemented directly via numpy subtraction since FastPoly.__init__
+        applies the modulo.
+        """
+        return FastPoly(self.coeffs - other.coeffs, self.mod)
+
     def __mul__(self, other: "FastPoly") -> "FastPoly":
         result = _nd_convolve(self.coeffs, other.coeffs)
         # Truncate to original shape (higher-degree terms are lost)
@@ -104,6 +114,26 @@ class FastPoly:
         total = int(np.count_nonzero(target_nonzero))
         matching = int(np.sum((self.coeffs == target.coeffs) & target_nonzero))
         return matching / total
+
+    def is_scalar(self) -> bool:
+        """Return True if this is a non-zero constant (degree-0) polynomial.
+
+        A scalar polynomial has a non-zero constant term and all higher-degree
+        coefficients equal to zero. Used when checking multiplicative completion
+        bonuses: if T / v_new reduces to a scalar, the agent only needs to
+        multiply v_new by that constant to reach T.
+
+        Returns:
+            True if the polynomial is a non-zero constant, False if it has any
+            degree > 0 terms or is the zero polynomial.
+        """
+        if self.is_zero():
+            return False
+        # All non-constant terms must be zero.
+        idx = (0,) * self.coeffs.ndim
+        tmp = self.coeffs.copy()
+        tmp[idx] = 0
+        return not np.any(tmp)
 
     def copy(self) -> "FastPoly":
         """Return a copy (numpy array is mutable, unlike SymPy exprs)."""

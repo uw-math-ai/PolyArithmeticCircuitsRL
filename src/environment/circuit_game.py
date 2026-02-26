@@ -39,6 +39,13 @@ class CircuitGame:
       - Awards factor_subgoal_reward when the agent builds a factor node.
       - Awards an extra factor_library_bonus when that factor was previously seen
         in a past successful episode.
+      - Dynamically discovers new subgoals at each step (when v_new is library-
+        known): factorizes T - v_new and T / v_new (exact) to extend the active
+        subgoal set for the remainder of the episode.
+      - Awards completion_bonus when the circuit contains both pieces for a single
+        final operation: additive (T - v_new already in circuit) or multiplicative
+        (exact quotient T / v_new already in circuit or is a scalar). Each fires at
+        most once per direction per episode.
       - Registers all constructed nodes into the library after a successful episode.
 
     Attributes:
@@ -87,12 +94,20 @@ class CircuitGame:
         self.done: bool = True
 
         # Per-episode factor subgoal state — refreshed in reset().
-        # _subgoal_keys: canonical keys of non-trivial factors of the current target.
+        # _subgoal_keys: canonical keys of known subgoal polynomials this episode.
+        #   Starts with non-trivial factors of the target (from reset), and grows
+        #   dynamically during stepping as new residuals / quotients are discovered.
         # _library_known_keys: subset of _subgoal_keys that are in the library.
         # _subgoals_hit: keys already rewarded this episode (no double-rewarding).
         self._subgoal_keys: Set[bytes] = set()
         self._library_known_keys: Set[bytes] = set()
         self._subgoals_hit: Set[bytes] = set()
+
+        # Completion bonus guards: each direction fires at most once per episode.
+        # _additive_complete_hit: True after the first additive completion bonus.
+        # _mult_complete_hit: True after the first multiplicative completion bonus.
+        self._additive_complete_hit: bool = False
+        self._mult_complete_hit: bool = False
 
     def reset(self, target_poly: FastPoly) -> Dict[str, torch.Tensor]:
         """Reset the game with a new target polynomial and return the initial observation.
@@ -128,6 +143,8 @@ class CircuitGame:
         self._subgoal_keys = set()
         self._library_known_keys = set()
         self._subgoals_hit = set()
+        self._additive_complete_hit = False
+        self._mult_complete_hit = False
 
         if (
             self.factor_library is not None
@@ -160,9 +177,14 @@ class CircuitGame:
           - success_reward (+10.0 default): applied when the target is matched.
           - potential shaping (gamma * phi_after - phi_before): when enabled.
           - factor_subgoal_reward (+1.0 default): when a factor subgoal is built
-            (at most once per distinct factor per episode).
+            (at most once per distinct subgoal per episode).
           - factor_library_bonus (+0.5 default): stacks on subgoal reward when
             the factor was previously seen in the library.
+          - completion_bonus (+3.0 default): when the circuit now contains both
+            pieces for one final operation to reach T:
+              * Additive: T - v_new already in the circuit (fires at most once).
+              * Multiplicative: T / v_new is exact and quotient is in circuit or
+                is a scalar (fires at most once, separate from additive).
 
         After a successful episode, all constructed nodes are registered in the
         FactorLibrary so future episodes can benefit from them.
@@ -173,7 +195,8 @@ class CircuitGame:
         Returns:
             Tuple of (observation, reward, done, info) where info includes
             'is_success', 'steps_taken', 'num_nodes', 'new_poly', 'op',
-            'operands', 'factor_hit', 'library_hit'.
+            'operands', 'factor_hit', 'library_hit', 'additive_complete',
+            'mult_complete'.
 
         Raises:
             AssertionError: If the game is already done or if node indices are
@@ -232,31 +255,116 @@ class CircuitGame:
             reward += self.config.gamma * phi_after - phi_before
 
         # --- Factor subgoal reward ---
-        # Check whether the newly created node matches any subgoal factor.
-        # This is an O(1) set lookup — no SymPy involved during stepping.
+        # Check whether the newly created node matches any subgoal.
+        # This is an O(1) set lookup — no SymPy involved here.
         factor_hit = False
         library_hit = False
 
-        if (
-            self.factor_library is not None
-            and self.config.factor_library_enabled
-            and self._subgoal_keys
-        ):
+        if self.factor_library is not None and self.config.factor_library_enabled:
             new_key = new_poly.canonical_key()
             if new_key in self._subgoal_keys and new_key not in self._subgoals_hit:
-                # First time this factor has been built in the current episode.
+                # First time this subgoal has been built this episode.
                 self._subgoals_hit.add(new_key)
                 factor_hit = True
                 reward += self.config.factor_subgoal_reward
 
                 if new_key in self._library_known_keys:
-                    # This factor was built in a previous successful episode;
-                    # give an additional library reuse bonus.
+                    # Also seen in a prior successful episode → extra bonus.
                     library_hit = True
                     reward += self.config.factor_library_bonus
 
+        # --- Completion bonus + dynamic subgoal discovery ---
+        # Runs when the factor library is active and success has not yet occurred
+        # (no point awarding a completion bonus on the success step itself).
+        additive_complete = False
+        mult_complete = False
+
+        if (
+            self.factor_library is not None
+            and self.config.factor_library_enabled
+            and not is_success
+        ):
+            # Compute T - v_new (fast: numpy subtraction, no SymPy).
+            residual = self.target_poly - new_poly
+
+            # Snapshot canonical keys of all nodes present BEFORE this step.
+            # (self.nodes[-1] is new_poly, already appended above.)
+            existing_keys: Set[bytes] = {
+                n.canonical_key() for n in self.nodes[:-1]
+            }
+
+            # 1. Additive completion bonus (fires at most once per episode).
+            #    If T - v_new is already in the circuit, one more ADD gives T.
+            if (
+                not self._additive_complete_hit
+                and not residual.is_zero()
+                and residual.canonical_key() in existing_keys
+            ):
+                reward += self.config.completion_bonus
+                self._additive_complete_hit = True
+                additive_complete = True
+
+            # 2. Library-gated: dynamic subgoal discovery + multiplicative checks.
+            #    Only pay SymPy costs when v_new is already in the library,
+            #    indicating it's a polynomially meaningful intermediate.
+            if self.factor_library.contains(new_poly):
+
+                # 2a. Add T - v_new as a direct additive subgoal.
+                #     If the agent later builds the residual, one ADD gives T.
+                if not residual.is_zero() and not self.factor_library.is_base(residual):
+                    r_key = residual.canonical_key()
+                    if r_key not in self._subgoal_keys:
+                        self._subgoal_keys.add(r_key)
+                        if self.factor_library.contains(residual):
+                            self._library_known_keys.add(r_key)
+
+                # 2b. Factorize T - v_new over Z → discover more additive subgoals.
+                if not residual.is_zero():
+                    for f in self.factor_library.factorize_poly(
+                        residual, self._subgoal_keys
+                    ):
+                        k = f.canonical_key()
+                        self._subgoal_keys.add(k)
+                        if self.factor_library.contains(f):
+                            self._library_known_keys.add(k)
+
+                # 2c. Exact division T / v_new (uses SymPy — gated here).
+                quotient = self.factor_library.exact_quotient(
+                    self.target_poly, new_poly
+                )
+                if quotient is not None:
+                    # Multiplicative completion bonus (fires at most once).
+                    #   T / v_new is a scalar  →  just multiply v_new by that constant.
+                    #   T / v_new in circuit   →  one MUL away from T.
+                    if not self._mult_complete_hit:
+                        q_key = quotient.canonical_key()
+                        if quotient.is_scalar() or q_key in existing_keys:
+                            reward += self.config.completion_bonus
+                            self._mult_complete_hit = True
+                            mult_complete = True
+
+                    # Add quotient as a direct multiplicative subgoal.
+                    if (
+                        not quotient.is_scalar()
+                        and not self.factor_library.is_base(quotient)
+                    ):
+                        q_key = quotient.canonical_key()
+                        if q_key not in self._subgoal_keys:
+                            self._subgoal_keys.add(q_key)
+                            if self.factor_library.contains(quotient):
+                                self._library_known_keys.add(q_key)
+
+                        # Factorize quotient over Z → discover multiplicative subgoals.
+                        for f in self.factor_library.factorize_poly(
+                            quotient, self._subgoal_keys
+                        ):
+                            k = f.canonical_key()
+                            self._subgoal_keys.add(k)
+                            if self.factor_library.contains(f):
+                                self._library_known_keys.add(k)
+
         # --- Library update on success ---
-        # Register all agent-built nodes so future episodes can use them as subgoals.
+        # Register all agent-built nodes so future episodes can discover them.
         if is_success and self.factor_library is not None:
             n_initial = self.n_vars + 1  # x0,...,x_{n-1} plus the constant 1
             self.factor_library.register_episode_nodes(self.nodes, n_initial)
@@ -268,8 +376,10 @@ class CircuitGame:
             "new_poly": new_poly,
             "op": "add" if op == 0 else "mul",
             "operands": (i, j),
-            "factor_hit": factor_hit,     # True if this step built a target factor.
-            "library_hit": library_hit,   # True if that factor was also in the library.
+            "factor_hit": factor_hit,           # Built a known subgoal this step.
+            "library_hit": library_hit,         # Subgoal was also in the library.
+            "additive_complete": additive_complete,   # Additive completion bonus fired.
+            "mult_complete": mult_complete,           # Multiplicative completion bonus fired.
         }
 
         return self.get_observation(), reward, self.done, info
@@ -412,11 +522,15 @@ class CircuitGame:
         new_game.node_types = list(self.node_types)
         new_game.edges = list(self.edges)
 
-        # Shallow-copy per-episode factor tracking (sets of bytes — immutable keys).
-        # _subgoal_keys and _library_known_keys don't change during an episode;
-        # _subgoals_hit must be copied so each MCTS branch tracks hits independently.
-        new_game._subgoal_keys = self._subgoal_keys          # read-only during episode
-        new_game._library_known_keys = self._library_known_keys  # read-only during episode
-        new_game._subgoals_hit = set(self._subgoals_hit)     # mutable copy
+        # Per-episode factor tracking. _subgoal_keys and _library_known_keys can
+        # grow during the episode (dynamic discovery), so copy them too.
+        # _subgoals_hit tracks which subgoals each MCTS branch has already claimed.
+        new_game._subgoal_keys = set(self._subgoal_keys)          # mutable copy
+        new_game._library_known_keys = set(self._library_known_keys)  # mutable copy
+        new_game._subgoals_hit = set(self._subgoals_hit)           # mutable copy
+
+        # Completion bonus guards: each branch tracks its own fired state.
+        new_game._additive_complete_hit = self._additive_complete_hit
+        new_game._mult_complete_hit = self._mult_complete_hit
 
         return new_game

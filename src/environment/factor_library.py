@@ -18,21 +18,32 @@ Mechanism
    factor_list(). Non-trivial polynomial factors (degree >= 1, not a base input
    node) become subgoals for the episode.
 
-2. During stepping, if the agent constructs a node matching a subgoal factor, it
-   receives a factor_subgoal_reward. If that factor was also previously built in
-   a past successful episode (and is thus in the library), it additionally receives
-   a factor_library_bonus.
+2. During stepping, if the agent constructs a node v_new matching a subgoal, it
+   receives factor_subgoal_reward. If that factor was also previously built in
+   a past successful episode, it additionally receives factor_library_bonus.
 
-3. After a successful episode, every agent-built node is registered in the library
+   When v_new is library-known, dynamic subgoal discovery also runs:
+   - T - v_new is computed (fast, no SymPy) and added as a direct additive
+     subgoal (one addition away from T). Its factors are also discovered.
+   - T / v_new is attempted via exact polynomial division (SymPy). If exact,
+     the quotient is added as a multiplicative subgoal.
+
+3. Completion bonuses fire when the circuit contains both pieces for one final op:
+   - Additive: T - v_new already in the circuit → +completion_bonus.
+   - Multiplicative: T / v_new is in the circuit or is a scalar → +completion_bonus.
+
+4. After a successful episode, every agent-built node is registered in the library
    so future episodes can benefit from it.
 
 Design Constraints
 ------------------
 - No disk I/O: the library lives entirely in RAM for one training session.
 - Fast lookups: all membership tests are O(1) set/dict operations on canonical keys.
-- SymPy is called only once per episode (at reset), never during per-step execution.
+- SymPy calls for factorization are gated on library membership to control cost.
 - Factorization is over Z (integers), not F_p, for numerical stability. Factors are
-  then reduced mod p when converted to FastPoly.
+  then reduced mod p when converted to FastPoly. Exact division is checked by
+  reducing the ZZ remainder mod p (handles cases where ZZ remainder is a multiple
+  of p but true F_p remainder is 0).
 """
 
 from typing import Dict, List, Optional, Set
@@ -174,45 +185,29 @@ class FactorLibrary:
     # Library read operations
     # -------------------------------------------------------------------------
 
+    def is_base(self, poly: FastPoly) -> bool:
+        """Return True if poly is one of the initial free base nodes.
+
+        Base nodes are x0, x1, ..., x_{n-1} (input variables) and the constant
+        polynomial 1. They are never useful subgoals because the agent has them
+        for free at every episode start.
+
+        Args:
+            poly: The FastPoly polynomial to test.
+
+        Returns:
+            True if poly's canonical key matches any base node, False otherwise.
+        """
+        return poly.canonical_key() in self._base_keys
+
     def factorize_target(self, target: FastPoly) -> List[FastPoly]:
         """Factorize the target polynomial and return its non-trivial factors mod p.
 
-        Factorization is performed over Z (integers) using SymPy's factor_list()
-        for numerical stability. Each factor is then converted to a FastPoly, which
-        automatically reduces all coefficients modulo p.
+        Convenience wrapper around factorize_poly() that automatically excludes
+        the target's own canonical key (so an irreducible target does not produce
+        itself as a subgoal).
 
-        A factor is included in the result if and only if:
-          - It is a polynomial of total degree >= 1 (not a pure scalar constant).
-          - It is not identical to any base input node (x0, ..., x_{n-1}, or 1),
-            since those are already available and building them is not a meaningful
-            sub-goal.
-          - It is not the zero polynomial after mod-p reduction.
-          - It has not already appeared in the result list (deduplicated by canonical
-            key, so (x0+1)^3 yields a single subgoal [x0+1] rather than three copies).
-
-        Factorization examples:
-            target = (x0 + 1)^3
-                factor_list -> (1, [(x0 + 1, 3)])
-                Returns [FastPoly(x0 + 1)]          (multiplicity collapsed)
-
-            target = 3 * (x0 + 1)^2
-                factor_list -> (3, [(x0 + 1, 2)])
-                Returns [FastPoly(x0 + 1)]          (scalar 3 filtered out)
-
-            target = x0 * (x0 + 1)
-                factor_list -> (1, [(x0, 1), (x0 + 1, 1)])
-                Returns [FastPoly(x0 + 1)]          (x0 is a base node, filtered)
-
-            target = (x0 + 1) * (x1 + 2)
-                factor_list -> (1, [(x0+1, 1), (x1+2, 1)])
-                Returns [FastPoly(x0+1), FastPoly(x1+2)]
-
-            target = x0 + x1  (irreducible)
-                factor_list -> (1, [(x0+x1, 1)])
-                Returns []                          (single factor = target itself, skipped below)
-
-        Note: If the target is itself irreducible, factor_list returns it as its
-        own single factor. We skip this case (no useful subgoal is produced).
+        See factorize_poly() for full details on filtering rules and examples.
 
         Args:
             target: The target FastPoly polynomial for the current episode.
@@ -222,50 +217,96 @@ class FactorLibrary:
             empty list if the target is irreducible, constant, or if SymPy
             factorization raises an exception.
         """
+        return self.factorize_poly(target, exclude_keys={target.canonical_key()})
+
+    def factorize_poly(
+        self,
+        poly: FastPoly,
+        exclude_keys: Optional[Set[bytes]] = None,
+    ) -> List[FastPoly]:
+        """Factorize poly over Z and return filtered non-trivial factors mod p.
+
+        Factorization is performed over Z (integers) using SymPy's factor_list()
+        for numerical stability. Each factor is then converted to a FastPoly, which
+        automatically reduces all coefficients modulo p.
+
+        A factor is included in the result if and only if:
+          - It is a polynomial of total degree >= 1 (not a pure scalar constant).
+          - It is not identical to any base input node (x0, ..., x_{n-1}, or 1).
+          - It is not the zero polynomial after mod-p reduction.
+          - Its canonical key is not in exclude_keys (caller-supplied set of keys
+            to skip — typically already-known subgoal keys).
+          - It is not poly itself (irreducible case: skipped via exclude_keys or
+            the poly_key guard).
+          - It has not already appeared in the result (deduplicated by canonical key,
+            so (x0+1)^3 yields a single result entry rather than three copies).
+
+        Factorization examples (mod p):
+            poly = (x0 + 1)^3   →   [FastPoly(x0 + 1)]    (multiplicity collapsed)
+            poly = 3*(x0+1)^2   →   [FastPoly(x0+1)]      (scalar 3 filtered)
+            poly = x0*(x0+1)    →   [FastPoly(x0+1)]      (x0 is base node, filtered)
+            poly = (x0+1)*(x1+2) →  [FastPoly(x0+1), FastPoly(x1+2)]
+            poly = x0+x1 (irreducible) →  []               (only factor = poly itself)
+
+        Args:
+            poly: The FastPoly polynomial to factorize.
+            exclude_keys: Optional set of canonical key bytes to skip. Keys in this
+                          set will be excluded from the result even if they are valid
+                          factors. Typically set to self._subgoal_keys to avoid
+                          re-adding already-known subgoals. Base keys are always
+                          excluded regardless of this parameter.
+
+        Returns:
+            List of distinct non-trivial FastPoly factors, with excluded keys and
+            base nodes removed. Returns an empty list on any failure.
+        """
         import sympy
         from .polynomial_utils import fast_to_sympy, sympy_to_fast
 
+        if exclude_keys is None:
+            exclude_keys = set()
+
         syms = self._get_syms()
 
-        # Convert target to SymPy expression. This is O(nnz) in the number of
-        # nonzero coefficients — fast in practice for small polynomials.
-        expr = fast_to_sympy(target, syms)
+        # Handle trivial degenerate cases quickly (no SymPy overhead).
+        if poly.is_zero():
+            return []
 
-        # Handle trivial degenerate cases quickly.
+        # Convert to SymPy. O(nnz) — fast for small polynomials.
+        try:
+            expr = fast_to_sympy(poly, syms)
+        except Exception:
+            return []
+
         if expr == sympy.Integer(0) or expr.is_number:
             return []
 
-        # Factorize over Z. Returns (content, [(factor_expr, multiplicity), ...])
-        # where content is the integer GCD and each factor_expr is an irreducible
-        # polynomial factor over Z. Using ZZ (integers) is more stable and
-        # interpretable than factoring over F_p directly.
-        try:
-            content, factors = sympy.factor_list(expr, *syms)
-        except Exception:
-            # Gracefully degrade: if factorization fails (unusual expression type,
-            # SymPy bug, etc.), return no subgoals rather than crashing training.
-            return []
+        # Canonical key of the input poly — always excluded from results.
+        poly_key = poly.canonical_key()
 
-        # Precompute the canonical key of the target itself so we can skip it
-        # (a polynomial is not a useful factor of itself).
-        target_key = target.canonical_key()
+        # Factorize over Z. Returns (content, [(factor_expr, multiplicity), ...]).
+        # Using ZZ (integers) is more stable than factoring directly over F_p.
+        try:
+            _content, factors = sympy.factor_list(expr, *syms)
+        except Exception:
+            # Gracefully degrade: return no subgoals rather than crashing.
+            return []
 
         result: List[FastPoly] = []
         seen_keys: Set[bytes] = set()
 
-        for factor_expr, mult in factors:
-            # Skip pure scalar constants (degree-0 factors like 3 or -1).
+        for factor_expr, _mult in factors:
+            # Skip pure scalar constants (degree-0 over Z, e.g. 3 or -1).
             try:
                 if factor_expr.is_number:
                     continue
                 fpoly_sympy = sympy.Poly(factor_expr, *syms)
                 if fpoly_sympy.total_degree() == 0:
-                    continue  # Constant polynomial after variable extraction.
+                    continue
             except (sympy.PolynomialError, Exception):
-                # Poly() can fail for exotic expressions; skip them.
                 continue
 
-            # Convert to FastPoly (reduces all coefficients mod p automatically).
+            # Convert to FastPoly (reduces coefficients mod p automatically).
             try:
                 fast_factor = sympy_to_fast(
                     factor_expr, syms, self.mod, self.max_degree
@@ -273,21 +314,25 @@ class FactorLibrary:
             except Exception:
                 continue
 
-            # Skip the zero polynomial (can happen when all coefficients vanish mod p).
+            # Skip zero polynomial (all coefficients vanish mod p).
             if fast_factor.is_zero():
                 continue
 
             key = fast_factor.canonical_key()
 
-            # Skip factors that are identical to the target itself (irreducible case).
-            if key == target_key:
+            # Skip poly itself (irreducible polynomial returns itself as its factor).
+            if key == poly_key:
                 continue
 
-            # Skip base nodes (xi or the constant 1) — always free at episode start.
+            # Skip base nodes (x0, x1, ..., 1) — always available for free.
             if key in self._base_keys:
                 continue
 
-            # Deduplicate: (x0+1)^3 should yield one subgoal [x0+1], not three.
+            # Skip caller-excluded keys (e.g. already-known subgoals).
+            if key in exclude_keys:
+                continue
+
+            # Deduplicate: (x0+1, mult=3) → one entry only.
             if key in seen_keys:
                 continue
             seen_keys.add(key)
@@ -295,6 +340,81 @@ class FactorLibrary:
             result.append(fast_factor)
 
         return result
+
+    def exact_quotient(
+        self, dividend: FastPoly, divisor: FastPoly
+    ) -> Optional[FastPoly]:
+        """Return the exact polynomial quotient dividend / divisor mod p, or None.
+
+        Performs pseudo-division over Z (integers) using SymPy. Checks if the
+        remainder is zero modulo p — this correctly handles cases where the ZZ
+        remainder is a non-zero multiple of p (e.g., T = x^2 + 4 and v = x + 1
+        over F_5: ZZ remainder is 5, which reduces to 0 mod 5).
+
+        If the remainder vanishes mod p, returns the quotient as a FastPoly
+        (with coefficients reduced mod p). The quotient may be a scalar
+        (constant polynomial); callers can test this via quotient.is_scalar().
+
+        Returns None if:
+          - divisor is the zero polynomial.
+          - The remainder is non-zero mod p (divisor does not divide dividend).
+          - Any SymPy conversion or division step raises an exception.
+
+        Args:
+            dividend: The polynomial to be divided (typically the target T).
+            divisor: The candidate divisor (typically the newly built node v).
+
+        Returns:
+            FastPoly quotient if divisor | dividend exactly over F_p, else None.
+        """
+        import sympy
+        from .polynomial_utils import fast_to_sympy, sympy_to_fast
+
+        if divisor.is_zero():
+            return None
+
+        syms = self._get_syms()
+
+        try:
+            dividend_expr = fast_to_sympy(dividend, syms)
+            divisor_expr = fast_to_sympy(divisor, syms)
+        except Exception:
+            return None
+
+        if divisor_expr == sympy.Integer(0):
+            return None
+
+        # Pseudo-division over ZZ. f = g * q + r where r is reduced w.r.t. g.
+        # If r ≡ 0 (mod p), divisor divides dividend over F_p.
+        try:
+            quotient_expr, remainder_expr = sympy.div(
+                dividend_expr, divisor_expr, *syms, domain="ZZ"
+            )
+        except Exception:
+            return None
+
+        # Check remainder mod p. sympy_to_fast reduces coefficients mod p.
+        try:
+            remainder_poly = sympy_to_fast(
+                remainder_expr, syms, self.mod, self.max_degree
+            )
+        except Exception:
+            return None
+
+        if not remainder_poly.is_zero():
+            return None  # Not an exact factor over F_p.
+
+        try:
+            quotient_poly = sympy_to_fast(
+                quotient_expr, syms, self.mod, self.max_degree
+            )
+        except Exception:
+            return None
+
+        if quotient_poly.is_zero():
+            return None
+
+        return quotient_poly
 
     def filter_known(self, factor_polys: List[FastPoly]) -> Set[bytes]:
         """Return canonical keys from factor_polys that are already in the library.

@@ -59,9 +59,12 @@ def evaluate_model(
                 if algorithm == "alphazero" and mcts is not None:
                     action, _ = mcts.get_action_probs(env, temperature=0)
                 else:
-                    # Greedy policy evaluation (PPO/SAC)
+                    # Greedy policy evaluation (PPO/SAC).
+                    # Use hasattr(v, 'to') rather than isinstance(v, Tensor) so
+                    # that PyG Data graph objects (which also have .to()) are
+                    # moved to the correct device alongside plain tensors.
                     obs_device = {
-                        k: v.to(device) if isinstance(v, torch.Tensor) else v
+                        k: v.to(device) if hasattr(v, "to") else v
                         for k, v in obs.items()
                     }
                     with torch.no_grad():

@@ -91,13 +91,14 @@ A single `@dataclass Config` holding every hyperparameter. Derived properties co
 
 For defaults ($n=2$, $C_{\max}=6$, $d=6$): `max_nodes = 9`, `max_actions = 90`, `target_size = 49`.
 
-**Factor library parameters** (new):
+**Factor library parameters:**
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `factor_library_enabled` | `True` | Enable factor subgoal rewards and library accumulation |
-| `factor_subgoal_reward` | `1.0` | Reward for building a non-trivial factor of the current target |
+| `factor_subgoal_reward` | `1.0` | Reward for building a non-trivial factor subgoal |
 | `factor_library_bonus` | `0.5` | Extra reward when that factor was built in a previous episode |
+| `completion_bonus` | `3.0` | Bonus when the circuit has both pieces for one final add/mul to reach T |
 
 ---
 
@@ -165,24 +166,35 @@ This is $O(1)$ rather than the $O(N)$ linear search in the old codebase.
 
 ### `src/environment/factor_library.py` — Factor Library
 
-An in-memory cache that accumulates knowledge about sub-computations across episodes within a single training run. It enables two complementary mechanisms:
+An in-memory cache that accumulates knowledge about sub-computations across episodes within a single training run. It enables three complementary mechanisms:
 
-**Subgoal detection** — At the start of each episode, the target polynomial is factorized over $\mathbb{Z}$ (integers) using SymPy's `factor_list`. Non-trivial polynomial factors (degree $\geq 1$, not equal to any base input node) are stored as per-episode subgoals. The agent is rewarded for constructing them as intermediate circuit nodes.
+**Subgoal detection** — At the start of each episode, the target polynomial is factorized over $\mathbb{Z}$ (integers) using SymPy's `factor_list`. Non-trivial polynomial factors (degree $\geq 1$, not equal to any base input node) are stored as per-episode subgoals. Subgoals grow dynamically during stepping (see below).
 
-**Reuse bonus** — When a factor subgoal is also present in the library (meaning it was built in a past successful episode), the agent earns an extra library bonus reward on top of the standard subgoal reward. This creates a positive feedback loop that encourages the agent to rediscover previously learned sub-computations.
+**Reuse bonus** — When a subgoal is also present in the library (meaning it was built in a past successful episode), the agent earns an extra library bonus on top of the standard subgoal reward.
+
+**Dynamic subgoal discovery** — At each step, when the newly built node $v$ is library-known, two additional operations run (both gated to avoid SymPy overhead on every step): (1) compute $T - v$ in FastPoly (fast) and factorize it, adding new additive subgoals; (2) attempt exact division $T / v$ using SymPy and factorize the quotient, adding new multiplicative subgoals. The residual $T - v$ and quotient $T/v$ themselves are also added as direct subgoals.
+
+**Completion bonus** — At each step, two cheap checks determine whether the circuit is exactly one operation away from success:
+- *Additive*: $T - v$ is already in the circuit → the agent could do $v + (T-v) = T$ next.
+- *Multiplicative*: the exact quotient $T/v$ is already in the circuit, or is a scalar → the agent could do $v \times (T/v) = T$ next.
+
+Each direction fires at most once per episode to prevent exploitation.
 
 **Key design choices:**
-- No disk I/O — the library lives entirely in RAM for one training session, avoiding unbounded growth across runs.
-- SymPy is called exactly once per episode (at `reset()`), never during `step()`. Per-step checks are O(1) set lookups on canonical keys.
-- Factorization is over $\mathbb{Z}$ (not over $\mathbb{F}_p$) for numerical stability. Factors are then reduced mod $p$ when converted to FastPoly.
-- Each subgoal can only be rewarded once per episode (tracked via `_subgoals_hit`).
+- No disk I/O — the library lives entirely in RAM for one training session.
+- Additive completion check is always $O(n_{\text{nodes}})$ (just FastPoly subtraction + key lookup). SymPy is only called when $v$ is library-known.
+- Factorization is over $\mathbb{Z}$ (not $\mathbb{F}_p$) for stability. Exact division is verified by reducing the $\mathbb{Z}$-remainder mod $p$ (handles cases where the ZZ remainder is a non-zero multiple of $p$).
+- Each subgoal key can only be rewarded once per episode (`_subgoals_hit` set).
 - After each successful episode, all agent-built nodes are registered in the library.
 
-**Example:** For target $3(x_0+1)^2$, `sympy.factor_list` returns `(3, [(x_0+1, 2)])`. The scalar 3 is filtered out; the base-node check passes $(x_0+1)$ through. The subgoal becomes $\{x_0+1\}$. If the agent builds `x0 + 1` during the episode, it receives `factor_subgoal_reward`. If `x0 + 1` was already registered from a previous episode, it also receives `factor_library_bonus`.
+**Example:** For target $3(x_0+1)^2$, `factor_list` returns `(3, [(x_0+1, 2)])`. Subgoal: $\{x_0+1\}$. When the agent later builds $v = x_0+1$ (library-known), SymPy is called on $T - v = x_0^2 + x_0$ and $T/v = 3(x_0+1) = 3x_0+3$, adding further subgoals. If the residual $x_0^2+x_0$ was already in the circuit, the additive completion bonus (+3.0) fires.
 
 | Method | Description |
 |--------|-------------|
-| `factorize_target(target)` | Factorize over Z, return non-trivial FastPoly factors mod p |
+| `factorize_target(target)` | Factorize target over Z, return non-trivial factors mod p (called at reset) |
+| `factorize_poly(poly, exclude_keys)` | General factorization helper; `factorize_target` delegates here |
+| `exact_quotient(dividend, divisor)` | SymPy exact division over Z; returns quotient FastPoly if exact mod p, else None |
+| `is_base(poly)` | True if poly is one of the free initial nodes (x0, x1, ..., 1) |
 | `filter_known(factors)` | Return canonical keys of factors already in the library |
 | `register(poly, step_num)` | Add/update one polynomial in the library |
 | `register_episode_nodes(nodes, n_initial)` | Bulk-register all agent-built nodes after success |
@@ -325,14 +337,15 @@ Each episode is a Markov Decision Process:
 
 **Reward function:**
 
-$$r_t = r_{\text{step}} + r_{\text{success}} + r_{\text{shaping}} + r_{\text{factor}} + r_{\text{library}}$$
+$$r_t = r_{\text{step}} + r_{\text{success}} + r_{\text{shaping}} + r_{\text{factor}} + r_{\text{library}} + r_{\text{complete}}$$
 
 where:
 - $r_{\text{step}} = -0.1$ (per-step penalty to encourage short circuits)
 - $r_{\text{success}} = +10.0$ if the target is matched, else $0$
 - $r_{\text{shaping}} = \gamma \cdot \phi(s_{t+1}) - \phi(s_t)$ (potential-based shaping, when enabled)
-- $r_{\text{factor}} \in \{0, r_f\}$: bonus for building a non-trivial factor of the target (default $r_f = 1.0$)
-- $r_{\text{library}} \in \{0, r_b\}$: additional bonus if that factor was also previously seen in the factor library (default $r_b = 0.5$)
+- $r_{\text{factor}} \in \{0, r_f\}$: bonus for building a non-trivial subgoal (default $r_f = 1.0$); fired at most once per subgoal per episode
+- $r_{\text{library}} \in \{0, r_b\}$: additional bonus if that subgoal was also previously seen in the library (default $r_b = 0.5$)
+- $r_{\text{complete}} \in \{0, r_c\}$: completion bonus when the circuit is exactly one operation from $T$ (default $r_c = 3.0$); additive and multiplicative directions each fire at most once per episode
 
 The shaping potential is:
 
@@ -340,7 +353,9 @@ $$\phi(s) = \max_{v \in \text{nodes}(s)} \text{term\_similarity}(v, f^*)$$
 
 By the **potential-based shaping theorem** (Ng et al., 1999), $r_{\text{shaping}}$ preserves the optimal policy while providing denser learning signal.
 
-The factor rewards $r_{\text{factor}}$ and $r_{\text{library}}$ are additive subgoal bonuses. Each distinct factor subgoal can be collected at most once per episode to prevent exploitation.
+The completion bonus fires when the newly built node $v$ creates a "one-step gap" to success:
+- **Additive:** $T - v$ already exists in the circuit (one ADD away from $T$)
+- **Multiplicative:** $T / v$ divides exactly and the quotient is in the circuit or is a scalar (one MUL away from $T$)
 
 ---
 
@@ -356,39 +371,49 @@ Many target polynomials share common factors. For example, both $(x_0+1)^2$ and 
 
 **At episode start (`reset`):**
 1. The target polynomial is factorized over $\mathbb{Z}$ using SymPy's `factor_list`.
-2. Non-trivial polynomial factors (total degree $\geq 1$, not a base input node) are collected as the **subgoal set** $\mathcal{F}$ for the episode.
+2. Non-trivial polynomial factors (total degree $\geq 1$, not a base input node) are collected as the initial **subgoal set** $\mathcal{F}$ for the episode.
 3. Subgoals already present in the factor library (from previous successful episodes) are marked as **library-known**.
 
 **During the episode (`step`):**
-- When the agent constructs node $v_k$ with $v_k \in \mathcal{F}$ and $v_k$ not yet rewarded this episode:
+- When the agent constructs node $v$ with $v \in \mathcal{F}$ and $v$ not yet rewarded this episode:
 
 $$r_{\text{factor}} = r_f \quad (\text{default } +1.0)$$
 
-- If $v_k$ is also library-known:
+- If $v$ is also library-known:
 
 $$r_{\text{library}} = r_b \quad (\text{default } +0.5, \text{ stacks on } r_f)$$
+
+- **Additive completion** (always checked): if $T - v$ is already in the circuit:
+
+$$r_{\text{complete}} = r_c \quad (\text{default } +3.0, \text{ fires once per episode})$$
+
+- If $v$ is **library-known**, dynamic discovery runs (SymPy gated):
+  1. Factorize $T - v$ over $\mathbb{Z}$ → new additive subgoals extend $\mathcal{F}$.
+  2. Compute exact quotient $T / v$ over $\mathbb{Z}$ → if exact, add quotient and its factors to $\mathcal{F}$ as multiplicative subgoals.
+  3. **Multiplicative completion**: if $T/v$ is a scalar or is already in the circuit → $r_{\text{complete}} = r_c$ (separate from additive, fires once).
 
 **At episode end (on success):**
 - All agent-constructed nodes $v_{n_{\text{init}}}, \ldots, v_{N-1}$ are registered in the factor library, available as subgoals in future episodes.
 
 #### Example
 
-Target: $(x_0+1)(x_0^2+2x_0+1) = (x_0+1)^3$
+Target: $(x_0+1)^2$
 
-1. `factor_list` returns $(1,\, [(x_0+1,\, 3)])$.
-2. Subgoal: $\{x_0+1\}$.
-3. Episode 1: agent builds $x_0+1$ → earns $r_f = +1.0$. Library now contains $\{x_0+1\}$.
-4. Episode 2 (same or similar target): agent builds $x_0+1$ → earns $r_f + r_b = +1.5$.
+1. `factor_list` returns $(1,\, [(x_0+1,\, 2)])$. Initial subgoal: $\{x_0+1\}$.
+2. Episode 1: agent builds $x_0+1$ → $r_f = +1.0$. Library now contains $\{x_0+1\}$.
+3. Next step: $x_0+1$ is library-known, so dynamic discovery runs: $T - (x_0+1) = x_0^2 + x_0 + 1 - x_0 - 1 = x_0^2 + x_0$. This gets factorized to produce additional subgoals, and $T/(x_0+1) = x_0+1$ is confirmed exact. If $x_0+1$ is already in the circuit (which it is — just built), multiplicative completion fires: $r_c = +3.0$.
+4. Episode 2 (same target): builds $x_0+1$ → $r_f + r_b = +1.5$ (library hit).
 
 #### Configuration
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `factor_library_enabled` | `True` | Enable/disable the entire feature |
-| `factor_subgoal_reward` | `1.0` | Bonus for constructing any factor of the target |
-| `factor_library_bonus` | `0.5` | Extra bonus when that factor was previously seen |
+| `factor_subgoal_reward` | `1.0` | Bonus for constructing any subgoal |
+| `factor_library_bonus` | `0.5` | Extra bonus when that subgoal was previously seen |
+| `completion_bonus` | `3.0` | Bonus when both pieces for a final add/mul are in the circuit |
 
-CLI overrides: `--no-factor-library`, `--factor-subgoal-reward`, `--factor-library-bonus`.
+CLI overrides: `--no-factor-library`, `--factor-subgoal-reward`, `--factor-library-bonus`, `--completion-bonus`.
 
 ---
 
@@ -621,12 +646,12 @@ python -m src.main --algorithm ppo --hidden-dim 256 --seed 123
 The factor library is enabled by default. To adjust or disable it:
 
 ```bash
-# Disable factor library entirely (no subgoal rewards)
+# Disable factor library entirely (no subgoal rewards, no completion bonus)
 python -m src.main --algorithm ppo --iterations 100 --no-factor-library
 
 # Tune reward magnitudes
 python -m src.main --algorithm sac --iterations 200 \
-    --factor-subgoal-reward 2.0 --factor-library-bonus 1.0
+    --factor-subgoal-reward 2.0 --factor-library-bonus 1.0 --completion-bonus 5.0
 ```
 
 ### Evaluation Only

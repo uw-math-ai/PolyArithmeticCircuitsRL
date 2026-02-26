@@ -57,6 +57,8 @@ def main():
                         help="Bonus reward for building a factor of the target polynomial")
     parser.add_argument("--factor-library-bonus", type=float, default=None,
                         help="Additional bonus for building a factor that is already in the library")
+    parser.add_argument("--completion-bonus", type=float, default=None,
+                        help="Bonus for having both pieces for a single final add/mul to reach T")
 
     args = parser.parse_args()
 
@@ -99,6 +101,8 @@ def main():
         config.factor_subgoal_reward = args.factor_subgoal_reward
     if args.factor_library_bonus is not None:
         config.factor_library_bonus = args.factor_library_bonus
+    if args.completion_bonus is not None:
+        config.completion_bonus = args.completion_bonus
 
     # Auto-detect device
     if config.device == "cpu" and torch.cuda.is_available():
