@@ -1,258 +1,100 @@
-"""Discrete SAC trainer with masked actions for circuit construction.
+"""Discrete SAC trainer adapted to the rewritten circuit environment.
 
-Implements Soft Actor-Critic for discrete action spaces (Christodoulou 2019)
-with:
-  - Masked action logits (invalid actions set to -inf)
-  - Twin-Q critics for reduced overestimation bias
-  - Stratified replay buffer (current-complexity / success / recent mix)
-  - Adaptive entropy temperature tuning
-  - Optional CQL-lite conservative regularisation
-  - Optional behaviour-cloning warm start from board demonstrations
-  - Optional factor library and subgoal rewards (see FactorLibrary)
+Design goals:
+- Fit the same modular stack as PPO/AlphaZero (`Config`, `CircuitGame`, `main.py`)
+- Respect action masks at every policy/value computation
+- Use replay that stays balanced across complexity levels and success/failure
+- Support optional warm-start from constructive trajectories
+- Support optional MCTS policy distillation as a soft guidance signal
 """
 
 from __future__ import annotations
 
-import math
+import copy
+import os
 import random
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import Deque, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
+import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 
 from ..config import Config
 from ..environment.action_space import encode_action
 from ..environment.circuit_game import CircuitGame
-from ..environment.fast_polynomial import FastPoly
-from ..environment.factor_library import FactorLibrary
-from ..evaluation.evaluate import evaluate_model
-from ..game_board.generator import build_game_board, sample_target
+from ..environment.polynomial_utils import create_variables, fast_to_sympy
+from ..game_board.generator import build_game_board, generate_random_circuit
 from ..models.gnn_encoder import CircuitGNN
-
-
-def masked_categorical_stats(
-    logits: torch.Tensor, mask: torch.BoolTensor
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Return (log_probs, probs, entropy) for a masked categorical policy."""
-    mask = mask.bool()
-    masked_logits = logits.masked_fill(~mask, -1e9)
-    log_probs = torch.log_softmax(masked_logits, dim=-1)
-    probs = torch.exp(log_probs) * mask.float()
-    probs = probs / probs.sum(dim=-1, keepdim=True).clamp_min(1e-8)
-    log_probs = torch.log(probs.clamp_min(1e-8))
-    entropy = -(probs * log_probs).sum(dim=-1)
-    return log_probs, probs, entropy
-
-
-def masked_logsumexp(values: torch.Tensor, mask: torch.BoolTensor) -> torch.Tensor:
-    """Masked log-sum-exp over the action dimension."""
-    masked_values = values.masked_fill(~mask, -1e9)
-    return torch.logsumexp(masked_values, dim=-1)
+from .mcts import MCTS
 
 
 @dataclass
-class RawStep:
-    """Single environment step before n-step aggregation."""
-
+class Transition:
     obs: dict
     action: int
     reward: float
     next_obs: dict
     done: bool
-
-
-@dataclass
-class Transition:
-    """Replay transition with metadata for stratified sampling."""
-
-    uid: int
-    obs: dict
-    action: int
-    reward: float
-    next_obs: dict
-    done: float
-    discount: float
     complexity: int
-    episode_success: bool
-
-
-def build_n_step_transition(
-    raw_steps: Deque[RawStep], n_step: int, gamma: float
-) -> Tuple[dict, int, float, dict, bool, float]:
-    """Build an n-step transition from the left side of a deque."""
-    first = raw_steps[0]
-    reward_sum = 0.0
-    steps_used = 0
-    done = False
-    next_obs = first.next_obs
-
-    for step in raw_steps:
-        reward_sum += (gamma ** steps_used) * step.reward
-        steps_used += 1
-        next_obs = step.next_obs
-        if step.done or steps_used >= n_step:
-            done = step.done
-            break
-
-    discount = gamma ** steps_used
-    return first.obs, first.action, reward_sum, next_obs, done, discount
+    success: bool
+    demo: bool
+    mcts_policy: Optional[np.ndarray]
 
 
 class StratifiedReplayBuffer:
-    """Replay buffer with complexity/success/recent stratified sampling."""
+    """Replay buffer balancing complexity and success strata."""
 
-    def __init__(self, capacity: int, recent_window: int):
-        self.capacity = capacity
-        self.storage: List[Optional[Transition]] = [None] * capacity
-        self.size = 0
-        self.pos = 0
-        self.next_uid = 0
+    def __init__(self, max_size: int):
+        self.max_size = max_size
+        self._all = deque(maxlen=max_size)
+        self._by_complexity = defaultdict(lambda: {True: deque(), False: deque()})
 
-        self.success_indices = set()
-        self.failure_indices = set()
-        self.indices_by_complexity = defaultdict(set)
-        self.recent_indices: Deque[Tuple[int, int]] = deque(maxlen=recent_window)
+    def add(self, transition: Transition):
+        # Remove evicted transition from side indexes
+        if len(self._all) == self.max_size:
+            evicted = self._all[0]
+            bucket = self._by_complexity[evicted.complexity][evicted.success]
+            try:
+                bucket.remove(evicted)
+            except ValueError:
+                pass
 
-    def __len__(self) -> int:
-        return self.size
+        self._all.append(transition)
+        self._by_complexity[transition.complexity][transition.success].append(transition)
 
-    def _remove_index_metadata(self, idx: int):
-        transition = self.storage[idx]
-        if transition is None:
-            return
-        self.success_indices.discard(idx)
-        self.failure_indices.discard(idx)
-        self.indices_by_complexity[transition.complexity].discard(idx)
-        if not self.indices_by_complexity[transition.complexity]:
-            del self.indices_by_complexity[transition.complexity]
+    def __len__(self):
+        return len(self._all)
 
-    def add(
-        self,
-        obs: dict,
-        action: int,
-        reward: float,
-        next_obs: dict,
-        done: bool,
-        discount: float,
-        complexity: int,
-        episode_success: bool,
-    ):
-        if self.size < self.capacity:
-            idx = self.size
-            self.size += 1
-        else:
-            idx = self.pos
-            self._remove_index_metadata(idx)
-            self.pos = (self.pos + 1) % self.capacity
-
-        transition = Transition(
-            uid=self.next_uid,
-            obs=obs,
-            action=action,
-            reward=reward,
-            next_obs=next_obs,
-            done=float(done),
-            discount=discount,
-            complexity=complexity,
-            episode_success=episode_success,
-        )
-        self.next_uid += 1
-        self.storage[idx] = transition
-
-        if episode_success:
-            self.success_indices.add(idx)
-        else:
-            self.failure_indices.add(idx)
-        self.indices_by_complexity[complexity].add(idx)
-        self.recent_indices.append((idx, transition.uid))
-
-    def _take_sample(
-        self, candidates: List[int], n: int, selected: set
-    ) -> List[int]:
-        if n <= 0:
-            return []
-        available = [idx for idx in candidates if idx not in selected]
-        if not available:
-            return []
-        if len(available) <= n:
-            return available
-        return random.sample(available, n)
-
-    def _valid_recent_candidates(self) -> List[int]:
-        seen = set()
-        candidates = []
-        for idx, uid in self.recent_indices:
-            if idx in seen:
-                continue
-            transition = self.storage[idx]
-            if transition is None:
-                continue
-            if transition.uid != uid:
-                continue
-            seen.add(idx)
-            candidates.append(idx)
-        return candidates
-
-    def sample(
-        self,
-        batch_size: int,
-        current_complexity: int,
-        current_fraction: float,
-        success_fraction: float,
-        recent_fraction: float,
-    ) -> List[Transition]:
-        if self.size == 0:
+    def sample(self, batch_size: int, success_ratio: float) -> List[Transition]:
+        if not self._all:
             return []
 
-        batch_size = min(batch_size, self.size)
-        n_current = int(batch_size * current_fraction)
-        n_success = int(batch_size * success_fraction)
-        n_recent = int(batch_size * recent_fraction)
+        complexities = list(self._by_complexity.keys())
+        batch = []
+        for _ in range(batch_size):
+            comp = random.choice(complexities)
+            choose_success = random.random() < success_ratio
+            preferred = self._by_complexity[comp][choose_success]
+            fallback = self._by_complexity[comp][not choose_success]
 
-        selected = []
-        selected_set = set()
-
-        current_candidates = list(
-            self.indices_by_complexity.get(current_complexity, set())
-        )
-        take = self._take_sample(current_candidates, n_current, selected_set)
-        selected.extend(take)
-        selected_set.update(take)
-
-        success_candidates = list(self.success_indices)
-        take = self._take_sample(success_candidates, n_success, selected_set)
-        selected.extend(take)
-        selected_set.update(take)
-
-        recent_candidates = self._valid_recent_candidates()
-        take = self._take_sample(recent_candidates, n_recent, selected_set)
-        selected.extend(take)
-        selected_set.update(take)
-
-        remaining = batch_size - len(selected)
-        all_candidates = list(range(self.size))
-        take = self._take_sample(all_candidates, remaining, selected_set)
-        selected.extend(take)
-        selected_set.update(take)
-
-        # If unique indices are insufficient, fill the remainder with replacement.
-        while len(selected) < batch_size:
-            selected.append(random.choice(all_candidates))
-
-        return [self.storage[idx] for idx in selected if self.storage[idx] is not None]
+            if preferred:
+                batch.append(random.choice(preferred))
+            elif fallback:
+                batch.append(random.choice(fallback))
+            else:
+                batch.append(random.choice(self._all))
+        return batch
 
 
-class StateEncoder(nn.Module):
-    """Shared state encoder: graph + target polynomial -> fused embedding."""
-
+class SACActor(nn.Module):
     def __init__(self, config: Config):
         super().__init__()
         hidden = config.hidden_dim
         emb = config.embedding_dim
+
         self.gnn = CircuitGNN(
             input_dim=config.node_feature_dim,
             hidden_dim=hidden,
@@ -270,10 +112,16 @@ class StateEncoder(nn.Module):
             nn.Linear(hidden, emb),
             nn.ReLU(),
         )
+        self.policy_head = nn.Sequential(
+            nn.Linear(emb, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, config.max_actions),
+        )
 
     def forward(self, obs: dict) -> torch.Tensor:
         graph = obs["graph"]
         target = obs["target"]
+        mask = obs["mask"]
 
         if isinstance(graph, dict):
             graph_emb = self.gnn(
@@ -291,249 +139,160 @@ class StateEncoder(nn.Module):
 
         if target.dim() == 1:
             target = target.unsqueeze(0)
-        target_emb = self.target_encoder(target)
-
         if graph_emb.dim() == 1:
             graph_emb = graph_emb.unsqueeze(0)
+        if mask.dim() == 1:
+            mask = mask.unsqueeze(0)
 
-        return self.fusion(torch.cat([graph_emb, target_emb], dim=-1))
+        target_emb = self.target_encoder(target)
+        fused = self.fusion(torch.cat([graph_emb, target_emb], dim=-1))
+        logits = self.policy_head(fused)
+        logits = logits.masked_fill(~mask, float("-inf"))
+        return logits
 
 
-class SACActor(nn.Module):
-    """Discrete masked policy network."""
-
+class SACCritic(nn.Module):
     def __init__(self, config: Config):
         super().__init__()
-        self.encoder = StateEncoder(config)
         hidden = config.hidden_dim
         emb = config.embedding_dim
-        self.policy_head = nn.Sequential(
+
+        self.gnn = CircuitGNN(
+            input_dim=config.node_feature_dim,
+            hidden_dim=hidden,
+            output_dim=emb,
+            num_layers=config.num_gnn_layers,
+        )
+        self.target_encoder = nn.Sequential(
+            nn.Linear(config.target_size, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, emb),
+        )
+        self.fusion = nn.Sequential(
+            nn.Linear(2 * emb, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, emb),
+            nn.ReLU(),
+        )
+        self.q_head = nn.Sequential(
             nn.Linear(emb, hidden),
             nn.ReLU(),
             nn.Linear(hidden, config.max_actions),
         )
 
     def forward(self, obs: dict) -> torch.Tensor:
-        emb = self.encoder(obs)
-        logits = self.policy_head(emb)
+        graph = obs["graph"]
+        target = obs["target"]
         mask = obs["mask"]
+
+        if isinstance(graph, dict):
+            graph_emb = self.gnn(
+                graph["x"],
+                graph["edge_index"],
+                num_nodes_actual=graph.get("num_nodes_actual"),
+            )
+        else:
+            graph_emb = self.gnn(
+                graph.x,
+                graph.edge_index,
+                num_nodes_actual=getattr(graph, "num_nodes_actual", None),
+                batch=getattr(graph, "batch", None),
+            )
+
+        if target.dim() == 1:
+            target = target.unsqueeze(0)
+        if graph_emb.dim() == 1:
+            graph_emb = graph_emb.unsqueeze(0)
         if mask.dim() == 1:
             mask = mask.unsqueeze(0)
-        return logits.masked_fill(~mask, float("-inf"))
 
-    def forward_batch(self, obs_batch: List[dict]) -> torch.Tensor:
-        logits = []
-        for obs in obs_batch:
-            logits.append(self.forward(obs).squeeze(0))
-        return torch.stack(logits, dim=0)
-
-
-class SACCritic(nn.Module):
-    """Twin-Q critic for discrete action SAC."""
-
-    def __init__(self, config: Config):
-        super().__init__()
-        self.encoder = StateEncoder(config)
-        hidden = config.hidden_dim
-        emb = config.embedding_dim
-        self.q1_head = nn.Sequential(
-            nn.Linear(emb, hidden),
-            nn.ReLU(),
-            nn.Linear(hidden, config.max_actions),
-        )
-        self.q2_head = nn.Sequential(
-            nn.Linear(emb, hidden),
-            nn.ReLU(),
-            nn.Linear(hidden, config.max_actions),
-        )
-
-    def forward(self, obs: dict) -> Tuple[torch.Tensor, torch.Tensor]:
-        emb = self.encoder(obs)
-        return self.q1_head(emb), self.q2_head(emb)
-
-    def forward_batch(self, obs_batch: List[dict]) -> Tuple[torch.Tensor, torch.Tensor]:
-        q1_all = []
-        q2_all = []
-        for obs in obs_batch:
-            q1, q2 = self.forward(obs)
-            q1_all.append(q1.squeeze(0))
-            q2_all.append(q2.squeeze(0))
-        return torch.stack(q1_all, dim=0), torch.stack(q2_all, dim=0)
+        target_emb = self.target_encoder(target)
+        fused = self.fusion(torch.cat([graph_emb, target_emb], dim=-1))
+        q_values = self.q_head(fused)
+        # Keep invalid actions out of max/sum reductions.
+        q_values = q_values.masked_fill(~mask, -1e9)
+        return q_values
 
 
-def reconstruct_actions_from_board(
-    config: Config, board: Dict[bytes, dict], target_key: bytes
-) -> Optional[List[int]]:
-    """Reconstruct one valid action sequence to build target_key from a board."""
-    n_vars = config.n_variables
-    max_deg = config.effective_max_degree
-    mod = config.mod
+class _SACMCTSAdapter:
+    """Adapter exposing `get_policy_and_value` expected by MCTS."""
 
-    base_polys = [FastPoly.variable(i, n_vars, max_deg, mod) for i in range(n_vars)]
-    base_polys.append(FastPoly.constant(1, n_vars, max_deg, mod))
-    node_index = {poly.canonical_key(): idx for idx, poly in enumerate(base_polys)}
-    actions: List[int] = []
-    visiting = set()
+    def __init__(self, actor: SACActor, critic1: SACCritic, critic2: SACCritic):
+        self.actor = actor
+        self.critic1 = critic1
+        self.critic2 = critic2
 
-    def choose_parent(entry: dict) -> Optional[dict]:
-        if not entry.get("parents"):
-            return None
-        step = entry["step"]
-        for parent in entry["parents"]:
-            left = board.get(parent["left"])
-            right = board.get(parent["right"])
-            if left is None or right is None:
-                continue
-            if max(left["step"], right["step"]) == step - 1:
-                return parent
-        return entry["parents"][0]
-
-    def ensure_node(key: bytes) -> Optional[int]:
-        if key in node_index:
-            return node_index[key]
-        if key in visiting:
-            return None
-        entry = board.get(key)
-        if entry is None:
-            return None
-        if entry["step"] == 0:
-            return node_index.get(key)
-
-        parent = choose_parent(entry)
-        if parent is None:
-            return None
-
-        visiting.add(key)
-        left_idx = ensure_node(parent["left"])
-        right_idx = ensure_node(parent["right"])
-        visiting.remove(key)
-
-        if left_idx is None or right_idx is None:
-            return None
-        if len(node_index) >= config.max_nodes:
-            return None
-
-        op = 0 if parent["op"] == "add" else 1
-        action_idx = encode_action(op, left_idx, right_idx, config.max_nodes)
-        actions.append(action_idx)
-        new_idx = len(node_index)
-        node_index[key] = new_idx
-        return new_idx
-
-    result = ensure_node(target_key)
-    if result is None:
-        return None
-    return actions
+    @torch.no_grad()
+    def get_policy_and_value(self, obs: dict):
+        logits = self.actor(obs)
+        probs = torch.softmax(logits, dim=-1)
+        q1 = self.critic1(obs)
+        q2 = self.critic2(obs)
+        q = torch.minimum(q1, q2)
+        # Conservative scalar value for MCTS leaf eval.
+        value = torch.tanh(q.max(dim=-1).values / 10.0)
+        return probs.squeeze(0), value.squeeze(0)
 
 
 class SACTrainer:
-    """Discrete SAC training loop with curriculum, stratified replay, and factor library.
+    """Discrete Soft Actor-Critic with mask-aware losses."""
 
-    Orchestrates the experience-collection → critic-update → actor-update cycle
-    for discrete masked-action SAC. An adaptive curriculum adjusts target complexity
-    and a stratified replay buffer over-samples successful and recently-seen episodes.
-
-    The optional FactorLibrary is created here (once per training run) and shared
-    with the CircuitGame environment. It grows as the agent succeeds, providing
-    increasingly rich subgoal guidance to the policy.
-
-    Attributes:
-        config (Config): Shared hyperparameter configuration.
-        device (str): PyTorch device string.
-        actor (SACActor): Policy network.
-        critic (SACCritic): Twin-Q critic network.
-        target_critic (SACCritic): Exponentially-averaged target critic.
-        env (CircuitGame): Circuit construction environment.
-        replay (StratifiedReplayBuffer): Off-policy experience replay buffer.
-        factor_library (FactorLibrary | None): Session-level factor cache.
-    """
-
-    def __init__(self, config: Config, device: str = "cpu") -> None:
-        """Initialise the SAC trainer.
-
-        Constructs actor, critic, and target-critic networks; creates optimisers for
-        each network and for the entropy temperature log_alpha; initialises the
-        environment (with FactorLibrary if enabled) and the replay buffer.
-
-        Args:
-            config: Configuration dataclass with all hyperparameters.
-            device: PyTorch device to use ('cpu', 'cuda', or 'mps').
-        """
+    def __init__(self, config: Config, device: str = "cpu"):
         self.config = config
         self.device = device
 
         self.actor = SACActor(config).to(device)
-        self.critic = SACCritic(config).to(device)
-        self.target_critic = SACCritic(config).to(device)
-        self.target_critic.load_state_dict(self.critic.state_dict())
+        self.critic1 = SACCritic(config).to(device)
+        self.critic2 = SACCritic(config).to(device)
+        self.target_critic1 = copy.deepcopy(self.critic1).to(device)
+        self.target_critic2 = copy.deepcopy(self.critic2).to(device)
 
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=config.sac_actor_lr)
-        self.critic_optimizer = optim.Adam(
-            self.critic.parameters(), lr=config.sac_critic_lr
+        self.actor_opt = optim.Adam(self.actor.parameters(), lr=config.sac_actor_lr)
+        self.critic_opt = optim.Adam(
+            list(self.critic1.parameters()) + list(self.critic2.parameters()),
+            lr=config.sac_critic_lr,
         )
-        # log_alpha is a learnable scalar; alpha = exp(log_alpha) is the entropy temperature.
-        self.log_alpha = torch.tensor(
-            math.log(config.sac_alpha_init),
-            dtype=torch.float32,
-            device=device,
-            requires_grad=True,
-        )
-        self.alpha_optimizer = optim.Adam([self.log_alpha], lr=config.sac_alpha_lr)
 
-        # Create the factor library once per training session if the feature is enabled.
-        # The library persists across all episodes within this run (in-memory only).
-        factor_library: Optional[FactorLibrary] = None
-        if config.factor_library_enabled:
-            factor_library = FactorLibrary(
-                mod=config.mod,
-                n_vars=config.n_variables,
-                max_degree=config.effective_max_degree,
+        self.auto_alpha = config.sac_auto_entropy_tuning
+        if self.auto_alpha:
+            self.log_alpha = torch.tensor(
+                np.log(max(config.sac_init_alpha, 1e-6)),
+                dtype=torch.float32,
+                device=device,
+                requires_grad=True,
             )
+            self.alpha_opt = optim.Adam([self.log_alpha], lr=config.sac_alpha_lr)
+        else:
+            self.log_alpha = None
+            self.alpha_opt = None
+        self.alpha_value = float(config.sac_init_alpha)
 
-        self.env = CircuitGame(config, factor_library=factor_library)
-        self.factor_library = factor_library
-
-        self.replay = StratifiedReplayBuffer(
-            capacity=config.sac_replay_size,
-            recent_window=config.sac_recent_window,
-        )
+        self.env = CircuitGame(config)
+        self.replay = StratifiedReplayBuffer(config.sac_replay_size)
 
         self.current_complexity = (
-            config.starting_complexity
-            if config.curriculum_enabled
-            else config.max_complexity
+            config.starting_complexity if config.curriculum_enabled else config.max_complexity
         )
         self.success_history: List[bool] = []
-        self.total_env_steps = 0
-        # Lazily-built BFS game boards per complexity level.
+        self.iter_success_rates: List[float] = []
+        self.assist_mode = False
+        self.assist_cooldown = 0
         self._boards = {}
+        self._sympy_vars = create_variables(config.n_variables)
+        self._base_target_keys = {poly.canonical_key() for poly in self.env._init_polys}
+        self._very_easy_target_keys = self._build_reachable_target_keys(max_depth=1)
+        # Reachability cache for "too easy" targets (<=2 sequential ops).
+        self._easy_target_keys = self._build_reachable_target_keys(max_depth=2)
 
-    @property
-    def alpha(self) -> torch.Tensor:
-        return self.log_alpha.exp().clamp(
-            min=self.config.sac_alpha_min, max=self.config.sac_alpha_max
-        )
+        self.mcts = None
+        if config.sac_use_mcts_distillation or config.sac_stuck_detection_enabled:
+            adapter = _SACMCTSAdapter(self.actor, self.critic1, self.critic2)
+            self.mcts = MCTS(adapter, config, device)
 
     def _get_board(self, complexity: int):
         if complexity not in self._boards:
             self._boards[complexity] = build_game_board(self.config, complexity)
         return self._boards[complexity]
-
-    def _clone_obs(self, obs: dict) -> dict:
-        graph = obs["graph"]
-        if isinstance(graph, dict):
-            graph_clone = {
-                k: (v.detach().cpu().clone() if isinstance(v, torch.Tensor) else v)
-                for k, v in graph.items()
-            }
-        else:
-            graph_clone = graph.clone()
-
-        return {
-            "graph": graph_clone,
-            "target": obs["target"].detach().cpu().clone(),
-            "mask": obs["mask"].detach().cpu().clone(),
-        }
 
     def _obs_to_device(self, obs: dict) -> dict:
         result = {}
@@ -546,452 +305,505 @@ class SACTrainer:
                     for k, v in val.items()
                 }
             else:
-                if hasattr(val, "to"):
-                    result[key] = val.to(self.device)
-                else:
-                    result[key] = val
+                result[key] = val.to(self.device) if hasattr(val, "to") else val
         return result
 
-    def _sample_random_valid_action(self, mask: torch.BoolTensor) -> int:
-        valid_indices = torch.where(mask)[0]
-        choice = valid_indices[torch.randint(0, len(valid_indices), (1,))].item()
-        return int(choice)
+    def _format_target_poly(self, poly) -> str:
+        """Render FastPoly in a readable SymPy expression form."""
+        return str(fast_to_sympy(poly, self._sympy_vars))
 
-    def _select_action(self, obs: dict, deterministic: bool = False) -> int:
-        if self.total_env_steps < self.config.sac_initial_random_steps and not deterministic:
-            return self._sample_random_valid_action(obs["mask"])
+    def _build_reachable_target_keys(self, max_depth: int) -> set[bytes]:
+        """Enumerate target keys reachable within a small sequential-op budget."""
+        if max_depth <= 0:
+            return set(self._base_target_keys)
 
-        obs_device = self._obs_to_device(obs)
-        with torch.no_grad():
-            logits = self.actor(obs_device)
-            mask = obs_device["mask"]
-            if mask.dim() == 1:
-                mask = mask.unsqueeze(0)
+        key_to_poly = {poly.canonical_key(): poly for poly in self.env._init_polys}
+        init_state = frozenset(key_to_poly.keys())
+        visited_states = {init_state}
+        frontier = [init_state]
+        reachable = set(init_state)
 
-            if deterministic:
-                return int(logits.argmax(dim=-1).item())
+        for _ in range(max_depth):
+            next_frontier = []
+            for state in frontier:
+                polys = [key_to_poly[key] for key in state]
+                for i in range(len(polys)):
+                    for j in range(i, len(polys)):
+                        for op in (0, 1):
+                            result = polys[i] + polys[j] if op == 0 else polys[i] * polys[j]
+                            key = result.canonical_key()
+                            if key not in key_to_poly:
+                                key_to_poly[key] = result
+                            reachable.add(key)
 
-            _, probs, _ = masked_categorical_stats(logits, mask)
-            dist = torch.distributions.Categorical(probs=probs)
-            return int(dist.sample().item())
+                            if key in state:
+                                continue
+                            next_state = state.union((key,))
+                            if next_state not in visited_states:
+                                visited_states.add(next_state)
+                                next_frontier.append(next_state)
 
-    def _collect_bc_dataset(self, num_samples: int) -> List[Tuple[dict, int]]:
-        """Collect a state-action dataset from board-derived demonstrations."""
-        dataset = []
-        attempts = 0
-        max_attempts = max(50, num_samples * 10)
-        min_c = max(1, self.config.starting_complexity)
-        max_c = max(min_c, self.config.max_complexity)
+            if not next_frontier:
+                break
+            frontier = next_frontier
 
-        while len(dataset) < num_samples and attempts < max_attempts:
-            attempts += 1
-            complexity = random.randint(min_c, max_c)
-            board = self._get_board(complexity)
-            candidates = [
-                (key, entry)
-                for key, entry in board.items()
-                if entry["step"] == complexity and entry["step"] > 0
-            ]
-            if not candidates:
+        return reachable
+
+    def _is_easy_target(self, target_poly, complexity: int) -> bool:
+        key = target_poly.canonical_key()
+        # For C>=2, filter targets solvable in <=1 sequential op.
+        if complexity >= 2 and key in self._very_easy_target_keys:
+            return True
+        # For C>=3, filter targets solvable in <=2 sequential ops.
+        if complexity >= 3 and key in self._easy_target_keys:
+            return True
+        # For higher complexities, reject single-term monomials/constants.
+        if complexity >= 4 and int(np.count_nonzero(target_poly.coeffs)) <= 1:
+            return True
+        return False
+
+    def _sample_training_target(self, complexity: int, seen_keys: set[bytes]):
+        """Sample a nontrivial, non-repeated target for the current iteration."""
+        fallback = None
+        for _ in range(64):
+            target_poly, _ = generate_random_circuit(self.config, complexity)
+            key = target_poly.canonical_key()
+            if fallback is None:
+                fallback = target_poly
+            if key in seen_keys:
                 continue
-
-            target_key, target_entry = random.choice(candidates)
-            actions = reconstruct_actions_from_board(self.config, board, target_key)
-            if not actions:
+            if self._is_easy_target(target_poly, complexity):
                 continue
+            seen_keys.add(key)
+            return target_poly
 
-            try:
-                obs = self.env.reset(target_entry["poly"])
-                for action in actions:
-                    dataset.append((self._clone_obs(obs), action))
-                    obs, _, done, _ = self.env.step(action)
-                    if done or len(dataset) >= num_samples:
-                        break
-            except AssertionError:
-                # Skip rare reconstructed traces that become invalid due to dedup effects.
-                continue
+        # If filtering is too strict for a corner case, keep training moving.
+        if fallback is None:
+            fallback, _ = generate_random_circuit(self.config, complexity)
+        seen_keys.add(fallback.canonical_key())
+        return fallback
 
-        return dataset
+    @staticmethod
+    def _masked_probs_and_log_probs(logits: torch.Tensor, mask: torch.Tensor):
+        masked_logits = logits.masked_fill(~mask, -1e9)
+        log_probs = torch.log_softmax(masked_logits, dim=-1)
+        probs = torch.exp(log_probs) * mask.float()
+        probs = probs / (probs.sum(dim=-1, keepdim=True) + 1e-8)
+        return probs, log_probs
 
-    def _behavior_clone_warmstart(self):
-        dataset = self._collect_bc_dataset(self.config.sac_bc_samples)
-        if not dataset:
-            print("[SAC BC] No demonstrations collected; skipping warm start.")
+    @torch.no_grad()
+    def _sample_action(self, obs: dict) -> int:
+        obs_dev = self._obs_to_device(obs)
+        logits = self.actor(obs_dev)
+        dist = torch.distributions.Categorical(logits=logits)
+        return int(dist.sample().item())
+
+    def _maybe_mcts_action(self, obs: dict) -> tuple[int, Optional[np.ndarray]]:
+        if self.mcts is None:
+            return self._sample_action(obs), None
+        distill_prob = self._effective_distill_prob()
+        if distill_prob <= 0.0 or random.random() >= distill_prob:
+            return self._sample_action(obs), None
+
+        action, probs = self.mcts.get_action_probs(self.env, temperature=1.0)
+        return int(action), probs
+
+    def _effective_distill_prob(self) -> float:
+        base_prob = self.config.sac_mcts_distill_prob if self.config.sac_use_mcts_distillation else 0.0
+        if self.assist_mode:
+            return max(base_prob, self.config.sac_assist_distill_prob)
+        return base_prob
+
+    def _effective_distill_coef(self) -> float:
+        base_coef = self.config.sac_distill_coef if self.config.sac_use_mcts_distillation else 0.0
+        if self.assist_mode:
+            return max(base_coef, self.config.sac_assist_distill_coef)
+        return base_coef
+
+    def _effective_stuck_sr_ceiling(self) -> float:
+        # If SR plateaus below curriculum advance target, allow assist to kick in.
+        adaptive = self.config.advance_threshold - 0.08
+        ceiling = max(self.config.sac_stuck_sr_ceiling, adaptive)
+        return min(max(ceiling, 0.0), 1.0)
+
+    def _stuck_stats(self) -> tuple[bool, float, float]:
+        if not self.config.sac_stuck_detection_enabled:
+            return False, 0.0, 0.0
+
+        window = max(2, self.config.sac_stuck_window)
+        min_iters = max(window, self.config.sac_stuck_min_iters)
+        if len(self.iter_success_rates) < min_iters:
+            return False, 0.0, 0.0
+
+        recent = self.iter_success_rates[-window:]
+        slope = (recent[-1] - recent[0]) / max(window - 1, 1)
+        mean_sr = float(np.mean(recent))
+        stuck_ceiling = self._effective_stuck_sr_ceiling()
+
+        is_stuck = (
+            abs(slope) <= self.config.sac_stuck_slope_threshold
+            and mean_sr <= stuck_ceiling
+        )
+        return is_stuck, float(slope), mean_sr
+
+    def _update_assist_mode(self, iteration: int):
+        if not self.config.sac_stuck_detection_enabled:
             return
 
-        self.actor.train()
-        for step in range(1, self.config.sac_bc_steps + 1):
-            batch = random.sample(
-                dataset, min(self.config.sac_bc_batch_size, len(dataset))
+        is_stuck, slope, mean_sr = self._stuck_stats()
+        stuck_ceiling = self._effective_stuck_sr_ceiling()
+        if not self.assist_mode and is_stuck:
+            self.assist_mode = True
+            self.assist_cooldown = self.config.sac_assist_cooldown_iters
+            print(
+                f"*** Assist Mode ON at iter {iteration} "
+                f"(mean SR {100.0 * mean_sr:.1f}%, slope {100.0 * slope:+.2f} pp/iter) ***"
             )
-            obs_batch = [self._obs_to_device(item[0]) for item in batch]
-            action_targets = torch.tensor(
-                [item[1] for item in batch], dtype=torch.long, device=self.device
+            return
+
+        if self.assist_mode:
+            recovered = mean_sr >= (
+                stuck_ceiling + self.config.sac_stuck_recovery_margin
             )
+            if is_stuck and not recovered:
+                self.assist_cooldown = self.config.sac_assist_cooldown_iters
+                return
 
-            logits = self.actor.forward_batch(obs_batch)
-            loss = F.cross_entropy(logits, action_targets)
-
-            self.actor_optimizer.zero_grad()
-            loss.backward()
-            nn.utils.clip_grad_norm_(self.actor.parameters(), self.config.max_grad_norm)
-            self.actor_optimizer.step()
-
-            if step % max(1, self.config.sac_bc_steps // 5) == 0:
+            self.assist_cooldown -= 1
+            if self.assist_cooldown <= 0:
+                self.assist_mode = False
+                self.assist_cooldown = 0
                 print(
-                    f"[SAC BC step {step}] loss={loss.item():.4f} demos={len(dataset)}"
+                    f"*** Assist Mode OFF at iter {iteration} "
+                    f"(mean SR {100.0 * mean_sr:.1f}%, slope {100.0 * slope:+.2f} pp/iter) ***"
                 )
 
-    def _collect_experience(self) -> dict:
-        """Run the current actor in the environment and add transitions to the replay buffer.
+    def warmstart_replay(self):
+        if self.config.sac_warmstart_episodes <= 0:
+            return
 
-        Collects at least sac_steps_per_iter environment steps across potentially
-        multiple episodes. Each episode uses a freshly sampled target polynomial.
-        Transitions are aggregated into n-step returns before being stored.
-
-        Returns:
-            Dict with episode statistics: 'episodes', 'success_rate', 'avg_reward',
-            'complexity', 'replay_size', 'factor_hits', 'library_hits', 'library_size'.
-        """
-        self.actor.eval()
-        steps_collected = 0
-        episodes = 0
-        successes = 0
-        total_reward = 0.0
-        factor_hits = 0   # Steps where a factor subgoal was hit this iteration.
-        library_hits = 0  # Subset of factor_hits where the factor was library-known.
-
-        while steps_collected < self.config.sac_steps_per_iter:
-            board = self._get_board(self.current_complexity)
-            target_poly, _ = sample_target(self.config, self.current_complexity, board)
+        max_comp = max(1, min(self.current_complexity, self.config.max_complexity))
+        for _ in range(self.config.sac_warmstart_episodes):
+            complexity = random.randint(1, max_comp)
+            target_poly, actions = generate_random_circuit(self.config, complexity)
             obs = self.env.reset(target_poly)
 
+            for op, i, j in actions:
+                action_idx = encode_action(op, i, j, self.config.max_nodes)
+                next_obs, reward, done, info = self.env.step(action_idx)
+                transition = Transition(
+                    obs=obs,
+                    action=action_idx,
+                    reward=float(reward),
+                    next_obs=next_obs,
+                    done=bool(done),
+                    complexity=complexity,
+                    success=bool(info.get("is_success", False)),
+                    demo=True,
+                    mcts_policy=None,
+                )
+                self.replay.add(transition)
+                obs = next_obs
+                if done:
+                    break
+
+    def collect_experience(self):
+        steps_collected = 0
+        episodes_done = 0
+        successes = 0
+        total_reward = 0.0
+        examples = []
+        seen_targets = set()
+
+        while steps_collected < self.config.sac_steps_per_update:
+            # Use sequential circuit generation so curriculum complexity matches
+            # the number of environment actions needed to construct targets.
+            target_poly = self._sample_training_target(self.current_complexity, seen_targets)
+            obs = self.env.reset(target_poly)
             episode_reward = 0.0
-            raw_steps: Deque[RawStep] = deque()
-            episode_nstep = []
-            info = {"is_success": False}
+            episode_transitions = []
 
-            while not self.env.done and steps_collected < self.config.sac_steps_per_iter:
-                action = self._select_action(obs, deterministic=False)
+            while not self.env.done and steps_collected < self.config.sac_steps_per_update:
+                action, mcts_policy = self._maybe_mcts_action(obs)
                 next_obs, reward, done, info = self.env.step(action)
-                self.total_env_steps += 1
-                steps_collected += 1
-                episode_reward += reward
 
-                # Track factor subgoal statistics for logging.
-                if info.get("factor_hit", False):
-                    factor_hits += 1
-                if info.get("library_hit", False):
-                    library_hits += 1
-
-                raw_steps.append(
-                    RawStep(
-                        obs=self._clone_obs(obs),
+                episode_transitions.append(
+                    Transition(
+                        obs=obs,
                         action=action,
-                        reward=reward,
-                        next_obs=self._clone_obs(next_obs),
-                        done=done,
+                        reward=float(reward),
+                        next_obs=next_obs,
+                        done=bool(done),
+                        complexity=self.current_complexity,
+                        success=False,  # filled at episode end
+                        demo=False,
+                        mcts_policy=mcts_policy,
                     )
                 )
 
-                # Flush completed n-step windows as they fill.
-                if len(raw_steps) >= self.config.sac_n_step:
-                    episode_nstep.append(
-                        build_n_step_transition(
-                            raw_steps, self.config.sac_n_step, self.config.gamma
-                        )
-                    )
-                    raw_steps.popleft()
-
+                episode_reward += reward
+                steps_collected += 1
                 obs = next_obs
 
-            # Drain any remaining partial n-step windows at episode end.
-            while raw_steps:
-                episode_nstep.append(
-                    build_n_step_transition(
-                        raw_steps, self.config.sac_n_step, self.config.gamma
-                    )
-                )
-                raw_steps.popleft()
+            is_success = bool(info.get("is_success", False))
+            for tr in episode_transitions:
+                tr.success = is_success
+                self.replay.add(tr)
 
-            episode_success = bool(info.get("is_success", False))
-            for transition in episode_nstep:
-                self.replay.add(
-                    obs=transition[0],
-                    action=transition[1],
-                    reward=transition[2],
-                    next_obs=transition[3],
-                    done=transition[4],
-                    discount=transition[5],
-                    complexity=self.current_complexity,
-                    episode_success=episode_success,
-                )
-
-            episodes += 1
+            episodes_done += 1
+            successes += int(is_success)
             total_reward += episode_reward
-            successes += int(episode_success)
-            self.success_history.append(episode_success)
+            self.success_history.append(is_success)
+
+            if len(examples) < 5:
+                examples.append(
+                    {
+                        "target": self._format_target_poly(target_poly),
+                        "success": is_success,
+                        "reward": float(episode_reward),
+                        "steps": int(info.get("steps_taken", 0)),
+                    }
+                )
 
         return {
-            "episodes": episodes,
-            "success_rate": successes / max(episodes, 1),
-            "avg_reward": total_reward / max(episodes, 1),
+            "episodes": episodes_done,
+            "success_rate": successes / max(episodes_done, 1),
+            "avg_reward": total_reward / max(episodes_done, 1),
             "complexity": self.current_complexity,
             "replay_size": len(self.replay),
-            "factor_hits": factor_hits,
-            "library_hits": library_hits,
-            "library_size": len(self.factor_library) if self.factor_library else 0,
+            "examples": examples,
         }
 
-    def _soft_update_target(self):
-        tau = self.config.sac_tau
-        for target_param, source_param in zip(
-            self.target_critic.parameters(), self.critic.parameters()
-        ):
-            target_param.data.copy_(
-                target_param.data * (1.0 - tau) + source_param.data * tau
-            )
+    def _compute_alpha(self):
+        if self.auto_alpha and self.log_alpha is not None:
+            return self.log_alpha.exp()
+        return torch.tensor(self.alpha_value, dtype=torch.float32, device=self.device)
 
-    def _update(self) -> dict:
+    def update(self):
         if len(self.replay) < self.config.sac_min_replay_size:
             return {
-                "critic_loss": 0.0,
-                "actor_loss": 0.0,
+                "q_loss": 0.0,
+                "policy_loss": 0.0,
+                "alpha": float(self._compute_alpha().item()),
                 "alpha_loss": 0.0,
-                "alpha": self.alpha.item(),
-                "entropy": 0.0,
+                "mcts_ce_loss": 0.0,
+                "bc_loss": 0.0,
             }
 
-        updates = max(
-            1,
-            int(
-                self.config.sac_steps_per_iter
-                * max(self.config.sac_update_to_data_ratio, 0.0)
-                / max(self.config.sac_batch_size, 1)
-            ),
-        )
+        q_losses = []
+        policy_losses = []
+        alpha_losses = []
+        mcts_ce_losses = []
+        bc_losses = []
 
-        critic_loss_total = 0.0
-        actor_loss_total = 0.0
-        alpha_loss_total = 0.0
-        entropy_total = 0.0
-
-        self.actor.train()
-        self.critic.train()
-
-        for _ in range(updates):
+        for _ in range(self.config.sac_updates_per_iter):
             batch = self.replay.sample(
-                batch_size=self.config.sac_batch_size,
-                current_complexity=self.current_complexity,
-                current_fraction=self.config.sac_current_complexity_fraction,
-                success_fraction=self.config.sac_success_fraction,
-                recent_fraction=self.config.sac_recent_fraction,
+                self.config.sac_batch_size,
+                success_ratio=self.config.sac_success_sample_ratio,
             )
             if not batch:
                 continue
 
             obs_batch = [self._obs_to_device(t.obs) for t in batch]
             next_obs_batch = [self._obs_to_device(t.next_obs) for t in batch]
-            actions = torch.tensor(
-                [t.action for t in batch], dtype=torch.long, device=self.device
-            )
-            rewards = torch.tensor(
-                [t.reward for t in batch], dtype=torch.float32, device=self.device
-            )
-            dones = torch.tensor(
-                [t.done for t in batch], dtype=torch.float32, device=self.device
-            )
-            discounts = torch.tensor(
-                [t.discount for t in batch], dtype=torch.float32, device=self.device
-            )
 
-            masks = torch.stack([obs["mask"] for obs in obs_batch]).bool()
-            next_masks = torch.stack([obs["mask"] for obs in next_obs_batch]).bool()
+            actions = torch.tensor([t.action for t in batch], device=self.device, dtype=torch.long)
+            rewards = torch.tensor([t.reward for t in batch], device=self.device, dtype=torch.float32)
+            dones = torch.tensor([t.done for t in batch], device=self.device, dtype=torch.float32)
 
+            # Forward current states.
+            logits = torch.cat([self.actor(obs) for obs in obs_batch], dim=0)
+            q1 = torch.cat([self.critic1(obs) for obs in obs_batch], dim=0)
+            q2 = torch.cat([self.critic2(obs) for obs in obs_batch], dim=0)
+            masks = torch.cat([obs["mask"].unsqueeze(0) if obs["mask"].dim() == 1 else obs["mask"] for obs in obs_batch], dim=0)
+
+            # Forward next states for target.
             with torch.no_grad():
-                next_logits = self.actor.forward_batch(next_obs_batch)
-                next_log_probs, next_probs, _ = masked_categorical_stats(
-                    next_logits, next_masks
+                next_logits = torch.cat([self.actor(obs) for obs in next_obs_batch], dim=0)
+                next_masks = torch.cat(
+                    [
+                        obs["mask"].unsqueeze(0) if obs["mask"].dim() == 1 else obs["mask"]
+                        for obs in next_obs_batch
+                    ],
+                    dim=0,
                 )
-                target_q1, target_q2 = self.target_critic.forward_batch(next_obs_batch)
-                target_q = torch.min(target_q1, target_q2)
-                alpha_detached = self.alpha.detach()
-                next_v = (
-                    next_probs * (target_q - alpha_detached * next_log_probs)
-                ).sum(dim=-1)
-                q_target = rewards + (1.0 - dones) * discounts * next_v
+                next_q1_t = torch.cat([self.target_critic1(obs) for obs in next_obs_batch], dim=0)
+                next_q2_t = torch.cat([self.target_critic2(obs) for obs in next_obs_batch], dim=0)
+                next_q_t = torch.minimum(next_q1_t, next_q2_t)
 
-            q1, q2 = self.critic.forward_batch(obs_batch)
+                next_probs, next_log_probs = self._masked_probs_and_log_probs(next_logits, next_masks)
+                alpha = self._compute_alpha()
+                next_v = (next_probs * (next_q_t - alpha * next_log_probs)).sum(dim=-1)
+                target_q = rewards + self.config.sac_gamma * (1.0 - dones) * next_v
+
             q1_a = q1.gather(1, actions.unsqueeze(1)).squeeze(1)
             q2_a = q2.gather(1, actions.unsqueeze(1)).squeeze(1)
-            critic_loss = F.mse_loss(q1_a, q_target) + F.mse_loss(q2_a, q_target)
+            q_loss = nn.functional.mse_loss(q1_a, target_q) + nn.functional.mse_loss(q2_a, target_q)
 
-            if self.config.sac_use_cql and self.config.sac_cql_alpha > 0.0:
-                cql1 = (masked_logsumexp(q1, masks) - q1_a).mean()
-                cql2 = (masked_logsumexp(q2, masks) - q2_a).mean()
-                critic_loss = critic_loss + self.config.sac_cql_alpha * (cql1 + cql2)
+            self.critic_opt.zero_grad()
+            q_loss.backward()
+            nn.utils.clip_grad_norm_(
+                list(self.critic1.parameters()) + list(self.critic2.parameters()),
+                self.config.max_grad_norm,
+            )
+            self.critic_opt.step()
 
-            self.critic_optimizer.zero_grad()
-            critic_loss.backward()
-            nn.utils.clip_grad_norm_(self.critic.parameters(), self.config.max_grad_norm)
-            self.critic_optimizer.step()
+            probs, log_probs = self._masked_probs_and_log_probs(logits, masks)
+            q1_pi = torch.cat([self.critic1(obs) for obs in obs_batch], dim=0)
+            q2_pi = torch.cat([self.critic2(obs) for obs in obs_batch], dim=0)
+            q_pi = torch.minimum(q1_pi, q2_pi)
+            alpha = self._compute_alpha()
+            policy_loss = (probs * (alpha * log_probs - q_pi)).sum(dim=-1).mean()
 
-            logits = self.actor.forward_batch(obs_batch)
-            log_probs, probs, entropy = masked_categorical_stats(logits, masks)
-            with torch.no_grad():
-                q1_pi, q2_pi = self.critic.forward_batch(obs_batch)
-                q_min = torch.min(q1_pi, q2_pi)
+            # Optional MCTS policy distillation (soft target).
+            distill_mask = []
+            distill_targets = []
+            for t in batch:
+                if t.mcts_policy is None:
+                    distill_mask.append(False)
+                    distill_targets.append(np.zeros(self.config.max_actions, dtype=np.float32))
+                else:
+                    distill_mask.append(True)
+                    distill_targets.append(t.mcts_policy.astype(np.float32))
+            distill_mask_t = torch.tensor(distill_mask, device=self.device, dtype=torch.bool)
+            if distill_mask_t.any():
+                target_pi = torch.tensor(np.stack(distill_targets), device=self.device, dtype=torch.float32)
+                # Avoid NaNs for any all-zero guidance vectors.
+                target_pi = target_pi / (target_pi.sum(dim=-1, keepdim=True) + 1e-8)
+                ce = -(target_pi[distill_mask_t] * log_probs[distill_mask_t]).sum(dim=-1).mean()
+                mcts_ce_loss = ce
+                distill_coef = self._effective_distill_coef()
+                if distill_coef > 0.0:
+                    policy_loss = policy_loss + distill_coef * ce
+            else:
+                mcts_ce_loss = torch.tensor(0.0, device=self.device)
 
-            actor_loss = (probs * (self.alpha.detach() * log_probs - q_min)).sum(
-                dim=-1
-            ).mean()
-            self.actor_optimizer.zero_grad()
-            actor_loss.backward()
+            # Warm-start behavior cloning on demonstration transitions.
+            demo_mask = torch.tensor([t.demo for t in batch], device=self.device, dtype=torch.bool)
+            if demo_mask.any():
+                chosen_logp = log_probs[torch.arange(log_probs.size(0), device=self.device), actions]
+                bc = -chosen_logp[demo_mask].mean()
+                bc_loss = bc
+                policy_loss = policy_loss + self.config.sac_bc_coef * bc
+            else:
+                bc_loss = torch.tensor(0.0, device=self.device)
+
+            self.actor_opt.zero_grad()
+            policy_loss.backward()
             nn.utils.clip_grad_norm_(self.actor.parameters(), self.config.max_grad_norm)
-            self.actor_optimizer.step()
+            self.actor_opt.step()
 
-            valid_counts = masks.float().sum(dim=-1).clamp_min(2.0)
-            target_entropy = -self.config.sac_target_entropy_scale * torch.log(valid_counts)
-            alpha_loss = (
-                self.alpha * (entropy.detach() - target_entropy)
-            ).mean()
+            alpha_loss = torch.tensor(0.0, device=self.device)
+            if self.auto_alpha and self.log_alpha is not None and self.alpha_opt is not None:
+                with torch.no_grad():
+                    entropy = -(probs * log_probs).sum(dim=-1)
+                    valid_counts = masks.float().sum(dim=-1).clamp(min=2.0)
+                    target_entropy = self.config.sac_target_entropy_ratio * torch.log(valid_counts)
 
-            self.alpha_optimizer.zero_grad()
-            alpha_loss.backward()
-            self.alpha_optimizer.step()
+                alpha_loss = (self.log_alpha.exp() * (target_entropy - entropy)).mean()
+                self.alpha_opt.zero_grad()
+                alpha_loss.backward()
+                self.alpha_opt.step()
 
-            min_log_alpha = math.log(self.config.sac_alpha_min)
-            max_log_alpha = math.log(self.config.sac_alpha_max)
-            with torch.no_grad():
-                self.log_alpha.clamp_(min=min_log_alpha, max=max_log_alpha)
+            # Soft update target critics.
+            self._soft_update(self.target_critic1, self.critic1, self.config.sac_tau)
+            self._soft_update(self.target_critic2, self.critic2, self.config.sac_tau)
 
-            self._soft_update_target()
+            q_losses.append(float(q_loss.item()))
+            policy_losses.append(float(policy_loss.item()))
+            alpha_losses.append(float(alpha_loss.item()))
+            mcts_ce_losses.append(float(mcts_ce_loss.item()))
+            bc_losses.append(float(bc_loss.item()))
 
-            critic_loss_total += critic_loss.item()
-            actor_loss_total += actor_loss.item()
-            alpha_loss_total += alpha_loss.item()
-            entropy_total += entropy.mean().item()
-
-        denom = max(updates, 1)
         return {
-            "critic_loss": critic_loss_total / denom,
-            "actor_loss": actor_loss_total / denom,
-            "alpha_loss": alpha_loss_total / denom,
-            "alpha": self.alpha.item(),
-            "entropy": entropy_total / denom,
+            "q_loss": float(np.mean(q_losses)) if q_losses else 0.0,
+            "policy_loss": float(np.mean(policy_losses)) if policy_losses else 0.0,
+            "alpha": float(self._compute_alpha().item()),
+            "alpha_loss": float(np.mean(alpha_losses)) if alpha_losses else 0.0,
+            "mcts_ce_loss": float(np.mean(mcts_ce_losses)) if mcts_ce_losses else 0.0,
+            "bc_loss": float(np.mean(bc_losses)) if bc_losses else 0.0,
         }
+
+    @staticmethod
+    def _soft_update(target: nn.Module, source: nn.Module, tau: float):
+        for t, s in zip(target.parameters(), source.parameters()):
+            t.data.copy_(t.data * (1.0 - tau) + s.data * tau)
 
     def _maybe_advance_curriculum(self):
         if not self.config.curriculum_enabled:
             return
-        window = self.config.sac_curriculum_window
+
+        window = max(50, self.config.sac_steps_per_update // max(self.config.max_steps, 1))
         if len(self.success_history) < window:
             return
 
         recent = self.success_history[-window:]
         rate = sum(recent) / len(recent)
-
-        if (
-            rate >= self.config.advance_threshold
-            and self.current_complexity < self.config.max_complexity
-        ):
+        if rate >= self.config.advance_threshold and self.current_complexity < self.config.max_complexity:
             self.current_complexity += 1
             self.success_history.clear()
             print(f"[Curriculum] Advanced to complexity {self.current_complexity}")
-        elif (
-            rate <= self.config.backoff_threshold
-            and self.current_complexity > self.config.starting_complexity
-        ):
+        elif rate <= self.config.backoff_threshold and self.current_complexity > self.config.starting_complexity:
             self.current_complexity -= 1
             self.success_history.clear()
             print(f"[Curriculum] Backed off to complexity {self.current_complexity}")
 
-    def _get_fixed_phase_complexity(self, iteration: int) -> Optional[int]:
-        if self.config.sac_fixed_complexity_iters <= 0:
-            return None
+    @torch.no_grad()
+    def evaluate(self, num_trials: int = 100, complexities: Optional[List[int]] = None):
+        if complexities is None:
+            complexities = list(range(2, self.config.max_complexity + 1))
 
-        fixed = [
-            c
-            for c in self.config.sac_fixed_complexities
-            if self.config.starting_complexity <= c <= self.config.max_complexity
-        ]
-        if not fixed:
-            return None
+        self.actor.eval()
+        env = CircuitGame(self.config)
+        results = {}
 
-        total_fixed_iters = len(fixed) * self.config.sac_fixed_complexity_iters
-        if iteration > total_fixed_iters:
-            return None
+        for complexity in complexities:
+            successes = 0
+            total_steps = 0
+            for _ in range(num_trials):
+                target_poly, _ = generate_random_circuit(self.config, complexity)
+                obs = env.reset(target_poly)
+                success = False
+                info = {}
+                while not env.done:
+                    obs_dev = self._obs_to_device(obs)
+                    logits = self.actor(obs_dev)
+                    action = int(logits.argmax(dim=-1).item())
+                    obs, _, _, info = env.step(action)
+                    if info.get("is_success", False):
+                        success = True
+                if success:
+                    successes += 1
+                    total_steps += int(info.get("steps_taken", 0))
 
-        phase = (iteration - 1) // self.config.sac_fixed_complexity_iters
-        return fixed[phase]
+            success_rate = successes / max(num_trials, 1)
+            avg_steps = total_steps / max(successes, 1)
+            results[complexity] = {
+                "success_rate": success_rate,
+                "avg_steps": avg_steps,
+                "num_trials": num_trials,
+                "successes": successes,
+            }
 
-    def train(self, num_iterations: int):
-        if self.config.sac_bc_warmstart_enabled:
-            print("[SAC] Running BC warm start...")
-            self._behavior_clone_warmstart()
-
-        for iteration in range(1, num_iterations + 1):
-            fixed_complexity = self._get_fixed_phase_complexity(iteration)
-            in_fixed_phase = fixed_complexity is not None
-            if in_fixed_phase:
-                self.current_complexity = fixed_complexity
-
-            rollout_info = self._collect_experience()
-            loss_info = self._update()
-
-            if not in_fixed_phase:
-                self._maybe_advance_curriculum()
-
-            if iteration % self.config.log_interval == 0:
-                phase = "fixed" if in_fixed_phase else "curriculum"
-                lib_str = (
-                    f"lib={rollout_info['library_size']} "
-                    f"fhits={rollout_info['factor_hits']} "
-                    f"lhits={rollout_info['library_hits']} "
-                    if self.config.factor_library_enabled else ""
-                )
-                print(
-                    f"[SAC iter {iteration}] "
-                    f"phase={phase} "
-                    f"complexity={rollout_info['complexity']} "
-                    f"success={rollout_info['success_rate']:.2%} "
-                    f"reward={rollout_info['avg_reward']:.3f} "
-                    f"buffer={rollout_info['replay_size']} "
-                    f"{lib_str}"
-                    f"critic={loss_info['critic_loss']:.4f} "
-                    f"actor={loss_info['actor_loss']:.4f} "
-                    f"alpha={loss_info['alpha']:.4f} "
-                    f"entropy={loss_info['entropy']:.4f}"
-                )
-
-    def evaluate(
-        self,
-        complexities: Optional[List[int]] = None,
-        num_trials: int = 100,
-        verbose: bool = True,
-    ) -> Dict:
-        return evaluate_model(
-            self.actor,
-            self.config,
-            algorithm="sac",
-            complexities=complexities,
-            num_trials=num_trials,
-            device=self.device,
-            verbose=verbose,
-        )
+        total_successes = sum(v["successes"] for v in results.values())
+        total_trials = sum(v["num_trials"] for v in results.values())
+        results["overall"] = {
+            "success_rate": total_successes / max(total_trials, 1),
+            "total_successes": total_successes,
+            "total_trials": total_trials,
+        }
+        return results
 
     def save_checkpoint(self, path: str):
         torch.save(
             {
                 "actor": self.actor.state_dict(),
-                "critic": self.critic.state_dict(),
-                "target_critic": self.target_critic.state_dict(),
-                "actor_optimizer": self.actor_optimizer.state_dict(),
-                "critic_optimizer": self.critic_optimizer.state_dict(),
-                "alpha_optimizer": self.alpha_optimizer.state_dict(),
-                "log_alpha": self.log_alpha.detach().cpu(),
-                "current_complexity": self.current_complexity,
-                "total_env_steps": self.total_env_steps,
+                "critic1": self.critic1.state_dict(),
+                "critic2": self.critic2.state_dict(),
+                "target_critic1": self.target_critic1.state_dict(),
+                "target_critic2": self.target_critic2.state_dict(),
+                "log_alpha": self.log_alpha.detach().cpu() if self.log_alpha is not None else None,
+                "alpha_value": float(self.alpha_value),
                 "config": self.config,
                 "algorithm": "sac",
             },
@@ -1001,24 +813,53 @@ class SACTrainer:
     def load_checkpoint(self, path: str):
         state = torch.load(path, map_location=self.device, weights_only=False)
         self.actor.load_state_dict(state["actor"])
-        self.critic.load_state_dict(state["critic"])
-        self.target_critic.load_state_dict(state["target_critic"])
+        self.critic1.load_state_dict(state["critic1"])
+        self.critic2.load_state_dict(state["critic2"])
+        self.target_critic1.load_state_dict(state.get("target_critic1", state["critic1"]))
+        self.target_critic2.load_state_dict(state.get("target_critic2", state["critic2"]))
 
-        if "log_alpha" in state:
-            self.log_alpha = (
-                state["log_alpha"].to(self.device).detach().requires_grad_(True)
-            )
-            self.alpha_optimizer = optim.Adam(
-                [self.log_alpha], lr=self.config.sac_alpha_lr
-            )
+        if self.auto_alpha and self.log_alpha is not None and state.get("log_alpha") is not None:
+            loaded_log_alpha = state["log_alpha"]
+            if isinstance(loaded_log_alpha, torch.Tensor):
+                self.log_alpha.data.copy_(loaded_log_alpha.to(self.device))
+        elif state.get("alpha_value") is not None:
+            self.alpha_value = float(state["alpha_value"])
 
-        if "actor_optimizer" in state:
-            self.actor_optimizer.load_state_dict(state["actor_optimizer"])
-        if "critic_optimizer" in state:
-            self.critic_optimizer.load_state_dict(state["critic_optimizer"])
-        if "alpha_optimizer" in state:
-            self.alpha_optimizer.load_state_dict(state["alpha_optimizer"])
+    def train(self, num_iterations: int):
+        checkpoint_interval = max(0, int(self.config.sac_checkpoint_interval))
+        checkpoint_dir = self.config.sac_checkpoint_dir
+        if checkpoint_interval > 0 and checkpoint_dir:
+            os.makedirs(checkpoint_dir, exist_ok=True)
 
-        self.current_complexity = state.get("current_complexity", self.current_complexity)
-        self.total_env_steps = state.get("total_env_steps", self.total_env_steps)
+        self.warmstart_replay()
+        if self.config.sac_warmstart_episodes > 0:
+            print(f"Prefilled replay buffer with {len(self.replay)} synthetic steps")
 
+        for iteration in range(1, num_iterations + 1):
+            rollout_info = self.collect_experience()
+            self.iter_success_rates.append(float(rollout_info["success_rate"]))
+            self._update_assist_mode(iteration)
+            loss_info = self.update()
+            self._maybe_advance_curriculum()
+
+            if iteration % self.config.log_interval == 0:
+                print(
+                    f"Iter {iteration}: SR {100.0 * rollout_info['success_rate']:.1f}%, "
+                    f"Q {loss_info['q_loss']:.4f}, "
+                    f"Pi {loss_info['policy_loss']:.4f}, "
+                    f"CE {loss_info['mcts_ce_loss']:.4f}, "
+                    f"Buffer {rollout_info['replay_size']}"
+                )
+                for i, ex in enumerate(rollout_info["examples"]):
+                    print(
+                        f"  Ex {i + 1}: {'Success' if ex['success'] else 'Fail'} "
+                        f"(R: {ex['reward']:.2f}, Steps: {ex['steps']}) Target: {ex['target']}"
+                    )
+
+            if checkpoint_interval > 0 and iteration % checkpoint_interval == 0 and checkpoint_dir:
+                checkpoint_path = os.path.join(
+                    checkpoint_dir,
+                    f"sac_iter_{iteration:05d}.pt",
+                )
+                self.save_checkpoint(checkpoint_path)
+                print(f"[Checkpoint] Saved iteration checkpoint: {checkpoint_path}")

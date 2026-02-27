@@ -1,7 +1,7 @@
 """Monte Carlo Tree Search with neural network prior and value estimates."""
 
 import math
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -39,6 +39,17 @@ class MCTS:
         self.model = model
         self.config = config
         self.device = device
+
+    def _to_device(self, value: Any):
+        """Recursively move observation values to the configured device."""
+        if isinstance(value, torch.Tensor):
+            return value.to(self.device)
+        if isinstance(value, dict):
+            return {k: self._to_device(v) for k, v in value.items()}
+        # PyG Data and similar containers implement .to(device).
+        if hasattr(value, "to"):
+            return value.to(self.device)
+        return value
 
     @torch.no_grad()
     def search(self, game: CircuitGame) -> Dict[int, int]:
@@ -133,17 +144,14 @@ class MCTS:
             Value estimate for this state
         """
         obs = game.get_observation()
-        obs_device = {
-            k: v.to(self.device) if isinstance(v, torch.Tensor) else v
-            for k, v in obs.items()
-        }
+        obs_device = {k: self._to_device(v) for k, v in obs.items()}
 
         action_probs, value = self.model.get_policy_and_value(obs_device)
         action_probs = action_probs.cpu().numpy()
         value = value.item()
 
         # Create children for all valid actions
-        mask = obs["mask"].numpy()
+        mask = obs["mask"].detach().cpu().numpy()
         for action_idx in range(len(mask)):
             if mask[action_idx]:
                 node.children[action_idx] = MCTSNode(prior=action_probs[action_idx])

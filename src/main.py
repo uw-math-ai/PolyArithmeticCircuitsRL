@@ -43,14 +43,8 @@ def main():
     parser.add_argument("--hidden-dim", type=int, default=None)
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--log-interval", type=int, default=None)
     parser.add_argument("--no-curriculum", action="store_true")
-    parser.add_argument("--sac-use-cql", action="store_true")
-    parser.add_argument("--sac-cql-alpha", type=float, default=None)
-    parser.add_argument("--sac-bc-warmstart", action="store_true")
-    parser.add_argument("--sac-bc-samples", type=int, default=None)
-    parser.add_argument("--sac-bc-steps", type=int, default=None)
-    parser.add_argument("--sac-fixed-complexity-iters", type=int, default=None)
-    parser.add_argument("--sac-target-entropy-scale", type=float, default=None)
     parser.add_argument("--no-factor-library", action="store_true",
                         help="Disable the factor library and subgoal rewards")
     parser.add_argument("--factor-subgoal-reward", type=float, default=None,
@@ -79,22 +73,10 @@ def main():
         config.device = args.device
     if args.seed is not None:
         config.seed = args.seed
+    if args.log_interval is not None:
+        config.log_interval = max(1, args.log_interval)
     if args.no_curriculum:
         config.curriculum_enabled = False
-    if args.sac_use_cql:
-        config.sac_use_cql = True
-    if args.sac_cql_alpha is not None:
-        config.sac_cql_alpha = args.sac_cql_alpha
-    if args.sac_bc_warmstart:
-        config.sac_bc_warmstart_enabled = True
-    if args.sac_bc_samples is not None:
-        config.sac_bc_samples = args.sac_bc_samples
-    if args.sac_bc_steps is not None:
-        config.sac_bc_steps = args.sac_bc_steps
-    if args.sac_fixed_complexity_iters is not None:
-        config.sac_fixed_complexity_iters = args.sac_fixed_complexity_iters
-    if args.sac_target_entropy_scale is not None:
-        config.sac_target_entropy_scale = args.sac_target_entropy_scale
     if args.no_factor_library:
         config.factor_library_enabled = False
     if args.factor_subgoal_reward is not None:
@@ -119,64 +101,69 @@ def main():
 
     if args.algorithm == "sac":
         trainer = SACTrainer(config, device=config.device)
-        actor_params = sum(p.numel() for p in trainer.actor.parameters())
-        critic_params = sum(p.numel() for p in trainer.critic.parameters())
-        print(f"SAC actor parameters: {actor_params:,}")
-        print(f"SAC critic parameters: {critic_params:,}")
+        total_params = (
+            sum(p.numel() for p in trainer.actor.parameters())
+            + sum(p.numel() for p in trainer.critic1.parameters())
+            + sum(p.numel() for p in trainer.critic2.parameters())
+        )
+        print(f"SAC parameters (actor+critics): {total_params:,}")
 
         if args.checkpoint:
             trainer.load_checkpoint(args.checkpoint)
-            print(f"Loaded SAC checkpoint from {args.checkpoint}")
+            print(f"Loaded checkpoint from {args.checkpoint}")
 
         if args.eval_only:
             print("\n=== Evaluation ===")
-            trainer.evaluate(verbose=True, num_trials=100)
+            results = trainer.evaluate()
+            overall = results["overall"]["success_rate"]
+            print(f"  Overall: {overall:.1%}")
             return
 
-        print(f"\n=== Training with {args.algorithm.upper()} ===")
+        print("\n=== Training with SAC ===")
         trainer.train(args.iterations)
         trainer.save_checkpoint(args.save_path)
         print(f"\nSaved checkpoint to {args.save_path}")
 
         print("\n=== Final Evaluation ===")
-        trainer.evaluate(verbose=True, num_trials=100)
+        results = trainer.evaluate()
+        overall = results["overall"]["success_rate"]
+        print(f"  Overall: {overall:.1%}")
+        return
+
+    # PPO / AlphaZero path uses shared policy-value model
+    model = PolicyValueNet(config)
+    print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+
+    if args.checkpoint:
+        state = torch.load(args.checkpoint, map_location=config.device, weights_only=False)
+        model.load_state_dict(state["model"])
+        print(f"Loaded checkpoint from {args.checkpoint}")
+
+    if args.eval_only:
+        print("\n=== Evaluation ===")
+        evaluate_model(model, config, algorithm=args.algorithm, device=config.device)
+        return
+
+    print(f"\n=== Training with {args.algorithm.upper()} ===")
+    if args.algorithm == "ppo":
+        trainer = PPOTrainer(config, model, device=config.device)
     else:
-        # Build model
-        model = PolicyValueNet(config)
-        print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
+        trainer = AlphaZeroTrainer(config, model, device=config.device)
 
-        # Load checkpoint if specified
-        if args.checkpoint:
-            state = torch.load(args.checkpoint, map_location=config.device, weights_only=True)
-            model.load_state_dict(state["model"])
-            print(f"Loaded checkpoint from {args.checkpoint}")
+    trainer.train(args.iterations)
 
-        if args.eval_only:
-            print("\n=== Evaluation ===")
-            evaluate_model(model, config, algorithm=args.algorithm, device=config.device)
-            return
-
-        # Train
-        print(f"\n=== Training with {args.algorithm.upper()} ===")
-
-        if args.algorithm == "ppo":
-            trainer = PPOTrainer(config, model, device=config.device)
-        else:
-            trainer = AlphaZeroTrainer(config, model, device=config.device)
-
-        trainer.train(args.iterations)
-
-        # Save checkpoint
-        torch.save({
+    torch.save(
+        {
             "model": model.state_dict(),
             "config": config,
             "algorithm": args.algorithm,
-        }, args.save_path)
-        print(f"\nSaved checkpoint to {args.save_path}")
+        },
+        args.save_path,
+    )
+    print(f"\nSaved checkpoint to {args.save_path}")
 
-        # Final evaluation
-        print("\n=== Final Evaluation ===")
-        evaluate_model(model, config, algorithm=args.algorithm, device=config.device)
+    print("\n=== Final Evaluation ===")
+    evaluate_model(model, config, algorithm=args.algorithm, device=config.device)
 
 
 if __name__ == "__main__":

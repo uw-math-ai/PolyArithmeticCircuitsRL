@@ -27,31 +27,16 @@ class Config:
     # -------------------------------------------------------------------------
     # Rewards
     # -------------------------------------------------------------------------
-    success_reward: float = 10.0        # Reward given when the target is matched exactly
-    step_penalty: float = -0.1          # Per-step penalty to encourage shorter circuits
-    use_reward_shaping: bool = True     # Enable potential-based shaping (Ng et al., 1999)
+    success_reward: float = 9.0         # Reward when the target is matched (kept your value)
+    step_penalty: float = -0.2          # Per-step penalty (kept your value)
+    use_reward_shaping: bool = True     # Enable potential-based shaping
 
     # -------------------------------------------------------------------------
-    # Factor library and subgoal rewards
+    # Factor library and subgoal rewards (from upstream)
     # -------------------------------------------------------------------------
-    # When enabled, the target polynomial is factorized at each episode reset
-    # (using SymPy over Z). Non-trivial factors become subgoals: the agent is
-    # rewarded for building them as intermediate circuit nodes.
     factor_library_enabled: bool = True
-    # Bonus reward for constructing any non-trivial factor of the current target.
-    # Applied once per factor per episode (cannot be collected twice for the same
-    # factor in one episode).
     factor_subgoal_reward: float = 1.0
-    # Additional bonus when the constructed factor is already in the library
-    # (i.e., was built in a previous successful episode). Stacks on top of
-    # factor_subgoal_reward to further incentivise reuse of known sub-circuits.
     factor_library_bonus: float = 0.5
-    # Completion bonus fired when the agent creates a node v such that the
-    # circuit now contains both v and its "complement" for one final operation:
-    #   Additive:       T - v  is already in the circuit  (one add away from T)
-    #   Multiplicative: T / v  is in the circuit or a scalar (one mul away from T)
-    # Fires at most once per direction (additive / multiplicative) per episode,
-    # so the agent cannot farm it by repeatedly building the same node.
     completion_bonus: float = 3.0
 
     # Model
@@ -72,46 +57,6 @@ class Config:
     steps_per_update: int = 2048
     max_grad_norm: float = 0.5
 
-    # SAC (discrete, masked)
-    sac_actor_lr: float = 1e-4
-    sac_critic_lr: float = 3e-4
-    sac_alpha_lr: float = 1e-4
-    sac_tau: float = 0.01
-    sac_batch_size: int = 256
-    sac_steps_per_iter: int = 2048
-    sac_update_to_data_ratio: float = 1.0
-    sac_replay_size: int = 100000
-    sac_min_replay_size: int = 10000
-    sac_initial_random_steps: int = 2000
-    sac_n_step: int = 3
-
-    # State-dependent entropy target: -scale * log(|A_valid(s)|)
-    sac_target_entropy_scale: float = 0.98
-    sac_alpha_init: float = 0.2
-    sac_alpha_min: float = 1e-4
-    sac_alpha_max: float = 10.0
-
-    # Replay sampling mix
-    sac_current_complexity_fraction: float = 0.5
-    sac_success_fraction: float = 0.2
-    sac_recent_fraction: float = 0.2
-    sac_recent_window: int = 20000
-
-    # Optional stabilizers
-    sac_use_cql: bool = False
-    sac_cql_alpha: float = 0.0
-
-    # Optional BC warm start from board-derived demonstrations
-    sac_bc_warmstart_enabled: bool = False
-    sac_bc_samples: int = 5000
-    sac_bc_steps: int = 1000
-    sac_bc_batch_size: int = 128
-
-    # Optional fixed-complexity warm-up before adaptive curriculum
-    sac_fixed_complexities: List[int] = field(default_factory=lambda: [3, 4])
-    sac_fixed_complexity_iters: int = 20
-    sac_curriculum_window: int = 50
-
     # AlphaZero / MCTS
     mcts_simulations: int = 100
     mcts_c_puct: float = 1.4
@@ -124,11 +69,49 @@ class Config:
     temperature_final: float = 0.1
     temperature_decay_steps: int = 30
 
+    # SAC (discrete, masked actions)
+    sac_actor_lr: float = 3e-4
+    sac_critic_lr: float = 3e-4
+    sac_alpha_lr: float = 3e-4
+    sac_gamma: float = 0.99
+    sac_tau: float = 0.005
+    sac_init_alpha: float = 0.2
+    sac_auto_entropy_tuning: bool = True
+    # Target entropy is ratio * log(valid_action_count)
+    sac_target_entropy_ratio: float = 0.7
+    sac_batch_size: int = 128
+    sac_replay_size: int = 200000
+    sac_min_replay_size: int = 5000
+    sac_steps_per_update: int = 2048
+    sac_updates_per_iter: int = 128
+    # Replay sampling: probability of sampling from success bucket when available
+    sac_success_sample_ratio: float = 0.55
+    # Constructive warm-start
+    sac_warmstart_episodes: int = 300
+    sac_bc_coef: float = 0.2
+    # Optional MCTS policy distillation
+    sac_use_mcts_distillation: bool = True
+    sac_mcts_distill_prob: float = 0.2
+    sac_distill_coef: float = 0.3
+    # Periodic checkpointing
+    sac_checkpoint_interval: int = 50
+    sac_checkpoint_dir: str = "models"
+    # Stuck detection and adaptive assistance
+    sac_stuck_detection_enabled: bool = True
+    sac_stuck_window: int = 12
+    sac_stuck_min_iters: int = 12
+    sac_stuck_slope_threshold: float = 0.003
+    sac_stuck_sr_ceiling: float = 0.55
+    sac_stuck_recovery_margin: float = 0.07
+    sac_assist_cooldown_iters: int = 12
+    sac_assist_distill_prob: float = 0.65
+    sac_assist_distill_coef: float = 1.0
+
     # Curriculum
     curriculum_enabled: bool = True
-    starting_complexity: int = 2
-    advance_threshold: float = 0.7
-    backoff_threshold: float = 0.4
+    starting_complexity: int = 3
+    advance_threshold: float = 0.9
+    backoff_threshold: float = 0.05
 
     # Training
     device: str = "cpu"

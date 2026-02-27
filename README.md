@@ -627,6 +627,19 @@ python -m src.main --algorithm sac --iterations 100 \
 python -m src.main --algorithm alphazero --iterations 50
 ```
 
+### Training with SAC
+
+```bash
+python -m src.main --algorithm sac --iterations 100
+```
+
+### Run SAC with `nohup` (old workflow style)
+
+```bash
+./run_sac_nohup.sh tests/sac_training.log 10000
+tail -f tests/sac_training.log
+```
+
 ### Configuration Overrides
 
 ```bash
@@ -660,6 +673,7 @@ python -m src.main --algorithm sac --iterations 200 \
 python -m src.main --eval-only --checkpoint checkpoint.pt --algorithm ppo
 python -m src.main --eval-only --checkpoint checkpoint.pt --algorithm sac
 python -m src.main --eval-only --checkpoint checkpoint.pt --algorithm alphazero
+python -m src.main --eval-only --checkpoint checkpoint.pt --algorithm sac
 ```
 
 ### Saving and Loading Checkpoints
