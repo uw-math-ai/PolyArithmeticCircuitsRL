@@ -1,0 +1,986 @@
+Config: n_vars=3, mod=5, max_complexity=8, device=cuda
+Max nodes=12, max_actions=156, target_size=729
+SAC parameters (actor+critics): 790,356
+Loaded checkpoint from models/sac_iter_00050.pt
+
+=== Training with SAC ===
+Prefilled replay buffer with 437 synthetic steps
+Iter 1: SR 66.3%, Q 0.0000, Pi 0.0000, CE 0.0000, Buffer 2485
+  Ex 1: Success (R: 9.10, Steps: 6) Target: 2*x2**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 2*x1**2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0**2 + x1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x1**4
+  Ex 5: Fail (R: -0.91, Steps: 8) Target: x0**2 + 2*x0 + 1
+Iter 2: SR 66.8%, Q 0.0000, Pi 0.0000, CE 0.0000, Buffer 4533
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x1 + 2*x2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 4*x2**2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x2**2 + x2
+  Ex 4: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**4
+Iter 3: SR 64.1%, Q 1.3698, Pi -7.0808, CE 0.0000, Buffer 6581
+  Ex 1: Success (R: 9.55, Steps: 3) Target: 2*x0*x1
+  Ex 2: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: 2*x0 + x2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x0**2 + x1
+Iter 4: SR 62.3%, Q 1.3092, Pi -7.0875, CE 0.0000, Buffer 8629
+  Ex 1: Fail (R: -0.23, Steps: 8) Target: 4*x1
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: 2*x2 + 1
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0*x2 + x2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 4*x2**2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**2 + 2*x0*x1 + x1**2
+Iter 5: SR 66.7%, Q 1.1097, Pi -7.1770, CE 0.0000, Buffer 10677
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x0**2 + 1
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x1*x2 + x1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x1**2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**2 + 2*x0*x1 + x1**2
+Iter 6: SR 71.5%, Q 1.0578, Pi -7.0984, CE 0.0000, Buffer 12725
+  Ex 1: Fail (R: -1.23, Steps: 8) Target: x0 + x2 + 1
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 3: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x0*x1 + 1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 2*x0 + 2*x2
+Iter 7: SR 62.9%, Q 1.0733, Pi -7.1315, CE 0.0000, Buffer 14773
+  Ex 1: Fail (R: -1.23, Steps: 8) Target: x0 + x2 + 1
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x0*x1 + x1
+  Ex 3: Fail (R: -1.23, Steps: 8) Target: x1**2 + 2*x1 + 1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0**4
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x2**2 + 2*x2 + 1
+Iter 8: SR 63.8%, Q 0.9204, Pi -6.9792, CE 0.0000, Buffer 16821
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x1 + 2
+  Ex 2: Success (R: 10.03, Steps: 2) Target: x1 + x2 + 1
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0*x2 + x2
+  Ex 4: Success (R: 9.70, Steps: 2) Target: 2*x0**2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x1**2 + 1
+Iter 9: SR 67.9%, Q 0.9181, Pi -6.8700, CE 0.0000, Buffer 18869
+  Ex 1: Success (R: 9.57, Steps: 6) Target: 2*x2 + 2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 2*x0*x1
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0*x1 + x1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x1**2*x2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x0 + 2*x2
+Iter 10: SR 64.2%, Q 0.9933, Pi -6.8873, CE 0.0000, Buffer 20917
+  Ex 1: Fail (R: -0.72, Steps: 8) Target: 2*x0 + 2*x2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x1**2*x2**2
+  Ex 3: Success (R: 9.57, Steps: 6) Target: 2*x1 + 2*x2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x1*x2 + 1
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x1**2 + 2*x1 + 1
+Iter 11: SR 60.3%, Q 0.9585, Pi -6.8882, CE 0.0000, Buffer 22965
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x0*x2 + x2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0*x1**2
+  Ex 3: Fail (R: -0.24, Steps: 8) Target: 2*x0 + 2*x1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 3*x2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 4*x2**2
+*** Assist Mode ON at iter 12 (mean SR 65.4%, slope +0.14 pp/iter) ***
+Iter 12: SR 67.8%, Q 1.0285, Pi -6.9048, CE 0.0000, Buffer 25013
+  Ex 1: Success (R: 9.42, Steps: 7) Target: 2*x2 + 2
+  Ex 2: Success (R: 9.70, Steps: 2) Target: x0**2*x1**2
+  Ex 3: Success (R: 9.70, Steps: 2) Target: 2*x0*x2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0**2 + 2*x0*x1 + x1**2
+  Ex 5: Success (R: 9.70, Steps: 2) Target: 4
+Iter 13: SR 71.9%, Q 1.0094, Pi -4.5864, CE 2.0253, Buffer 27061
+  Ex 1: Success (R: 9.70, Steps: 2) Target: x1*x2 + x2
+  Ex 2: Fail (R: -0.71, Steps: 8) Target: x1*x2 + x2**2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0 + x1**2
+  Ex 4: Success (R: 8.77, Steps: 8) Target: x0 + 2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**2*x2**2
+Iter 14: SR 76.2%, Q 1.2200, Pi -4.7872, CE 1.7700, Buffer 29109
+  Ex 1: Success (R: 9.54, Steps: 3) Target: x2 + 2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x2**3
+  Ex 3: Success (R: 9.55, Steps: 3) Target: 3
+  Ex 4: Fail (R: -0.90, Steps: 8) Target: x1**2 + 2*x1 + 1
+  Ex 5: Success (R: 9.70, Steps: 2) Target: x0**2*x1**2
+Iter 15: SR 76.0%, Q 1.2997, Pi -4.7952, CE 1.6987, Buffer 31157
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x1**2
+  Ex 2: Success (R: 9.24, Steps: 5) Target: x0**2 + 2*x0 + 1
+  Ex 3: Fail (R: -1.23, Steps: 8) Target: x0 + x1 + x2
+  Ex 4: Success (R: 9.70, Steps: 2) Target: 2*x0 + x2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x0 + 2
+Iter 16: SR 77.3%, Q 1.2910, Pi -4.7778, CE 1.6795, Buffer 33205
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 2: Success (R: 9.25, Steps: 5) Target: x2**4
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x1**2
+  Ex 5: Success (R: 9.07, Steps: 6) Target: 2*x2 + 1
+*** Assist Mode OFF at iter 17 (mean SR 69.8%, slope +0.59 pp/iter) ***
+[Curriculum] Advanced to complexity 3
+Iter 17: SR 78.0%, Q 1.3867, Pi -6.6013, CE 3.6734, Buffer 35253
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 2: Success (R: 10.03, Steps: 2) Target: x1 + x2 + 1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x1**2 + x1*x2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 5: Success (R: 9.57, Steps: 6) Target: 2*x2 + 2
+[Curriculum] Backed off to complexity 2
+Iter 18: SR 1.5%, Q 1.4189, Pi -5.1743, CE 4.4097, Buffer 37301
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x0*x2**2 + x2**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x1**4 + x1**2
+  Ex 3: Fail (R: -1.23, Steps: 8) Target: x0 + x1*x2 + x1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x0*x1 + 2*x1
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: 2*x0*x2 + x0
+Iter 19: SR 67.9%, Q 1.3511, Pi -5.3241, CE 6.7260, Buffer 39349
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x0**4
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x1 + 2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0 + 2
+  Ex 4: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 2*x0**2
+*** Assist Mode ON at iter 20 (mean SR 64.9%, slope +0.14 pp/iter) ***
+Iter 20: SR 69.5%, Q 1.1796, Pi -2.7495, CE 2.4572, Buffer 41397
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x1**2 + 2*x1*x2 + x2**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x2**4
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: 2*x2 + 1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x1**2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+[Curriculum] Advanced to complexity 3
+Iter 21: SR 78.7%, Q 1.1609, Pi -3.4474, CE 1.7251, Buffer 43445
+  Ex 1: Success (R: 9.42, Steps: 7) Target: 2*x2 + 2
+  Ex 2: Success (R: 9.25, Steps: 5) Target: x0**2*x2**2
+  Ex 3: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x1*x2**2
+[Curriculum] Backed off to complexity 2
+Iter 22: SR 4.2%, Q 2.9088, Pi -2.8153, CE 2.0882, Buffer 45493
+  Ex 1: Fail (R: -0.74, Steps: 8) Target: 3*x0 + 2*x1
+  Ex 2: Fail (R: -1.23, Steps: 8) Target: 2*x1 + x2 + 1
+  Ex 3: Fail (R: -1.01, Steps: 8) Target: x0**2 + 2*x0*x1 + x0*x2 + x1**2 + x1*x2
+  Ex 4: Fail (R: -0.74, Steps: 8) Target: 2*x0*x2 + 2*x1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x1**3 + 3*x1**2*x2 + 3*x1*x2**2 + x2**3
+Iter 23: SR 77.2%, Q 2.1027, Pi -3.3387, CE 2.2882, Buffer 47541
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 2*x0 + x2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x1**2 + 2*x1*x2 + x2**2
+  Ex 3: Success (R: 10.03, Steps: 2) Target: x1 + x2 + 1
+  Ex 4: Success (R: 9.70, Steps: 2) Target: 2*x0 + 1
+  Ex 5: Success (R: 9.27, Steps: 8) Target: 2*x0 + 2*x2
+Iter 24: SR 76.0%, Q 1.8799, Pi -3.5104, CE 2.1800, Buffer 49589
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x1**2*x2
+  Ex 3: Fail (R: -0.74, Steps: 8) Target: x1*x2 + x2**2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x2**4
+[Curriculum] Advanced to complexity 3
+Iter 25: SR 77.1%, Q 1.8328, Pi -3.4592, CE 2.0907, Buffer 51637
+  Ex 1: Success (R: 9.38, Steps: 4) Target: x0*x2 + x2
+  Ex 2: Success (R: 9.10, Steps: 6) Target: 4*x1**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x0**2 + 2*x0*x2 + x2**2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x0*x1 + x0
+  Ex 5: Success (R: 9.10, Steps: 6) Target: 2*x1*x2
+Iter 26: SR 8.0%, Q 2.5767, Pi -3.1825, CE 2.0650, Buffer 53685
+  Ex 1: Fail (R: -0.25, Steps: 8) Target: x2**2 + 2*x2
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x1*x2**2 + x2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: 2*x1**2 + 1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x0**4
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x1 + x2**2 + x2
+Iter 27: SR 7.3%, Q 2.2970, Pi -3.0649, CE 2.1987, Buffer 55733
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x0**3*x2
+  Ex 2: Fail (R: -1.22, Steps: 8) Target: x0*x2 + x0 + x1*x2 + x1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x1*x2**2 + x2**4
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0**4 + x0**2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: 2*x0*x1 + x0
+Iter 28: SR 8.3%, Q 2.3694, Pi -3.1710, CE 2.1109, Buffer 57781
+  Ex 1: Fail (R: -1.22, Steps: 8) Target: x2**4 + 4*x2**3 + x2**2 + 4*x2 + 1
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: 2*x0**2 + 1
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0**2*x1**2 + x1
+  Ex 4: Fail (R: -1.23, Steps: 8) Target: x0**2 + x0 + x1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 2*x0**2*x1**2
+Iter 29: SR 10.6%, Q 2.3424, Pi -3.1551, CE 2.1651, Buffer 59829
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 4*x1**2*x2**2
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: 2*x0*x2 + x0
+  Ex 3: Fail (R: -1.23, Steps: 8) Target: x0**2 + x1 + x2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x2**3 + x2
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x0*x1 + x0*x2 + x0
+*** Assist Mode OFF at iter 30 (mean SR 41.1%, slope -5.38 pp/iter) ***
+Iter 30: SR 8.7%, Q 2.4711, Pi -6.1536, CE 9.5593, Buffer 61877
+  Ex 1: Fail (R: -0.89, Steps: 8) Target: 2*x0 + 2*x1 + 2
+  Ex 2: Fail (R: -1.23, Steps: 8) Target: x1*x2**2 + 2*x1*x2 + x1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x0**2 + 4*x0 + 4
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x0*x2**2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 3*x0*x2
+[Curriculum] Backed off to complexity 2
+Iter 31: SR 1.5%, Q 2.3835, Pi -5.9357, CE 9.4984, Buffer 63925
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: 2*x1*x2 + x1
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 2*x2**3
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x1**2*x2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2**2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x0 + 3
+Iter 32: SR 67.6%, Q 2.3286, Pi -5.9987, CE 7.1235, Buffer 65973
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x0**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0**4
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0**2 + x2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: 2*x2 + 1
+  Ex 5: Fail (R: -0.77, Steps: 8) Target: x0 + 2*x1
+Iter 33: SR 63.6%, Q 2.2625, Pi -6.0853, CE 7.0069, Buffer 68021
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 2*x0*x2
+  Ex 2: Success (R: 9.70, Steps: 2) Target: x0**2*x1**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 4*x2**2
+Iter 34: SR 65.7%, Q 2.2729, Pi -6.1217, CE 7.9461, Buffer 70069
+  Ex 1: Fail (R: -1.23, Steps: 8) Target: x1**2 + 2*x1 + 1
+  Ex 2: Fail (R: -0.22, Steps: 8) Target: 4*x2
+  Ex 3: Success (R: 9.70, Steps: 2) Target: 2*x0*x2
+  Ex 4: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: 2*x2 + 1
+Iter 35: SR 68.5%, Q 2.1031, Pi -6.1743, CE 8.7404, Buffer 72117
+  Ex 1: Fail (R: -0.89, Steps: 8) Target: x0**2 + 2*x0*x1 + x1**2
+  Ex 2: Success (R: 9.88, Steps: 4) Target: 2*x1 + 2*x2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 4*x0
+  Ex 4: Fail (R: -0.91, Steps: 8) Target: x1 + x2 + 1
+  Ex 5: Success (R: 9.70, Steps: 2) Target: 4
+Iter 36: SR 68.2%, Q 2.2166, Pi -6.1275, CE 9.2122, Buffer 74165
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0**4
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x0 + 2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x0 + 2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0*x1 + x0*x2
+Iter 37: SR 66.4%, Q 2.0782, Pi -6.1282, CE 10.0288, Buffer 76213
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x1 + 2
+  Ex 2: Fail (R: -0.23, Steps: 8) Target: 3*x1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x1*x2 + x2**2
+  Ex 4: Fail (R: -0.21, Steps: 8) Target: 4*x0
+  Ex 5: Success (R: 9.55, Steps: 3) Target: 3
+Iter 38: SR 65.3%, Q 2.0361, Pi -6.0394, CE 9.9018, Buffer 78261
+  Ex 1: Fail (R: -1.23, Steps: 8) Target: x0**2 + 2*x0 + 1
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x1 + x2**2
+  Ex 3: Fail (R: -0.89, Steps: 8) Target: x0**2 + 2*x0*x1 + x1**2
+  Ex 4: Fail (R: -0.21, Steps: 8) Target: 4*x0
+  Ex 5: Fail (R: -0.73, Steps: 8) Target: 2*x1 + 2
+Iter 39: SR 71.4%, Q 1.8726, Pi -6.0070, CE 10.7289, Buffer 80309
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x1**4
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x1 + x2**2
+  Ex 3: Fail (R: -0.90, Steps: 8) Target: x1 + x2 + 1
+  Ex 4: Success (R: 9.55, Steps: 3) Target: 3
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 4*x2**2
+Iter 40: SR 67.5%, Q 1.8777, Pi -6.0309, CE 11.3738, Buffer 82357
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x0**2*x2**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x0*x1 + x0*x2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x0*x1 + x2
+  Ex 5: Success (R: 9.70, Steps: 2) Target: 4
+Iter 41: SR 67.3%, Q 1.9213, Pi -5.9048, CE 11.2774, Buffer 84405
+  Ex 1: Fail (R: -0.24, Steps: 8) Target: 2*x0 + 2*x2
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x1 + 2*x2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0*x2 + x2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x0 + 2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x1 + 2
+Iter 42: SR 65.4%, Q 1.8957, Pi -5.8220, CE 10.9057, Buffer 86453
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x1*x2 + x2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0**2 + x2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x1*x2 + 1
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x0 + 2*x2
+*** Assist Mode ON at iter 43 (mean SR 67.0%, slope -0.08 pp/iter) ***
+Iter 43: SR 66.8%, Q 1.8399, Pi -1.8450, CE 3.6841, Buffer 88501
+  Ex 1: Fail (R: -1.23, Steps: 8) Target: x0 + x1 + 1
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x0*x2 + x1
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x1*x2 + x2
+  Ex 4: Success (R: 9.23, Steps: 5) Target: x2 + 2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x1*x2 + x2**2
+Iter 44: SR 75.7%, Q 1.8156, Pi -3.1771, CE 2.2038, Buffer 90549
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 2: Success (R: 9.55, Steps: 3) Target: 3
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+  Ex 4: Success (R: 9.57, Steps: 6) Target: 2*x2 + 2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x0 + 2
+[Curriculum] Advanced to complexity 3
+Iter 45: SR 79.9%, Q 1.9323, Pi -3.1687, CE 2.1410, Buffer 92597
+  Ex 1: Fail (R: -0.23, Steps: 8) Target: 3*x1
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0*x2 + x1*x2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x0 + 2*x1
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x0 + x2 + 1
+Iter 46: SR 9.8%, Q 1.9983, Pi -3.1828, CE 2.0681, Buffer 94645
+  Ex 1: Fail (R: -1.23, Steps: 8) Target: 2*x1 + x2 + 2
+  Ex 2: Fail (R: -0.73, Steps: 8) Target: x2**3 + x2**2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x1**4 + 1
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: 2*x0*x2 + x0
+  Ex 5: Success (R: 9.55, Steps: 3) Target: 4*x0*x2
+Iter 47: SR 12.9%, Q 2.0770, Pi -3.0376, CE 2.0893, Buffer 96693
+  Ex 1: Fail (R: -0.74, Steps: 8) Target: 2*x0*x2 + 2*x0
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x1**6
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 4*x0**2*x2**2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0**2 + 3*x0*x2 + 2*x2**2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x1**2*x2**2 + x1
+*** Assist Mode OFF at iter 48 (mean SR 54.7%, slope -5.27 pp/iter) ***
+Iter 48: SR 8.4%, Q 2.3848, Pi -5.8551, CE 13.4428, Buffer 98741
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x0 + x2**3
+  Ex 2: Fail (R: -0.89, Steps: 8) Target: 2*x0**2 + 4*x0*x2 + 2*x2**2
+  Ex 3: Fail (R: -1.22, Steps: 8) Target: x0*x2 + x0 + x1*x2 + x1
+  Ex 4: Fail (R: -0.71, Steps: 8) Target: x0**2*x1 + x0*x1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 3*x0 + 3*x1
+[Curriculum] Backed off to complexity 2
+Iter 49: SR 0.4%, Q 2.1807, Pi -5.7805, CE 16.9655, Buffer 100789
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x0*x1*x2 + x1
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x2**8
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x1*x2 + 2*x1
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x1**4 + x2
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x1 + 2*x2 + 2
+*** Assist Mode ON at iter 50 (mean SR 49.6%, slope -0.18 pp/iter) ***
+Iter 50: SR 69.4%, Q 2.0111, Pi -2.4463, CE 3.0069, Buffer 102837
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x2**2 + 1
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 4*x2**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 4: Success (R: 9.54, Steps: 3) Target: x2 + 2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**2 + 2*x0*x2 + x2**2
+[Checkpoint] Saved iteration checkpoint: models/sac_iter_00050.pt
+[Curriculum] Advanced to complexity 3
+Iter 51: SR 81.0%, Q 1.8499, Pi -3.2162, CE 2.0965, Buffer 104885
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 2: Success (R: 10.03, Steps: 2) Target: x1 + x2 + 1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x0*x1**2
+  Ex 4: Fail (R: -0.23, Steps: 8) Target: 3*x2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: 2*x1 + 1
+Iter 52: SR 11.9%, Q 1.9715, Pi -3.2022, CE 2.0877, Buffer 106933
+  Ex 1: Fail (R: -0.71, Steps: 8) Target: x2**3 + x2**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0*x1*x2 + x0*x1
+  Ex 3: Success (R: 9.26, Steps: 8) Target: 3*x2 + 2
+  Ex 4: Fail (R: -0.98, Steps: 8) Target: x0*x2 + x0 + x2 + 1
+  Ex 5: Fail (R: -1.21, Steps: 8) Target: x1**2 + 2*x1*x2 + 2*x1 + x2**2 + 2*x2 + 1
+Iter 53: SR 10.6%, Q 2.0012, Pi -3.1083, CE 2.0988, Buffer 108981
+  Ex 1: Fail (R: -0.73, Steps: 8) Target: x0*x2**2 + x0*x2
+  Ex 2: Success (R: 9.07, Steps: 6) Target: x2 + 3
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: 2*x0*x2 + x0
+  Ex 4: Fail (R: -1.23, Steps: 8) Target: x0 + x1**2 + 1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 4*x1**4
+Iter 54: SR 10.9%, Q 2.1645, Pi -2.9856, CE 2.1108, Buffer 111029
+  Ex 1: Fail (R: -1.23, Steps: 8) Target: x1**2*x2**2 + 2*x1*x2 + 1
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x2**2 + 4*x2 + 4
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x1**4*x2**4
+  Ex 4: Success (R: 9.25, Steps: 5) Target: 4*x0**2*x1**2
+  Ex 5: Success (R: 9.40, Steps: 4) Target: 2*x0*x1*x2
+*** Assist Mode OFF at iter 55 (mean SR 31.8%, slope -5.92 pp/iter) ***
+Iter 55: SR 10.6%, Q 2.1274, Pi -5.6659, CE 8.8351, Buffer 113077
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x1*x2**4
+  Ex 2: Fail (R: -0.71, Steps: 8) Target: 3*x0 + 2*x2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x1**4 + 1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x1**4 + x1**2
+  Ex 5: Success (R: 9.29, Steps: 8) Target: 4*x0 + 2
+[Curriculum] Backed off to complexity 2
+Iter 56: SR 0.8%, Q 1.9788, Pi -5.5383, CE 12.7393, Buffer 115125
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x0**2*x2 + x0*x2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 0
+  Ex 3: Fail (R: -0.92, Steps: 8) Target: x0 + 2*x1 + x2
+  Ex 4: Fail (R: -1.22, Steps: 8) Target: x0 + x1 + x2 + 1
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x1 + 4
+Iter 57: SR 65.9%, Q 2.1290, Pi -5.6460, CE 6.5941, Buffer 117173
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x2**4
+  Ex 2: Success (R: 9.70, Steps: 2) Target: x0**2*x1**2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0*x2 + x2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x1**4
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 4*x1
+Iter 58: SR 71.9%, Q 2.2148, Pi -5.7037, CE 7.7692, Buffer 119221
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x0*x1 + x1
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0**4
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x1**2*x2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x0 + 2
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x1**2 + 2*x1 + 1
+Iter 59: SR 68.5%, Q 2.0599, Pi -5.8081, CE 8.7811, Buffer 121269
+  Ex 1: Fail (R: -0.89, Steps: 8) Target: x0**2 + 2*x0*x1 + x1**2
+  Ex 2: Fail (R: -1.23, Steps: 8) Target: x1**2 + 2*x1 + 1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x1**2*x2
+  Ex 4: Success (R: 9.57, Steps: 6) Target: 2*x2 + 2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: 2*x1 + 1
+Iter 60: SR 69.1%, Q 2.0004, Pi -5.7619, CE 9.0982, Buffer 123317
+  Ex 1: Success (R: 9.38, Steps: 4) Target: x2 + 2
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x0**2 + 1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x1**2*x2**2
+  Ex 4: Success (R: 9.40, Steps: 4) Target: x0*x2**2
+  Ex 5: Success (R: 10.03, Steps: 2) Target: x0 + x1 + x2
+*** Assist Mode ON at iter 61 (mean SR 45.2%, slope +0.17 pp/iter) ***
+Iter 61: SR 71.3%, Q 1.7194, Pi -2.3093, CE 3.2345, Buffer 125365
+  Ex 1: Success (R: 9.57, Steps: 6) Target: 2*x2 + 2
+  Ex 2: Success (R: 9.88, Steps: 4) Target: 2*x1 + 2*x2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x2**4
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x1**4
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**4
+[Curriculum] Advanced to complexity 3
+Iter 62: SR 79.6%, Q 1.8100, Pi -3.2922, CE 2.1201, Buffer 127413
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 4*x2**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 4*x2
+  Ex 3: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x1*x2 + x1
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x1**2 + x1
+Iter 63: SR 13.9%, Q 1.9425, Pi -3.2379, CE 2.1243, Buffer 129461
+  Ex 1: Success (R: 9.26, Steps: 8) Target: 2*x0*x2 + 2*x0
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0**2*x2 + x1*x2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x0**2*x1**2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 4*x1**2 + 3*x1 + 4
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: 2*x2**2 + 1
+Iter 64: SR 9.1%, Q 1.8055, Pi -3.2936, CE 2.1052, Buffer 131509
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x0*x2 + 2*x1*x2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x1**4 + 4*x1**3*x2 + x1**2*x2**2 + 4*x1*x2**3 + x2**4
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x1**2*x2**4
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0**4 + 4*x0**3*x1 + x0**2*x1**2 + 4*x0*x1**3 + x1**4
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x1**2*x2**2 + x1*x2
+Iter 65: SR 11.3%, Q 2.0770, Pi -3.1903, CE 2.0882, Buffer 133557
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 4*x0**2*x1**2
+  Ex 2: Fail (R: -0.89, Steps: 8) Target: 2*x0**2 + 4*x0 + 2
+  Ex 3: Success (R: 9.07, Steps: 6) Target: x2 + 3
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x2**5
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x1**2 + 2*x1*x2
+Iter 66: SR 14.4%, Q 1.9110, Pi -3.0937, CE 2.0675, Buffer 135605
+  Ex 1: Success (R: 9.40, Steps: 4) Target: x1*x2 + 2*x2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0**2 + 2*x1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x1**2 + 2*x1*x2
+  Ex 4: Fail (R: -1.22, Steps: 8) Target: x0 + x1 + x2 + 1
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: 2*x0*x2 + x0
+Iter 67: SR 11.0%, Q 1.9385, Pi -3.1610, CE 2.0637, Buffer 137653
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x0 + 2*x2**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0**4*x1**4
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x1 + 4
+  Ex 4: Fail (R: -1.22, Steps: 8) Target: x1**2 + 2*x1*x2 + x2**2 + x2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: 4*x2**2 + x2
+Iter 68: SR 12.1%, Q 2.0264, Pi -3.1305, CE 2.0972, Buffer 139701
+  Ex 1: Fail (R: -0.72, Steps: 8) Target: x0*x2 + 2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0**3 + x0**2
+  Ex 3: Fail (R: -0.72, Steps: 8) Target: x2**2 + 2*x2
+  Ex 4: Fail (R: -0.71, Steps: 8) Target: 2*x1 + x2**2
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x1**2*x2 + 2*x1*x2 + x2
+Iter 69: SR 12.2%, Q 1.8961, Pi -3.1593, CE 2.0611, Buffer 141749
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x0**4*x2**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 3*x1*x2
+  Ex 3: Fail (R: -1.22, Steps: 8) Target: x0**2 + x0*x1 + x0 + x1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x2**4
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0*x1*x2 + x1*x2
+*** Assist Mode OFF at iter 70 (mean SR 31.9%, slope -5.27 pp/iter) ***
+Iter 70: SR 10.6%, Q 2.1820, Pi -5.5507, CE 4.5044, Buffer 143797
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 4*x2**2 + 3*x2 + 4
+  Ex 2: Fail (R: -1.23, Steps: 8) Target: x1**2*x2**2 + 2*x1*x2 + 1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x2**2 + 2
+  Ex 4: Fail (R: -1.23, Steps: 8) Target: 4*x1**2 + 4*x1 + 1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 0
+[Curriculum] Backed off to complexity 2
+Iter 71: SR 4.6%, Q 1.9359, Pi -5.6827, CE 8.0875, Buffer 145845
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 4*x0**4
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 2*x0*x2**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x0 + 4
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: 4*x1 + 1
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x0**2 + x0*x1 + x0
+Iter 72: SR 67.9%, Q 2.1190, Pi -5.7593, CE 9.4249, Buffer 147893
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x0 + 2*x2
+  Ex 2: Fail (R: -0.73, Steps: 8) Target: 2*x1 + 2
+  Ex 3: Success (R: 9.70, Steps: 2) Target: x0 + 2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x1**3
+Iter 73: SR 61.7%, Q 2.1117, Pi -5.8844, CE 9.9625, Buffer 149941
+  Ex 1: Fail (R: -0.74, Steps: 8) Target: 2*x2 + 2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x1*x2**2
+  Ex 3: Fail (R: -1.23, Steps: 8) Target: x0 + x1 + 1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x1**2 + 1
+Iter 74: SR 71.1%, Q 2.1604, Pi -5.9295, CE 9.8424, Buffer 151989
+  Ex 1: Fail (R: -1.23, Steps: 8) Target: x1 + x2 + 1
+  Ex 2: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 3: Success (R: 9.39, Steps: 4) Target: x2**2 + 2*x2 + 1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 4*x2**2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**2*x2
+Iter 75: SR 70.6%, Q 2.0175, Pi -5.9075, CE 10.0501, Buffer 154037
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x1 + 2
+  Ex 2: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 3: Success (R: 9.70, Steps: 2) Target: x1*x2 + x2
+  Ex 4: Fail (R: -0.73, Steps: 8) Target: x0*x2 + x1*x2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x1*x2 + x1
+Iter 76: SR 65.7%, Q 1.9429, Pi -5.9841, CE 11.5567, Buffer 156085
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 4*x2**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 4*x1**2
+  Ex 3: Fail (R: -0.91, Steps: 8) Target: x0 + x2 + 1
+  Ex 4: Success (R: 10.03, Steps: 2) Target: x0 + x1 + x2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x0*x1 + x0
+Iter 77: SR 68.5%, Q 1.7080, Pi -6.0132, CE 12.3186, Buffer 158133
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 4*x1**2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: 2*x0 + 1
+  Ex 4: Success (R: 9.39, Steps: 4) Target: x2**2 + 2*x2 + 1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x1**2*x2
+Iter 78: SR 68.3%, Q 1.8332, Pi -6.0309, CE 12.2542, Buffer 160181
+  Ex 1: Success (R: 9.70, Steps: 2) Target: x0**2*x1**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x1**2*x2**2
+  Ex 3: Success (R: 9.70, Steps: 2) Target: x0 + 2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0**2*x1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 4*x2
+Iter 79: SR 63.5%, Q 1.8438, Pi -6.0303, CE 11.6720, Buffer 162229
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 4
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 3: Fail (R: -1.23, Steps: 8) Target: x1**2 + 2*x1 + 1
+  Ex 4: Fail (R: -0.74, Steps: 8) Target: 2*x0 + 2*x1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 3*x1
+Iter 80: SR 69.3%, Q 1.6608, Pi -6.0357, CE 11.8927, Buffer 164277
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: 2*x0 + x1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**2*x2
+Iter 81: SR 71.4%, Q 1.9141, Pi -5.9731, CE 13.0030, Buffer 166325
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 2*x0 + x2
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x1 + 2*x2
+  Ex 3: Success (R: 9.70, Steps: 2) Target: 2*x1 + x2
+  Ex 4: Success (R: 9.70, Steps: 2) Target: x1*x2 + x2
+  Ex 5: Success (R: 9.38, Steps: 4) Target: x2 + 2
+Iter 82: SR 71.6%, Q 1.6537, Pi -6.0206, CE 12.2415, Buffer 168373
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 4*x2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x1 + 2
+  Ex 4: Success (R: 9.57, Steps: 6) Target: 2*x2 + 2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x1**2 + 2*x1*x2 + x2**2
+Iter 83: SR 72.9%, Q 1.7553, Pi -6.0103, CE 13.1979, Buffer 170421
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x1*x2**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 4*x2
+  Ex 3: Fail (R: -1.23, Steps: 8) Target: x0**2 + 2*x0 + 1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0*x1 + x0*x2
+  Ex 5: Fail (R: -0.89, Steps: 8) Target: x0**2 + 2*x0*x1 + x1**2
+Iter 84: SR 73.1%, Q 1.7717, Pi -6.0043, CE 13.0225, Buffer 172469
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x1 + 2
+  Ex 2: Fail (R: -0.73, Steps: 8) Target: x0*x2 + x1*x2
+  Ex 3: Success (R: 9.57, Steps: 6) Target: 2*x2 + 2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: 2*x1 + 1
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x1**2 + 1
+*** Assist Mode ON at iter 85 (mean SR 69.8%, slope +0.01 pp/iter) ***
+Iter 85: SR 71.2%, Q 1.7771, Pi -0.9662, CE 4.7745, Buffer 174517
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 2*x2 + 1
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x1**2 + 2*x1*x2 + x2**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x2**4
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x1**4
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x1*x2 + x2
+Iter 86: SR 77.2%, Q 1.4849, Pi -3.1985, CE 2.3273, Buffer 176565
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 3*x0
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x0**2 + 2*x0*x2 + x2**2
+  Ex 4: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 5: Success (R: 9.70, Steps: 2) Target: 4*x0
+[Curriculum] Advanced to complexity 3
+Iter 87: SR 78.7%, Q 1.5958, Pi -3.3421, CE 2.1381, Buffer 178613
+  Ex 1: Success (R: 9.24, Steps: 5) Target: x2**2 + 2*x2 + 1
+  Ex 2: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 3: Success (R: 9.23, Steps: 5) Target: x2 + 2
+  Ex 4: Success (R: 9.89, Steps: 4) Target: 2*x1 + 2
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x1**2 + 2*x1 + 1
+Iter 88: SR 10.3%, Q 1.6422, Pi -3.1888, CE 2.1424, Buffer 180661
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x2**4 + x2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x1**8
+  Ex 3: Success (R: 9.41, Steps: 6) Target: x1 + x2 + 2
+  Ex 4: Fail (R: -0.74, Steps: 8) Target: 2*x0**2 + 2*x0
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0*x2**2 + x2**2
+Iter 89: SR 13.1%, Q 1.7209, Pi -3.1227, CE 2.1521, Buffer 182709
+  Ex 1: Fail (R: -0.91, Steps: 8) Target: 2*x0 + x1 + x2
+  Ex 2: Fail (R: -0.73, Steps: 8) Target: 2*x1*x2 + x2**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x0*x1**2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x2**2 + 4*x2 + 2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0*x1*x2 + x1*x2
+*** Assist Mode OFF at iter 90 (mean SR 57.1%, slope -4.58 pp/iter) ***
+Iter 90: SR 13.2%, Q 1.7248, Pi -5.5396, CE 3.8856, Buffer 184757
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x1*x2**2 + x2**2
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x0 + 2*x1**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x0*x1 + x0*x2 + x1*x2 + x2**2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x1**6
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x1**2*x2**3
+[Curriculum] Backed off to complexity 2
+Iter 91: SR 4.2%, Q 1.8099, Pi -5.6369, CE 6.3412, Buffer 186805
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x1**2 + 2*x1
+  Ex 2: Fail (R: -0.74, Steps: 8) Target: 2*x0**2 + 2*x0*x1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x1**4 + 4*x1**3*x2 + x1**2*x2**2 + 4*x1*x2**3 + x2**4
+  Ex 4: Fail (R: -0.74, Steps: 8) Target: 4*x2 + 2
+  Ex 5: Fail (R: -1.01, Steps: 8) Target: x0**4 + 4*x0**3*x2 + x0**2*x2**2 + 4*x0*x2**3 + x2**4
+*** Assist Mode ON at iter 92 (mean SR 52.4%, slope +0.03 pp/iter) ***
+Iter 92: SR 71.7%, Q 1.7337, Pi -2.5213, CE 2.8220, Buffer 188853
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 2*x0*x2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x1**2*x2**2
+  Ex 3: Success (R: 9.38, Steps: 4) Target: x0*x2 + x2
+  Ex 4: Fail (R: -0.91, Steps: 8) Target: x0 + x2 + 1
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x1**2 + x1
+Iter 93: SR 77.8%, Q 1.4897, Pi -3.1672, CE 2.1446, Buffer 190901
+  Ex 1: Fail (R: -1.23, Steps: 8) Target: x1**2 + 2*x1 + 1
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0**4
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 3*x1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 5: Success (R: 9.55, Steps: 3) Target: 3
+[Curriculum] Advanced to complexity 3
+Iter 94: SR 78.1%, Q 1.6017, Pi -3.1365, CE 2.1223, Buffer 192949
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x1**2*x2
+  Ex 2: Success (R: 9.10, Steps: 8) Target: x0 + x1 + 1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x2**4
+  Ex 4: Success (R: 9.38, Steps: 4) Target: x2 + 2
+  Ex 5: Fail (R: -0.72, Steps: 8) Target: x0*x1 + x0*x2
+Iter 95: SR 16.0%, Q 1.6423, Pi -3.1577, CE 2.0478, Buffer 194997
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x0*x1*x2 + x0*x1
+  Ex 2: Fail (R: -0.74, Steps: 8) Target: x0*x1 + 2*x0
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x0*x2**2
+  Ex 4: Success (R: 9.41, Steps: 6) Target: x0 + x2 + 2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**2*x2**3
+Iter 96: SR 14.3%, Q 1.8579, Pi -3.0222, CE 2.1277, Buffer 197045
+  Ex 1: Fail (R: -1.23, Steps: 8) Target: x0**2*x2**2 + 2*x0*x2 + 1
+  Ex 2: Success (R: 9.41, Steps: 6) Target: x2**2 + 3*x2 + 1
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0 + 2*x1*x2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x1 + 4
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 4*x1*x2
+*** Assist Mode OFF at iter 97 (mean SR 39.0%, slope -5.82 pp/iter) ***
+Iter 97: SR 13.2%, Q 1.8011, Pi -5.3614, CE 3.9496, Buffer 199093
+  Ex 1: Fail (R: -0.88, Steps: 8) Target: x1**2 + 4*x1 + 4
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 4*x1 + 4
+  Ex 3: Fail (R: -1.23, Steps: 8) Target: x1**2 + x1 + 1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0*x1**2 + x1**4
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 0
+[Curriculum] Backed off to complexity 2
+Iter 98: SR 3.4%, Q 2.3417, Pi -2.8680, CE 6.2540, Buffer 200000
+  Ex 1: Fail (R: -0.88, Steps: 8) Target: x1**2 + 4*x1 + 4
+  Ex 2: Success (R: 9.40, Steps: 4) Target: 3*x0**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 4*x1 + 2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0*x2**4
+  Ex 5: Fail (R: -0.92, Steps: 8) Target: x0 + 2*x2 + 1
+Iter 99: SR 73.7%, Q 2.2076, Pi -3.0408, CE 7.4647, Buffer 200000
+  Ex 1: Fail (R: -0.76, Steps: 8) Target: x1**2 + 1
+  Ex 2: Fail (R: -1.23, Steps: 8) Target: x0 + x2 + 1
+  Ex 3: Success (R: 9.54, Steps: 3) Target: 2*x0 + x2
+  Ex 4: Fail (R: -0.24, Steps: 8) Target: 4*x1
+  Ex 5: Success (R: 10.03, Steps: 2) Target: x1 + x2 + 1
+Iter 100: SR 71.7%, Q 2.2557, Pi -3.1634, CE 7.7773, Buffer 200000
+  Ex 1: Success (R: 9.57, Steps: 6) Target: 2*x2 + 2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x2**4
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+  Ex 4: Success (R: 10.03, Steps: 2) Target: x1 + x2 + 1
+  Ex 5: Success (R: 9.54, Steps: 3) Target: 2*x0 + x2
+[Checkpoint] Saved iteration checkpoint: models/sac_iter_00100.pt
+Iter 101: SR 64.5%, Q 2.3955, Pi -3.2052, CE 8.1823, Buffer 200000
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x1*x2 + x2**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x1**2*x2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**2 + 2*x0*x2 + x2**2
+Iter 102: SR 68.1%, Q 2.4795, Pi -3.2154, CE 8.7720, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x1**2 + x1
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: 2*x1 + 1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0**2 + 2*x0*x2 + x2**2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 2*x1**2
+Iter 103: SR 68.0%, Q 2.1502, Pi -3.1997, CE 8.8745, Buffer 200000
+  Ex 1: Success (R: 9.38, Steps: 4) Target: x2 + 2
+  Ex 2: Success (R: 9.39, Steps: 4) Target: x2**2 + 2*x2 + 1
+  Ex 3: Fail (R: -1.23, Steps: 8) Target: x0 + x1 + 1
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: 2*x0 + 1
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x0 + x1**2
+Iter 104: SR 73.9%, Q 2.3348, Pi -3.2305, CE 9.2764, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x0*x1 + x1**2
+  Ex 2: Fail (R: -0.77, Steps: 8) Target: x0 + 2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x0**2 + 2*x0*x2 + x2**2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x1**4
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x1**2 + 2*x1*x2 + x2**2
+Iter 105: SR 70.4%, Q 2.6077, Pi -3.3063, CE 9.8749, Buffer 200000
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x0*x1 + x1
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0*x1 + x0*x2
+  Ex 3: Success (R: 9.70, Steps: 2) Target: 4*x0
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x2**2 + x2
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x0**2 + 2*x0 + 1
+Iter 106: SR 69.6%, Q 2.5733, Pi -3.2791, CE 10.4597, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x1**4
+  Ex 2: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 3*x2
+  Ex 4: Fail (R: -0.89, Steps: 8) Target: x0**2 + 2*x0*x1 + x1**2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**4
+Iter 107: SR 72.8%, Q 2.5336, Pi -3.3517, CE 11.6358, Buffer 200000
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 2*x2 + 1
+  Ex 2: Success (R: 9.39, Steps: 4) Target: x2**2 + 2*x2 + 1
+  Ex 3: Success (R: 9.40, Steps: 4) Target: 2*x2**2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x0**2 + 1
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x0**2 + 2*x0 + 1
+Iter 108: SR 71.7%, Q 2.3017, Pi -3.3208, CE 11.5076, Buffer 200000
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 2: Fail (R: -0.92, Steps: 8) Target: x1 + x2 + 1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x0*x1 + x1**2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: 2*x0 + x1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 2*x0*x1
+[Curriculum] Advanced to complexity 3
+Iter 109: SR 73.5%, Q 2.1817, Pi -3.2880, CE 12.2636, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 2: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 3: Success (R: 9.57, Steps: 6) Target: 2*x2 + 2
+  Ex 4: Fail (R: -0.92, Steps: 8) Target: x1 + x2 + 1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+[Curriculum] Backed off to complexity 2
+Iter 110: SR 3.5%, Q 2.2010, Pi -3.2983, CE 12.6430, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x0*x1*x2 + x0*x2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0*x1*x2 + x1*x2
+  Ex 3: Fail (R: -1.22, Steps: 8) Target: x0**2 + 2*x0*x1 + x0 + x1**2 + x1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2 + 2*x2**2
+  Ex 5: Fail (R: -0.90, Steps: 8) Target: x1 + 2*x2 + 1
+*** Assist Mode ON at iter 111 (mean SR 64.9%, slope -0.04 pp/iter) ***
+Iter 111: SR 71.2%, Q 2.3833, Pi 1.3449, CE 4.2515, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 4*x2**2
+  Ex 2: Success (R: 9.70, Steps: 2) Target: 2*x2 + 1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x0**2 + x0*x1
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x1**2 + x2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+Iter 112: SR 77.3%, Q 1.9781, Pi -0.4413, CE 2.2843, Buffer 200000
+  Ex 1: Success (R: 9.10, Steps: 6) Target: x1*x2**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0*x1*x2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0**2 + x0
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x1**2 + x1
+  Ex 5: Success (R: 9.70, Steps: 2) Target: 4
+[Curriculum] Advanced to complexity 3
+Iter 113: SR 78.2%, Q 2.2414, Pi -0.3345, CE 2.2634, Buffer 200000
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 2*x0*x2
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x0*x1 + x1
+  Ex 3: Success (R: 9.70, Steps: 2) Target: 2*x0 + 1
+  Ex 4: Success (R: 9.57, Steps: 6) Target: 2*x1 + 2*x2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x0 + x2**2
+Iter 114: SR 13.6%, Q 1.9978, Pi -0.3278, CE 2.2660, Buffer 200000
+  Ex 1: Fail (R: -0.91, Steps: 8) Target: x0 + 2*x1 + 1
+  Ex 2: Fail (R: -1.22, Steps: 8) Target: x0*x2 + x0 + x2 + 1
+  Ex 3: Fail (R: -1.23, Steps: 8) Target: x0 + x2**2 + x2
+  Ex 4: Fail (R: -0.89, Steps: 8) Target: x2**2 + 3*x2 + 2
+  Ex 5: Success (R: 9.25, Steps: 5) Target: 4*x0**4
+Iter 115: SR 12.1%, Q 2.1378, Pi -0.3734, CE 2.2091, Buffer 200000
+  Ex 1: Fail (R: -0.71, Steps: 8) Target: 3*x1 + 3*x2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 2*x1**2 + 4*x1 + 2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: 2*x0*x2 + x2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0*x1**2 + x1**2*x2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 2*x0*x2**2
+*** Assist Mode OFF at iter 116 (mean SR 52.6%, slope -4.87 pp/iter) ***
+Iter 116: SR 16.9%, Q 2.6528, Pi -2.8309, CE 4.8272, Buffer 200000
+  Ex 1: Success (R: 8.77, Steps: 8) Target: 2*x0**2 + x0
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 2*x0**2*x2**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x1 + 3*x2
+  Ex 4: Fail (R: -1.22, Steps: 8) Target: x0**2 + 2*x0*x1 + x0 + x1**2 + x1
+  Ex 5: Fail (R: -0.92, Steps: 8) Target: x0 + 2*x2 + 1
+[Curriculum] Backed off to complexity 2
+Iter 117: SR 3.1%, Q 2.8216, Pi -3.0403, CE 7.5276, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 4*x1 + 4
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0**3*x2**3
+  Ex 3: Fail (R: -1.22, Steps: 8) Target: x1**2 + x1*x2 + x1 + x2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0**2 + 4*x0*x2 + 4*x2**2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x1*x2**3
+*** Assist Mode ON at iter 118 (mean SR 47.0%, slope -0.21 pp/iter) ***
+Iter 118: SR 70.5%, Q 2.4356, Pi 0.4299, CE 3.1415, Buffer 200000
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 2: Fail (R: -0.77, Steps: 8) Target: x0 + 2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x1 + x2**2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x1 + 2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x0**2 + x2
+Iter 119: SR 77.0%, Q 1.9240, Pi -0.3019, CE 2.2152, Buffer 200000
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 2*x0*x1
+  Ex 2: Success (R: 8.80, Steps: 8) Target: x0*x1*x2
+  Ex 3: Success (R: 10.03, Steps: 2) Target: x1 + x2 + 1
+  Ex 4: Success (R: 9.88, Steps: 4) Target: 2*x1 + 2*x2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x1**2*x2**2
+[Curriculum] Advanced to complexity 3
+Iter 120: SR 80.3%, Q 2.3588, Pi -0.3562, CE 2.1800, Buffer 200000
+  Ex 1: Fail (R: -1.23, Steps: 8) Target: x0**2 + 2*x0 + 1
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x1**2 + 1
+  Ex 3: Success (R: 9.70, Steps: 2) Target: 2*x0 + 1
+  Ex 4: Success (R: 8.80, Steps: 8) Target: x1**2*x2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x2**4
+Iter 121: SR 16.5%, Q 2.3812, Pi -0.2346, CE 2.1874, Buffer 200000
+  Ex 1: Fail (R: -0.91, Steps: 8) Target: x0 + x2**2 + 1
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 2*x0**2*x1**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x0*x1 + x0*x2**2
+  Ex 4: Fail (R: -1.23, Steps: 8) Target: x0 + x2 + 2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x1**4 + 2*x1**2*x2 + x2**2
+Iter 122: SR 13.5%, Q 2.1345, Pi -0.2316, CE 2.1912, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 4*x2**2 + 3*x2 + 4
+  Ex 2: Success (R: 9.54, Steps: 3) Target: 4*x0 + 1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x0*x1*x2 + x1*x2
+  Ex 4: Fail (R: -0.74, Steps: 8) Target: x0*x2 + 2
+  Ex 5: Success (R: 9.10, Steps: 8) Target: x1 + x2 + 2
+*** Assist Mode OFF at iter 123 (mean SR 39.5%, slope -5.67 pp/iter) ***
+Iter 123: SR 15.0%, Q 2.3423, Pi -2.7015, CE 4.1971, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x1**2*x2**2
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: 3*x2 + 1
+  Ex 3: Success (R: 9.07, Steps: 6) Target: x2 + 3
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0**2*x1**4
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 0
+Iter 124: SR 8.0%, Q 2.1974, Pi -2.8277, CE 6.5524, Buffer 200000
+  Ex 1: Fail (R: -0.89, Steps: 8) Target: 4*x0**2 + 3*x0*x1 + 4*x1**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 2*x0*x2 + x2**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x0*x2**2 + x2**3
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 4*x2**4
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 2*x0**4
+[Curriculum] Backed off to complexity 2
+Iter 125: SR 4.2%, Q 2.2458, Pi -2.8574, CE 7.5595, Buffer 200000
+  Ex 1: Fail (R: -0.89, Steps: 8) Target: x2**2 + 4*x2 + 4
+  Ex 2: Fail (R: -0.25, Steps: 8) Target: 4*x0*x1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x1**3
+  Ex 4: Fail (R: -1.23, Steps: 8) Target: x1**4 + 2*x1**2 + 1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**2 + 4*x0*x2 + 4*x2**2
+Iter 126: SR 73.6%, Q 2.2450, Pi -2.8872, CE 7.9345, Buffer 200000
+  Ex 1: Fail (R: -0.75, Steps: 8) Target: x1*x2 + x1
+  Ex 2: Success (R: 9.55, Steps: 3) Target: 3
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 4: Success (R: 9.70, Steps: 2) Target: x2**2 + x2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**4
+Iter 127: SR 72.7%, Q 2.2067, Pi -3.0144, CE 8.6842, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x1**2*x2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 4*x2**2
+  Ex 3: Success (R: 9.70, Steps: 2) Target: 2*x0*x1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x2**4
+  Ex 5: Success (R: 9.70, Steps: 2) Target: 4
+Iter 128: SR 74.4%, Q 2.1786, Pi -3.0625, CE 9.4896, Buffer 200000
+  Ex 1: Success (R: 9.38, Steps: 4) Target: x2 + 2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0**2 + 2*x0*x2 + x2**2
+  Ex 3: Fail (R: -1.23, Steps: 8) Target: x1**2 + 2*x1 + 1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+  Ex 5: Success (R: 9.70, Steps: 2) Target: 4
+Iter 129: SR 74.3%, Q 2.1415, Pi -3.0864, CE 10.3573, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x1**4
+  Ex 2: Success (R: 9.57, Steps: 6) Target: 2*x2 + 2
+  Ex 3: Fail (R: -0.74, Steps: 8) Target: 2*x1 + 2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0*x2 + x1*x2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x1**2 + 1
+*** Assist Mode ON at iter 130 (mean SR 48.7%, slope -0.17 pp/iter) ***
+[Curriculum] Advanced to complexity 3
+Iter 130: SR 75.1%, Q 2.2597, Pi 0.8265, CE 3.5566, Buffer 200000
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 2: Success (R: 9.40, Steps: 4) Target: 4*x2
+  Ex 3: Success (R: 9.88, Steps: 4) Target: 2*x1 + 2*x2
+  Ex 4: Success (R: 9.39, Steps: 4) Target: x2**2 + 2*x2 + 1
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x0**2 + 2*x0 + 1
+Iter 131: SR 11.7%, Q 2.3441, Pi -0.3537, CE 2.2625, Buffer 200000
+  Ex 1: Success (R: 9.41, Steps: 6) Target: x1 + x2 + 2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0**4 + 2*x0**3*x1 + x0**2*x1**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x0**2*x1**2 + x0*x1
+  Ex 4: Fail (R: -0.73, Steps: 8) Target: 2*x0*x1 + 4*x1**2
+  Ex 5: Fail (R: -0.92, Steps: 8) Target: x0 + x2**2 + 1
+Iter 132: SR 14.0%, Q 2.1621, Pi -0.3164, CE 2.1823, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x1**2 + 4*x1 + 2
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x0**2*x1 + x1
+  Ex 3: Success (R: 8.80, Steps: 8) Target: 4*x0*x1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x1**4*x2**2
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x0 + x1 + 2
+Iter 133: SR 12.8%, Q 2.2069, Pi -0.2930, CE 2.1744, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x0*x2**2
+  Ex 2: Fail (R: -0.92, Steps: 8) Target: 2*x0 + 2*x1 + x2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x0**2 + 4*x0 + 4
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x1**4 + x2
+  Ex 5: Fail (R: -0.74, Steps: 8) Target: x1**2 + 2
+Iter 134: SR 16.1%, Q 2.4272, Pi -0.2985, CE 2.1463, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x1**2 + 4*x1*x2 + 2*x2**2
+  Ex 2: Success (R: 8.77, Steps: 8) Target: 3*x1 + 1
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0*x1*x2 + 1
+  Ex 4: Success (R: 9.40, Steps: 4) Target: 3*x0**2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**2*x1**2 + 2*x0*x1*x2 + x2**2
+Iter 135: SR 16.5%, Q 2.1188, Pi -0.2693, CE 2.1567, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x1*x2**2 + x2**2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x2**8
+  Ex 3: Success (R: 9.07, Steps: 6) Target: x2 + 3
+  Ex 4: Fail (R: -0.90, Steps: 8) Target: 2*x0 + 2*x2 + 1
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x1*x2**2 + x2
+Iter 136: SR 18.2%, Q 2.1049, Pi -0.2615, CE 2.1257, Buffer 200000
+  Ex 1: Success (R: 9.25, Steps: 5) Target: 2*x0*x2**2
+  Ex 2: Fail (R: -0.72, Steps: 8) Target: x1*x2**2 + x2**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x2**2 + 2*x2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x1**2 + 2*x1*x2
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x1**2*x2 + 2*x1*x2 + x2
+Iter 137: SR 15.7%, Q 2.3539, Pi -0.1679, CE 2.1597, Buffer 200000
+  Ex 1: Fail (R: -1.23, Steps: 8) Target: x1**2*x2 + 2*x1*x2 + x2
+  Ex 2: Success (R: 9.25, Steps: 5) Target: 2*x1*x2 + 2*x2
+  Ex 3: Fail (R: -1.23, Steps: 8) Target: x0 + x2**2 + x2
+  Ex 4: Fail (R: -1.22, Steps: 8) Target: x2**3 + 3*x2**2 + 3*x2 + 1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 3*x2**2
+Iter 138: SR 15.5%, Q 2.3291, Pi -0.1411, CE 2.1295, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x1**2*x2**2 + x1*x2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 2*x0**2 + 4*x0 + 2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x1**2*x2
+  Ex 4: Success (R: 9.26, Steps: 7) Target: x1 + x2 + 2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**4*x1**4
+*** Assist Mode OFF at iter 139 (mean SR 29.9%, slope -5.50 pp/iter) ***
+Iter 139: SR 13.9%, Q 2.5435, Pi -2.5384, CE 4.6681, Buffer 200000
+  Ex 1: Fail (R: -1.23, Steps: 8) Target: x0*x2 + x0 + x2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 2*x0**2 + 4*x0*x2 + 2*x2**2
+  Ex 3: Fail (R: -1.21, Steps: 8) Target: x0**2 + 2*x0*x2 + 2*x0 + x2**2 + 2*x2 + 1
+  Ex 4: Fail (R: -0.55, Steps: 8) Target: 2*x2**2 + 4*x2 + 2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**8
+Iter 140: SR 5.7%, Q 2.4828, Pi -2.7485, CE 6.3441, Buffer 200000
+  Ex 1: Success (R: 9.56, Steps: 5) Target: 2*x0 + x1 + 1
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x0 + 3
+  Ex 3: Fail (R: -0.88, Steps: 8) Target: 2*x1 + 2*x2 + 2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x1**2 + x2**2
+  Ex 5: Fail (R: -1.22, Steps: 8) Target: x0*x1 + x0 + x1 + 1
+[Curriculum] Backed off to complexity 2
+Iter 141: SR 3.5%, Q 2.3306, Pi -2.8187, CE 7.9316, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x0*x1*x2 + x1**2*x2
+  Ex 2: Fail (R: -0.73, Steps: 8) Target: 2*x1 + 2*x2**2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 0
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0**2*x1 + x0*x1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 4*x0**2*x2
+Iter 142: SR 68.1%, Q 2.2687, Pi -2.9638, CE 9.7987, Buffer 200000
+  Ex 1: Success (R: 9.40, Steps: 4) Target: x0*x2**2
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x0*x2 + 1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x0*x1*x2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: 2*x0 + 1
+  Ex 5: Fail (R: -0.91, Steps: 8) Target: x0 + x2 + 1
+[Curriculum] Advanced to complexity 3
+Iter 143: SR 75.4%, Q 2.1142, Pi -3.0725, CE 10.8200, Buffer 200000
+  Ex 1: Fail (R: -0.90, Steps: 8) Target: x1**2 + 2*x1 + 1
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x1**2*x2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x0 + 2*x2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x1**2 + x1
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: x2**2 + 1
+[Curriculum] Backed off to complexity 2
+Iter 144: SR 2.7%, Q 2.2536, Pi -3.0788, CE 11.0760, Buffer 200000
+  Ex 1: Fail (R: -1.23, Steps: 8) Target: x0 + x2 + 2
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0**2*x1 + x0*x1
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0 + 2*x2**2
+  Ex 4: Fail (R: -0.88, Steps: 8) Target: 2*x0 + 2*x2 + 2
+  Ex 5: Fail (R: -0.73, Steps: 8) Target: x1*x2 + 2*x2
+Iter 145: SR 70.5%, Q 2.2469, Pi -3.1439, CE 11.1606, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x2**4
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: 4
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x1**4
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x1 + x2**2
+  Ex 5: Success (R: 9.70, Steps: 2) Target: 2*x0*x2
+Iter 146: SR 65.0%, Q 2.1351, Pi -3.1915, CE 11.5117, Buffer 200000
+  Ex 1: Success (R: 9.38, Steps: 4) Target: x2 + 2
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x0 + x1**2
+  Ex 3: Fail (R: -0.75, Steps: 8) Target: x1*x2 + x1
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0**2*x2
+  Ex 5: Fail (R: -1.23, Steps: 8) Target: x0**2 + 2*x0 + 1
+Iter 147: SR 63.5%, Q 2.2395, Pi -3.2059, CE 12.0436, Buffer 200000
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 2*x2 + 1
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x0**2*x2
+  Ex 3: Success (R: 9.70, Steps: 2) Target: x0**2*x1**2
+  Ex 4: Fail (R: -1.24, Steps: 8) Target: x0 + 2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 4
+Iter 148: SR 68.6%, Q 2.1599, Pi -3.1837, CE 12.3032, Buffer 200000
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 2: Fail (R: -1.20, Steps: 8) Target: x1**4
+  Ex 3: Fail (R: -0.74, Steps: 8) Target: 2*x0 + 2*x1
+  Ex 4: Success (R: 9.70, Steps: 2) Target: 2*x0*x1
+  Ex 5: Success (R: 9.38, Steps: 4) Target: x0*x2 + x2
+Iter 149: SR 72.3%, Q 2.3251, Pi -3.2068, CE 13.0119, Buffer 200000
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 2*x0 + 1
+  Ex 2: Success (R: 9.42, Steps: 7) Target: 2*x2 + 2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: x1**2*x2**2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: x0*x1**2
+  Ex 5: Success (R: 9.70, Steps: 2) Target: 4
+Iter 150: SR 68.7%, Q 2.0899, Pi -3.1868, CE 12.9606, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: 2*x1**2
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: 2*x0 + x2
+  Ex 3: Fail (R: -0.22, Steps: 8) Target: x1**2*x2**2
+  Ex 4: Success (R: 9.40, Steps: 6) Target: x0 + x2 + 1
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: x0**2 + 2*x0*x2 + x2**2
+[Checkpoint] Saved iteration checkpoint: models/sac_iter_00150.pt
+Iter 151: SR 72.5%, Q 2.0639, Pi -3.1826, CE 12.9107, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x1**2*x2**2
+  Ex 2: Fail (R: -0.88, Steps: 8) Target: x1**2 + 2*x1*x2 + x2**2
+  Ex 3: Success (R: 9.23, Steps: 5) Target: x2 + 2
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 4*x1
+Iter 152: SR 69.6%, Q 1.9346, Pi -3.1942, CE 13.6829, Buffer 200000
+  Ex 1: Success (R: 9.70, Steps: 2) Target: 4
+  Ex 2: Fail (R: -1.24, Steps: 8) Target: x0*x2 + x1
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 4*x0
+  Ex 4: Fail (R: -1.20, Steps: 8) Target: 2*x1*x2
+  Ex 5: Fail (R: -1.24, Steps: 8) Target: 2*x1 + 1
+Iter 153: SR 72.4%, Q 2.0291, Pi -3.2121, CE 13.9332, Buffer 200000
+  Ex 1: Success (R: 9.70, Steps: 2) Target: x0**2*x1**2
+  Ex 2: Fail (R: -0.72, Steps: 8) Target: 2*x0 + 2
+  Ex 3: Fail (R: -0.90, Steps: 8) Target: x0 + x1 + x2
+  Ex 4: Success (R: 9.38, Steps: 4) Target: x1 + 2
+  Ex 5: Fail (R: -1.20, Steps: 8) Target: 4*x1**2
+Iter 154: SR 64.6%, Q 2.1983, Pi -3.2387, CE 14.4052, Buffer 200000
+  Ex 1: Fail (R: -1.20, Steps: 8) Target: x0*x1*x2
+  Ex 2: Success (R: 9.88, Steps: 4) Target: 2*x1 + 2*x2
+  Ex 3: Fail (R: -1.24, Steps: 8) Target: x0 + 2*x2
+  Ex 4: Success (R: 9.70, Steps: 2) Target: 2*x2 + 1
+  Ex 5: Success (R: 9.70, Steps: 2) Target: 2*x0*x1
+Iter 155: SR 61.0%, Q 2.1566, Pi -3.2259, CE 14.6498, Buffer 200000
+  Ex 1: Fail (R: -1.24, Steps: 8) Target: x1 + x2**2
+  Ex 2: Success (R: 9.88, Steps: 4) Target: 2*x1 + 2*x2
+  Ex 3: Fail (R: -1.20, Steps: 8) Target: 2*x2**2
+  Ex 4: Success (R: 9.70, Steps: 2) Target: 2*x0**2
+  Ex 5: Fail (R: -0.74, Steps: 8) Target: x1 + 2*x2

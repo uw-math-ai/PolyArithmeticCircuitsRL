@@ -1,0 +1,234 @@
+Config: n_vars=3, mod=5, max_complexity=8, device=cuda
+Max nodes=12, max_actions=156, target_size=729
+SAC parameters (actor+critics): 790,356
+
+=== Training with SAC ===
+Prefilled replay buffer with 437 synthetic steps
+Iter 1: SR 13.4%, Q 0.0000, Pi 0.0000, CE 0.0000, Buffer 2485
+  Ex 1: Fail (R: -0.80, Steps: 8) Target: 2*x2**2
+  Ex 2: Fail (R: -0.80, Steps: 8) Target: 2*x1**2
+  Ex 3: Fail (R: -0.84, Steps: 8) Target: x0**2 + x1
+  Ex 4: Success (R: 9.90, Steps: 1) Target: 1
+  Ex 5: Fail (R: -0.80, Steps: 8) Target: x0*x1
+Iter 2: SR 18.7%, Q 0.0000, Pi 0.0000, CE 0.0000, Buffer 4533
+  Ex 1: Fail (R: -0.84, Steps: 8) Target: x2 + 1
+  Ex 2: Fail (R: -0.80, Steps: 8) Target: x1**2
+  Ex 3: Fail (R: -0.88, Steps: 8) Target: 1
+  Ex 4: Fail (R: -0.80, Steps: 8) Target: 4
+  Ex 5: Fail (R: -0.80, Steps: 8) Target: 2*x2 + 2
+Iter 3: SR 12.3%, Q 52.2297, Pi -4.5794, CE 0.0000, Buffer 6581
+  Ex 1: Fail (R: -0.80, Steps: 8) Target: 2*x2
+  Ex 2: Fail (R: -0.88, Steps: 8) Target: x2
+  Ex 3: Success (R: 9.69, Steps: 3) Target: x1 + x2
+  Ex 4: Fail (R: 0.19, Steps: 8) Target: x1**2
+  Ex 5: Fail (R: -0.83, Steps: 8) Target: x0**2 + 2*x0 + 1
+Iter 4: SR 20.4%, Q 17.8956, Pi -6.3404, CE 0.0000, Buffer 8629
+  Ex 1: Fail (R: -0.84, Steps: 8) Target: x1 + 1
+  Ex 2: Success (R: 9.40, Steps: 6) Target: 2*x0
+  Ex 3: Fail (R: -0.88, Steps: 8) Target: x2
+  Ex 4: Success (R: 9.79, Steps: 2) Target: 1
+  Ex 5: Fail (R: -0.80, Steps: 8) Target: x0**2
+Iter 5: SR 10.4%, Q 14.8036, Pi -6.6082, CE 0.0000, Buffer 10677
+  Ex 1: Fail (R: -0.80, Steps: 8) Target: x1*x2
+  Ex 2: Fail (R: -0.83, Steps: 8) Target: x1 + x2 + 1
+  Ex 3: Fail (R: -0.80, Steps: 8) Target: x0*x2 + x2**2
+  Ex 4: Fail (R: -0.84, Steps: 8) Target: x0*x2 + x0
+  Ex 5: Success (R: 9.70, Steps: 3) Target: x1**4
+Iter 6: SR 24.9%, Q 11.0262, Pi -6.9711, CE 0.0000, Buffer 12725
+  Ex 1: Success (R: 9.79, Steps: 2) Target: 1
+  Ex 2: Fail (R: -0.80, Steps: 8) Target: 2*x1
+  Ex 3: Fail (R: -0.80, Steps: 8) Target: 2*x2**2
+  Ex 4: Success (R: 9.40, Steps: 6) Target: x1**2
+  Ex 5: Fail (R: -0.49, Steps: 8) Target: x0**2 + 2*x0*x1 + x1**2
+Iter 7: SR 28.2%, Q 9.0285, Pi -7.1783, CE 0.0000, Buffer 14773
+  Ex 1: Success (R: 9.68, Steps: 3) Target: 1
+  Ex 2: Success (R: 9.80, Steps: 2) Target: 4*x2
+  Ex 3: Fail (R: -0.83, Steps: 8) Target: x0 + x1 + 1
+  Ex 4: Fail (R: -0.80, Steps: 8) Target: x1*x2
+  Ex 5: Success (R: 9.90, Steps: 1) Target: 2*x0
+Iter 8: SR 29.6%, Q 7.3094, Pi -7.3820, CE 0.0000, Buffer 16821
+  Ex 1: Success (R: 9.40, Steps: 6) Target: x2**2
+  Ex 2: Success (R: 9.90, Steps: 1) Target: 2
+  Ex 3: Fail (R: -0.80, Steps: 8) Target: x1**2*x2**2
+  Ex 4: Fail (R: -0.84, Steps: 8) Target: x2 + 2
+  Ex 5: Fail (R: -0.80, Steps: 8) Target: 4
+Iter 9: SR 30.5%, Q 6.4397, Pi -7.4693, CE 0.0000, Buffer 18869
+  Ex 1: Fail (R: -0.80, Steps: 8) Target: x0*x1 + x0*x2
+  Ex 2: Fail (R: -0.84, Steps: 8) Target: x0 + 2*x2
+  Ex 3: Fail (R: -0.80, Steps: 8) Target: 4*x2
+  Ex 4: Fail (R: -0.84, Steps: 8) Target: x0 + x2
+  Ex 5: Fail (R: -0.80, Steps: 8) Target: x0*x2
+Iter 10: SR 35.0%, Q 5.4220, Pi -7.5182, CE 0.0000, Buffer 20917
+  Ex 1: Fail (R: -0.80, Steps: 8) Target: x0*x1
+  Ex 2: Fail (R: -0.84, Steps: 8) Target: x0 + x2
+  Ex 3: Success (R: 9.90, Steps: 1) Target: 2
+  Ex 4: Fail (R: -0.80, Steps: 8) Target: x0*x2
+  Ex 5: Fail (R: -0.80, Steps: 8) Target: x1*x2
+Iter 11: SR 42.2%, Q 4.6172, Pi -7.5530, CE 0.0000, Buffer 22965
+  Ex 1: Success (R: 9.70, Steps: 3) Target: x0*x2
+  Ex 2: Fail (R: -0.83, Steps: 8) Target: x1**2 + 2*x1 + 1
+  Ex 3: Success (R: 9.90, Steps: 1) Target: 2*x2
+  Ex 4: Success (R: 9.79, Steps: 2) Target: x2
+  Ex 5: Success (R: 9.68, Steps: 3) Target: 1
+Iter 12: SR 46.7%, Q 3.8323, Pi -7.5939, CE 0.0000, Buffer 25013
+  Ex 1: Fail (R: -0.80, Steps: 8) Target: 4
+  Ex 2: Success (R: 9.90, Steps: 1) Target: 2
+  Ex 3: Fail (R: -0.80, Steps: 8) Target: x2**2
+  Ex 4: Success (R: 9.90, Steps: 1) Target: 1
+  Ex 5: Success (R: 9.90, Steps: 1) Target: x1
+Iter 13: SR 60.0%, Q 3.2137, Pi -7.7077, CE 0.0000, Buffer 27061
+  Ex 1: Success (R: 9.90, Steps: 1) Target: x0 + x2
+  Ex 2: Success (R: 9.90, Steps: 1) Target: x2 + 1
+  Ex 3: Success (R: 9.79, Steps: 2) Target: x2
+  Ex 4: Fail (R: -0.80, Steps: 8) Target: 4*x2
+  Ex 5: Success (R: 9.90, Steps: 1) Target: 1
+Iter 14: SR 62.9%, Q 2.6971, Pi -7.8416, CE 0.0000, Buffer 29109
+  Ex 1: Fail (R: -0.80, Steps: 8) Target: 2*x1 + 2
+  Ex 2: Fail (R: -0.80, Steps: 8) Target: x2**2
+  Ex 3: Success (R: 9.50, Steps: 5) Target: x0*x2
+  Ex 4: Fail (R: -0.83, Steps: 8) Target: x0 + x1 + 1
+  Ex 5: Fail (R: -0.80, Steps: 8) Target: 4*x1
+Iter 15: SR 55.5%, Q 2.2540, Pi -7.8716, CE 0.0000, Buffer 31157
+  Ex 1: Fail (R: -0.80, Steps: 8) Target: x2**2
+  Ex 2: Success (R: 9.90, Steps: 1) Target: x2 + 1
+  Ex 3: Success (R: 9.79, Steps: 2) Target: x0 + x2
+  Ex 4: Fail (R: -0.84, Steps: 8) Target: x1**2 + x2
+  Ex 5: Success (R: 9.90, Steps: 1) Target: x0**2
+[Curriculum] Advanced to complexity 3
+Iter 16: SR 69.0%, Q 1.9682, Pi -7.8555, CE 0.0000, Buffer 33205
+  Ex 1: Success (R: 9.90, Steps: 1) Target: x1*x2
+  Ex 2: Success (R: 9.70, Steps: 3) Target: x0*x1
+  Ex 3: Success (R: 9.90, Steps: 1) Target: x0*x1
+  Ex 4: Success (R: 9.90, Steps: 1) Target: x1**2
+  Ex 5: Success (R: 9.90, Steps: 1) Target: x0 + x2
+Iter 17: SR 55.6%, Q 1.8679, Pi -6.9667, CE 0.0000, Buffer 35253
+  Ex 1: Fail (R: -0.80, Steps: 8) Target: 4*x0**2 + 3*x0*x1 + 4*x1**2
+  Ex 2: Success (R: 9.90, Steps: 1) Target: 2
+  Ex 3: Success (R: 9.90, Steps: 1) Target: 2
+  Ex 4: Success (R: 9.90, Steps: 1) Target: 2
+  Ex 5: Success (R: 9.60, Steps: 4) Target: x0*x1
+Iter 18: SR 47.9%, Q 1.8096, Pi -6.9286, CE 0.0000, Buffer 37301
+  Ex 1: Fail (R: -0.84, Steps: 8) Target: x2 + 2
+  Ex 2: Success (R: 9.90, Steps: 1) Target: 2
+  Ex 3: Fail (R: -0.84, Steps: 8) Target: x1 + x2**2
+  Ex 4: Success (R: 9.90, Steps: 1) Target: 2*x2
+  Ex 5: Fail (R: -0.34, Steps: 8) Target: 2*x2 + 2
+Iter 19: SR 49.2%, Q 1.7988, Pi -6.8003, CE 0.0000, Buffer 39349
+  Ex 1: Success (R: 9.90, Steps: 1) Target: 1
+  Ex 2: Success (R: 9.90, Steps: 1) Target: x2**2
+  Ex 3: Fail (R: -0.49, Steps: 8) Target: x2**2 + 4*x2 + 4
+  Ex 4: Fail (R: -0.84, Steps: 8) Target: x0**2 + x0
+  Ex 5: Success (R: 9.90, Steps: 1) Target: x1 + x2
+Iter 20: SR 52.2%, Q 1.5294, Pi -6.7501, CE 0.0000, Buffer 41397
+  Ex 1: Fail (R: -0.80, Steps: 8) Target: 2*x0**2*x1
+  Ex 2: Fail (R: -0.80, Steps: 8) Target: x1**4
+  Ex 3: Fail (R: -0.80, Steps: 8) Target: 4*x1**2
+  Ex 4: Fail (R: -0.84, Steps: 8) Target: x1 + x2**2
+  Ex 5: Fail (R: -0.84, Steps: 8) Target: x0*x1 + x0
+Iter 21: SR 55.4%, Q 1.8102, Pi -6.7318, CE 0.0000, Buffer 43445
+  Ex 1: Success (R: 9.90, Steps: 1) Target: x1 + x2
+  Ex 2: Success (R: 9.80, Steps: 2) Target: 4
+  Ex 3: Success (R: 9.90, Steps: 1) Target: x1 + 1
+  Ex 4: Success (R: 9.80, Steps: 2) Target: 2*x0
+  Ex 5: Success (R: 9.80, Steps: 2) Target: 4
+Iter 22: SR 54.9%, Q 1.6809, Pi -6.6769, CE 0.0000, Buffer 45493
+  Ex 1: Fail (R: -0.80, Steps: 8) Target: x0**2*x1**2
+  Ex 2: Success (R: 9.90, Steps: 1) Target: x2**2
+  Ex 3: Fail (R: -0.88, Steps: 8) Target: x0
+  Ex 4: Fail (R: -0.84, Steps: 8) Target: x2**2 + x2
+  Ex 5: Success (R: 9.90, Steps: 1) Target: 2*x0
+Iter 23: SR 58.7%, Q 1.7514, Pi -6.5992, CE 0.0000, Buffer 47541
+  Ex 1: Success (R: 9.90, Steps: 1) Target: x0**2
+  Ex 2: Success (R: 9.79, Steps: 2) Target: x1 + x2
+  Ex 3: Fail (R: -0.80, Steps: 8) Target: 2*x0 + 2
+  Ex 4: Fail (R: -0.83, Steps: 8) Target: x0 + x1 + 1
+  Ex 5: Success (R: 9.90, Steps: 1) Target: x2
+Iter 24: SR 58.8%, Q 1.9272, Pi -6.6646, CE 0.0000, Buffer 49589
+  Ex 1: Success (R: 9.90, Steps: 1) Target: x1**2
+  Ex 2: Success (R: 9.80, Steps: 2) Target: x1**2
+  Ex 3: Fail (R: -0.80, Steps: 8) Target: 2*x1**2
+  Ex 4: Success (R: 9.90, Steps: 1) Target: 2*x0
+  Ex 5: Success (R: 9.90, Steps: 1) Target: x0 + x1
+Iter 25: SR 56.4%, Q 2.0222, Pi -6.6193, CE 0.0000, Buffer 51637
+  Ex 1: Fail (R: -0.83, Steps: 8) Target: x0 + x2 + 1
+  Ex 2: Success (R: 9.90, Steps: 1) Target: 1
+  Ex 3: Success (R: 9.90, Steps: 1) Target: x2 + 1
+  Ex 4: Success (R: 9.90, Steps: 1) Target: x1 + x2
+  Ex 5: Success (R: 9.90, Steps: 1) Target: 2*x2
+Iter 26: SR 58.9%, Q 1.7805, Pi -6.5729, CE 0.0000, Buffer 53685
+  Ex 1: Success (R: 9.90, Steps: 1) Target: 2*x2
+  Ex 2: Success (R: 9.80, Steps: 2) Target: x2**2
+  Ex 3: Fail (R: -0.80, Steps: 8) Target: x0**2*x1**2 + 2*x0**2*x1 + x0**2
+  Ex 4: Success (R: 9.90, Steps: 1) Target: x1**2
+  Ex 5: Fail (R: -0.84, Steps: 8) Target: x0*x2 + x2
+Iter 27: SR 54.5%, Q 1.5886, Pi -6.5644, CE 0.0000, Buffer 55733
+  Ex 1: Fail (R: -0.80, Steps: 8) Target: x1*x2**2
+  Ex 2: Fail (R: -0.80, Steps: 8) Target: x2**4
+  Ex 3: Fail (R: -0.80, Steps: 8) Target: 4*x1
+  Ex 4: Fail (R: -0.80, Steps: 8) Target: 2*x1 + 2*x2
+  Ex 5: Fail (R: -0.80, Steps: 8) Target: 2*x1 + 2*x2
+*** Assist Mode ON at iter 28 (mean SR 54.8%, slope -0.03 pp/iter) ***
+Iter 28: SR 55.3%, Q 1.7249, Pi -6.4731, CE 0.0000, Buffer 57781
+  Ex 1: Success (R: 9.90, Steps: 1) Target: 1
+  Ex 2: Fail (R: -0.80, Steps: 8) Target: 4*x1**2
+  Ex 3: Fail (R: -0.80, Steps: 8) Target: 2*x2**2
+  Ex 4: Fail (R: -0.84, Steps: 8) Target: x1*x2 + x2
+  Ex 5: Fail (R: -0.80, Steps: 8) Target: x0**2*x2**2
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/ec2-user/DESKTOP/Kyle/Rohans new branch/src/main.py", line 154, in <module>
+    main()
+    ~~~~^^
+  File "/home/ec2-user/DESKTOP/Kyle/Rohans new branch/src/main.py", line 107, in main
+    trainer.train(args.iterations)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/ec2-user/DESKTOP/Kyle/Rohans new branch/src/algorithms/sac.py", line 749, in train
+    rollout_info = self.collect_experience()
+  File "/home/ec2-user/DESKTOP/Kyle/Rohans new branch/src/algorithms/sac.py", line 442, in collect_experience
+    action, mcts_policy = self._maybe_mcts_action(obs)
+                          ~~~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "/home/ec2-user/DESKTOP/Kyle/Rohans new branch/src/algorithms/sac.py", line 332, in _maybe_mcts_action
+    action, probs = self.mcts.get_action_probs(self.env, temperature=1.0)
+                    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ec2-user/DESKTOP/Kyle/Rohans new branch/src/algorithms/mcts.py", line 96, in get_action_probs
+    visit_counts = self.search(game)
+  File "/home/ec2-user/miniconda/lib/python3.13/site-packages/torch/utils/_contextlib.py", line 120, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/ec2-user/DESKTOP/Kyle/Rohans new branch/src/algorithms/mcts.py", line 55, in search
+    self._expand(root, game)
+    ~~~~~~~~~~~~^^^^^^^^^^^^
+  File "/home/ec2-user/DESKTOP/Kyle/Rohans new branch/src/algorithms/mcts.py", line 141, in _expand
+    action_probs, value = self.model.get_policy_and_value(obs_device)
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "/home/ec2-user/miniconda/lib/python3.13/site-packages/torch/utils/_contextlib.py", line 120, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/ec2-user/DESKTOP/Kyle/Rohans new branch/src/algorithms/sac.py", line 226, in get_policy_and_value
+    logits = self.actor(obs)
+  File "/home/ec2-user/miniconda/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/ec2-user/miniconda/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ec2-user/DESKTOP/Kyle/Rohans new branch/src/algorithms/sac.py", line 132, in forward
+    graph_emb = self.gnn(
+        graph.x,
+    ...<2 lines>...
+        batch=getattr(graph, "batch", None),
+    )
+  File "/home/ec2-user/miniconda/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/ec2-user/miniconda/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ec2-user/DESKTOP/Kyle/Rohans new branch/src/models/gnn_encoder.py", line 57, in forward
+    h = self.input_proj(x)
+  File "/home/ec2-user/miniconda/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/ec2-user/miniconda/lib/python3.13/site-packages/torch/nn/modules/module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/ec2-user/miniconda/lib/python3.13/site-packages/torch/nn/modules/linear.py", line 134, in forward
+    return F.linear(input, self.weight, self.bias)
+           ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Expected all tensors to be on the same device, but got mat1 is on cpu, different from other tensors on cuda:0 (when checking argument in method wrapper_CUDA_addmm)
