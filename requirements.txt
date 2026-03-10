@@ -1,6 +1,6 @@
-numpy>=2.0
-torch>=2.0
-torch_geometric>=2.6
-sympy>=1.12
-matplotlib>=3.8
-pytest>=8.0
+numpy
+torch
+torch_geometric
+sympy
+matplotlib
+pytest
