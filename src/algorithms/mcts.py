@@ -133,10 +133,20 @@ class MCTS:
             Value estimate for this state
         """
         obs = game.get_observation()
-        obs_device = {
-            k: v.to(self.device) if isinstance(v, torch.Tensor) else v
-            for k, v in obs.items()
-        }
+        obs_device = {}
+        for k, v in obs.items():
+            if isinstance(v, torch.Tensor):
+                obs_device[k] = v.to(self.device)
+            elif isinstance(v, dict):
+                obs_device[k] = {
+                    dk: dv.to(self.device) if isinstance(dv, torch.Tensor) else dv
+                    for dk, dv in v.items()
+                }
+            elif hasattr(v, "to"):
+                # PyG Data objects
+                obs_device[k] = v.to(self.device)
+            else:
+                obs_device[k] = v
 
         action_probs, value = self.model.get_policy_and_value(obs_device)
         action_probs = action_probs.cpu().numpy()

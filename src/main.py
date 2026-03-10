@@ -1,17 +1,70 @@
 """Entry point for training and evaluation."""
 
 import argparse
+import os
 import random
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
 from .config import Config
 from .models.policy_value_net import PolicyValueNet
 from .algorithms.ppo import PPOTrainer
+from .algorithms.ppo_mcts import PPOMCTSTrainer
 from .algorithms.alphazero import AlphaZeroTrainer
 from .algorithms.sac import SACTrainer
 from .evaluation.evaluate import evaluate_model
+
+
+def save_training_plots(history: dict, results_dir: str) -> None:
+    """Save loss, success rate, and reward plots to results_dir.
+
+    Args:
+        history: Dict of metric lists from trainer.train().
+        results_dir: Directory path where plots are saved.
+    """
+    iters = range(1, len(history["pg_loss"]) + 1)
+
+    # --- Loss curves ---
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(iters, history["pg_loss"], label="Policy loss")
+    ax.plot(iters, history["vf_loss"], label="Value loss")
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel("Loss")
+    ax.set_title("Training Loss")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(os.path.join(results_dir, "loss_curve.png"), dpi=150)
+    plt.close(fig)
+
+    # --- Success rate ---
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(iters, history["success_rate"], color="green")
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel("Success Rate")
+    ax.set_title("Success Rate per Iteration")
+    ax.set_ylim(-0.05, 1.05)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(os.path.join(results_dir, "success_rate.png"), dpi=150)
+    plt.close(fig)
+
+    # --- Average reward ---
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(iters, history["avg_reward"], color="orange")
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel("Avg Reward")
+    ax.set_title("Average Reward per Iteration")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(os.path.join(results_dir, "reward_per_episode.png"), dpi=150)
+    plt.close(fig)
+
+    print(f"Plots saved to {results_dir}")
 
 
 def set_seed(seed: int):
@@ -24,8 +77,8 @@ def set_seed(seed: int):
 
 def main():
     parser = argparse.ArgumentParser(description="Polynomial Arithmetic Circuits RL")
-    parser.add_argument("--algorithm", choices=["ppo", "alphazero", "sac"], default="ppo",
-                        help="Training algorithm")
+    parser.add_argument("--algorithm", choices=["ppo", "ppo-mcts", "alphazero", "sac"],
+                        default="ppo", help="Training algorithm")
     parser.add_argument("--iterations", type=int, default=100,
                         help="Number of training iterations")
     parser.add_argument("--eval-only", action="store_true",
@@ -34,6 +87,9 @@ def main():
                         help="Path to model checkpoint")
     parser.add_argument("--save-path", type=str, default="checkpoint.pt",
                         help="Path to save model checkpoint")
+    parser.add_argument("--results-dir", type=str, default=None,
+                        help="Directory for results (plots + checkpoint). "
+                             "Defaults to results/{algo}_C{complexity}")
 
     # Override config values
     parser.add_argument("--n-variables", type=int, default=None)
@@ -44,6 +100,10 @@ def main():
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--no-curriculum", action="store_true")
+    parser.add_argument("--mcts-simulations", type=int, default=None,
+                        help="Number of MCTS simulations per action (default: 100)")
+    parser.add_argument("--steps-per-update", type=int, default=None,
+                        help="Environment steps collected per PPO update (default: 2048)")
     parser.add_argument("--sac-use-cql", action="store_true")
     parser.add_argument("--sac-cql-alpha", type=float, default=None)
     parser.add_argument("--sac-bc-warmstart", action="store_true")
@@ -95,6 +155,10 @@ def main():
         config.sac_fixed_complexity_iters = args.sac_fixed_complexity_iters
     if args.sac_target_entropy_scale is not None:
         config.sac_target_entropy_scale = args.sac_target_entropy_scale
+    if args.mcts_simulations is not None:
+        config.mcts_simulations = args.mcts_simulations
+    if args.steps_per_update is not None:
+        config.steps_per_update = args.steps_per_update
     if args.no_factor_library:
         config.factor_library_enabled = False
     if args.factor_subgoal_reward is not None:
@@ -156,23 +220,38 @@ def main():
             evaluate_model(model, config, algorithm=args.algorithm, device=config.device)
             return
 
+        # Determine results directory.
+        results_dir = args.results_dir or os.path.join(
+            "results", f"{args.algorithm}_C{config.max_complexity}"
+        )
+        os.makedirs(results_dir, exist_ok=True)
+        save_path = os.path.join(results_dir, "checkpoint.pt")
+
         # Train
-        print(f"\n=== Training with {args.algorithm.upper()} ===")
+        algo_label = "PPO+MCTS" if args.algorithm == "ppo-mcts" else args.algorithm.upper()
+        print(f"\n=== Training with {algo_label} ===")
+        print(f"Results will be saved to {results_dir}")
 
         if args.algorithm == "ppo":
             trainer = PPOTrainer(config, model, device=config.device)
+        elif args.algorithm == "ppo-mcts":
+            trainer = PPOMCTSTrainer(config, model, device=config.device)
         else:
             trainer = AlphaZeroTrainer(config, model, device=config.device)
 
-        trainer.train(args.iterations)
+        history = trainer.train(args.iterations)
+
+        # Save plots if history is available.
+        if history:
+            save_training_plots(history, results_dir)
 
         # Save checkpoint
         torch.save({
             "model": model.state_dict(),
             "config": config,
             "algorithm": args.algorithm,
-        }, args.save_path)
-        print(f"\nSaved checkpoint to {args.save_path}")
+        }, save_path)
+        print(f"\nSaved checkpoint to {save_path}")
 
         # Final evaluation
         print("\n=== Final Evaluation ===")

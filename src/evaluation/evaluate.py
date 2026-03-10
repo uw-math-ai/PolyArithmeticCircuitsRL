@@ -63,10 +63,19 @@ def evaluate_model(
                     # Use hasattr(v, 'to') rather than isinstance(v, Tensor) so
                     # that PyG Data graph objects (which also have .to()) are
                     # moved to the correct device alongside plain tensors.
-                    obs_device = {
-                        k: v.to(device) if hasattr(v, "to") else v
-                        for k, v in obs.items()
-                    }
+                    obs_device = {}
+                    for k, v in obs.items():
+                        if isinstance(v, torch.Tensor):
+                            obs_device[k] = v.to(device)
+                        elif isinstance(v, dict):
+                            obs_device[k] = {
+                                dk: dv.to(device) if isinstance(dv, torch.Tensor) else dv
+                                for dk, dv in v.items()
+                            }
+                        elif hasattr(v, "to"):
+                            obs_device[k] = v.to(device)
+                        else:
+                            obs_device[k] = v
                     with torch.no_grad():
                         output = model(obs_device)
                         logits = output[0] if isinstance(output, tuple) else output

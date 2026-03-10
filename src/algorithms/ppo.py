@@ -430,7 +430,7 @@ class PPOTrainer:
             self.success_history.clear()
             print(f"[Curriculum] Backed off to complexity {self.current_complexity}")
 
-    def train(self, num_iterations: int) -> None:
+    def train(self, num_iterations: int) -> dict:
         """Run the full PPO training loop for the specified number of iterations.
 
         Each iteration consists of:
@@ -442,12 +442,29 @@ class PPOTrainer:
 
         Args:
             num_iterations: Total number of collect + update cycles to run.
+
+        Returns:
+            Dict of metric lists keyed by name, each of length num_iterations.
+            Keys: 'pg_loss', 'vf_loss', 'entropy', 'success_rate',
+                  'avg_reward', 'complexity'.
         """
+        history = {
+            "pg_loss": [], "vf_loss": [], "entropy": [],
+            "success_rate": [], "avg_reward": [], "complexity": [],
+        }
+
         for iteration in range(1, num_iterations + 1):
             buffer, rollout_info = self.collect_rollouts()
             advantages, returns = self.compute_gae(buffer)
             loss_info = self.update(buffer, advantages, returns)
             self._maybe_advance_curriculum()
+
+            history["pg_loss"].append(loss_info["pg_loss"])
+            history["vf_loss"].append(loss_info["vf_loss"])
+            history["entropy"].append(loss_info["entropy"])
+            history["success_rate"].append(rollout_info["success_rate"])
+            history["avg_reward"].append(rollout_info["avg_reward"])
+            history["complexity"].append(rollout_info["complexity"])
 
             if iteration % self.config.log_interval == 0:
                 lib_str = (
@@ -466,6 +483,8 @@ class PPOTrainer:
                     f"vf_loss={loss_info['vf_loss']:.4f} "
                     f"entropy={loss_info['entropy']:.4f}"
                 )
+
+        return history
 
     def _obs_to_device(self, obs: dict) -> dict:
         """Move all tensor values in an observation dict to the training device.

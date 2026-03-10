@@ -2,9 +2,10 @@
 
 Learning to construct minimal arithmetic circuits for target polynomials using reinforcement learning. An agent builds circuits by composing addition and multiplication operations over polynomial nodes, with all arithmetic performed modulo a small prime $p$.
 
-Two algorithms are implemented for comparison:
+Four algorithms are implemented for comparison:
 - **PPO** (Proximal Policy Optimization) — a policy-gradient baseline
-- **AlphaZero** — MCTS guided by a learned neural network (primary method)
+- **PPO+MCTS** — Expert Iteration hybrid: MCTS-guided rollouts with PPO updates
+- **AlphaZero** — MCTS guided by a learned neural network
 - **SAC** (Soft Actor-Critic, discrete masked-action variant) — off-policy baseline
 
 ---
@@ -17,6 +18,7 @@ Two algorithms are implemented for comparison:
 - [Algorithms](#algorithms)
   - [Environment and Reward](#environment-and-reward)
   - [PPO](#ppo-proximal-policy-optimization)
+  - [PPO+MCTS (Expert Iteration)](#ppomcts-expert-iteration)
   - [AlphaZero (MCTS + Neural Network)](#alphazero-mcts--neural-network)
   - [Curriculum Learning](#curriculum-learning)
 - [Neural Network Architecture](#neural-network-architecture)
@@ -60,6 +62,7 @@ src/
 │   └── policy_value_net.py       # Shared policy-value network (GNN + target encoder)
 ├── algorithms/
 │   ├── ppo.py                    # PPO training loop with GAE
+│   ├── ppo_mcts.py               # PPO+MCTS hybrid (Expert Iteration with PPO updates)
 │   ├── sac.py                    # Discrete SAC with masked actions + stratified replay
 │   ├── mcts.py                   # Neural MCTS (AlphaZero-style, no random rollouts)
 │   └── alphazero.py              # AlphaZero self-play + training
@@ -269,7 +272,7 @@ Uses PyTorch Geometric `GCNConv` when available, otherwise falls back to a simpl
 
 ### `src/models/policy_value_net.py` — Policy-Value Network
 
-Shared network used by both PPO and AlphaZero.
+Shared network used by PPO, PPO+MCTS, and AlphaZero.
 
 **Architecture:**
 
@@ -312,7 +315,7 @@ See the [Algorithms](#algorithms) section below for full mathematical descriptio
 
 Evaluates a trained model across multiple complexity levels.
 
-- For **PPO**: uses greedy action selection (argmax over logits)
+- For **PPO** / **PPO+MCTS**: uses greedy action selection (argmax over logits)
 - For **AlphaZero**: runs full MCTS search with temperature 0 (deterministic)
 
 Reports per-complexity success rate, average steps to solution, and overall aggregates.
@@ -475,6 +478,60 @@ for each iteration:
 
 ---
 
+### PPO+MCTS (Expert Iteration)
+
+**File:** `src/algorithms/ppo_mcts.py`
+
+A hybrid algorithm that combines MCTS-guided action selection with PPO policy updates, implementing an *Expert Iteration* loop (Anthony et al., 2017). At each step the MCTS "expert" searches for high-quality actions using the current network as a prior; the network is then trained via PPO to approximate the MCTS-improved policy. As the network improves, MCTS searches become more effective, creating a virtuous cycle.
+
+#### Key Difference from Standard PPO
+
+In standard PPO the behavior policy is the network itself — the importance sampling ratio is:
+
+$$r(\theta) = \frac{\pi_\theta(a|s)}{\pi_{\theta_{\text{old}}}(a|s)}$$
+
+In PPO+MCTS the behavior policy is the MCTS visit-count distribution $\pi_{\text{MCTS}}$, so the ratio becomes:
+
+$$r(\theta) = \frac{\pi_\theta(a|s)}{\pi_{\text{MCTS}}(a|s)}$$
+
+This drives the network toward the search-improved policy while the clipping mechanism prevents overshooting.
+
+#### Key Difference from AlphaZero
+
+AlphaZero trains the network with a cross-entropy loss on MCTS visit counts plus an MSE value loss on game outcomes. PPO+MCTS instead uses:
+- **GAE** for lower-variance advantage estimation (rather than binary $\pm 1$ outcome targets)
+- A **clipped surrogate objective** for conservative policy steps
+- An **entropy bonus** to maintain exploration
+
+This makes PPO+MCTS more suitable for environments with dense, shaped rewards (like our factor subgoal and completion bonuses), where GAE can exploit the richer reward signal.
+
+#### Training Loop
+
+```
+for each iteration:
+    1. model.eval(): Collect steps_per_update transitions
+       - At each step, run MCTS search (mcts_simulations forward passes)
+       - Sample action from MCTS visit-count distribution (with temperature)
+       - Record log π_MCTS(a|s) as the behavior-policy log prob
+       - Record V(s) from the network's value head
+    2. Compute GAE advantages and returns (same as PPO)
+    3. model.train(): For ppo_epochs over mini-batches:
+       - Compute new log π_θ(a|s) from the network
+       - Importance ratio: r(θ) = π_θ / π_MCTS
+       - PPO clipped surrogate loss + value loss - entropy bonus
+    4. Adjust curriculum complexity
+```
+
+#### Performance Considerations
+
+Each collected step requires a full MCTS search (`mcts_simulations` forward passes through the network for tree expansion). With the default 100 simulations and 2048 steps per update, that is ~204,800 forward passes per iteration just for data collection — significantly more expensive than plain PPO.
+
+Tuning levers:
+- `--mcts-simulations N` — reduce for faster iterations (e.g., 25–50 on CPU)
+- `--steps-per-update N` — collect fewer steps per iteration (e.g., 256–512)
+
+---
+
 ### AlphaZero (MCTS + Neural Network)
 
 **Files:** `src/algorithms/mcts.py` and `src/algorithms/alphazero.py`
@@ -547,7 +604,7 @@ for each iteration:
 
 ### Curriculum Learning
 
-Both algorithms use adaptive curriculum learning to gradually increase problem difficulty.
+All algorithms use adaptive curriculum learning to gradually increase problem difficulty.
 
 The agent starts at complexity $C = 2$ (2 operations). A sliding window tracks the recent success rate $\rho$:
 
@@ -619,6 +676,19 @@ Optional SAC stabilizers:
 # Enable CQL-lite regularization and BC warm start from board demonstrations
 python -m src.main --algorithm sac --iterations 100 \
     --sac-use-cql --sac-cql-alpha 0.1 --sac-bc-warmstart
+```
+
+### Training with PPO+MCTS
+
+```bash
+python -m src.main --algorithm ppo-mcts --iterations 100
+```
+
+With tuned MCTS parameters for faster CPU training:
+
+```bash
+python -m src.main --algorithm ppo-mcts --iterations 200 \
+    --max-complexity 5 --mcts-simulations 50 --steps-per-update 512
 ```
 
 ### Training with AlphaZero
