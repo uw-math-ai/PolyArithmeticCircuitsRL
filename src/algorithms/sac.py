@@ -11,8 +11,6 @@ with:
   - Optional factor library and subgoal rewards (see FactorLibrary)
 """
 
-from __future__ import annotations
-
 import math
 import random
 from collections import defaultdict, deque
@@ -1021,4 +1019,3 @@ class SACTrainer:
 
         self.current_complexity = state.get("current_complexity", self.current_complexity)
         self.total_env_steps = state.get("total_env_steps", self.total_env_steps)
-
