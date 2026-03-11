@@ -120,6 +120,16 @@ def main():
     parser.add_argument("--completion-bonus", type=float, default=None,
                         help="Bonus for having both pieces for a single final add/mul to reach T")
 
+    # Weights & Biases
+    parser.add_argument("--wandb", action="store_true",
+                        help="Enable Weights & Biases logging")
+    parser.add_argument("--wandb-project", type=str, default=None,
+                        help="W&B project name (default: PolyArithmeticCircuitsRL)")
+    parser.add_argument("--wandb-entity", type=str, default=None,
+                        help="W&B entity (team or user)")
+    parser.add_argument("--wandb-run-name", type=str, default=None,
+                        help="W&B run name (default: auto-generated)")
+
     args = parser.parse_args()
 
     # Build config
@@ -167,6 +177,14 @@ def main():
         config.factor_library_bonus = args.factor_library_bonus
     if args.completion_bonus is not None:
         config.completion_bonus = args.completion_bonus
+    if args.wandb:
+        config.wandb_enabled = True
+    if args.wandb_project is not None:
+        config.wandb_project = args.wandb_project
+    if args.wandb_entity is not None:
+        config.wandb_entity = args.wandb_entity
+    if args.wandb_run_name is not None:
+        config.wandb_run_name = args.wandb_run_name
 
     # Auto-detect device
     if config.device == "cpu" and torch.cuda.is_available():
@@ -175,6 +193,20 @@ def main():
         config.device = "mps"
 
     set_seed(config.seed)
+
+    # Initialise Weights & Biases if enabled.
+    if config.wandb_enabled:
+        import wandb
+        wandb.init(
+            project=config.wandb_project,
+            entity=config.wandb_entity,
+            name=config.wandb_run_name,
+            config={
+                k: v for k, v in vars(config).items()
+                if not k.startswith("_")
+            },
+            tags=[args.algorithm],
+        )
 
     print(f"Config: n_vars={config.n_variables}, mod={config.mod}, "
           f"max_complexity={config.max_complexity}, device={config.device}")
@@ -204,6 +236,10 @@ def main():
 
         print("\n=== Final Evaluation ===")
         trainer.evaluate(verbose=True, num_trials=100)
+
+        if config.wandb_enabled:
+            import wandb
+            wandb.finish()
     else:
         # Build model
         model = PolicyValueNet(config)
@@ -259,6 +295,10 @@ def main():
         # Final evaluation
         print("\n=== Final Evaluation ===")
         evaluate_model(model, config, algorithm=args.algorithm, device=config.device)
+
+        if config.wandb_enabled:
+            import wandb
+            wandb.finish()
 
 
 if __name__ == "__main__":

@@ -940,6 +940,25 @@ class SACTrainer:
             if not in_fixed_phase:
                 self._maybe_advance_curriculum()
 
+            if self.config.wandb_enabled:
+                import wandb
+                wandb.log({
+                    "iteration": iteration,
+                    "complexity": rollout_info["complexity"],
+                    "success_rate": rollout_info["success_rate"],
+                    "avg_reward": rollout_info["avg_reward"],
+                    "replay_size": rollout_info["replay_size"],
+                    "critic_loss": loss_info["critic_loss"],
+                    "actor_loss": loss_info["actor_loss"],
+                    "alpha_loss": loss_info["alpha_loss"],
+                    "alpha": loss_info["alpha"],
+                    "entropy": loss_info["entropy"],
+                    "factor_hits": rollout_info["factor_hits"],
+                    "library_hits": rollout_info["library_hits"],
+                    "library_size": rollout_info["library_size"],
+                    "total_env_steps": self.total_env_steps,
+                }, step=iteration)
+
             if iteration % self.config.log_interval == 0:
                 phase = "fixed" if in_fixed_phase else "curriculum"
                 lib_str = (

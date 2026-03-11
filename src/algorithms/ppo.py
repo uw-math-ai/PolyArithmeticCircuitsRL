@@ -466,6 +466,21 @@ class PPOTrainer:
             history["avg_reward"].append(rollout_info["avg_reward"])
             history["complexity"].append(rollout_info["complexity"])
 
+            if self.config.wandb_enabled:
+                import wandb
+                wandb.log({
+                    "iteration": iteration,
+                    "pg_loss": loss_info["pg_loss"],
+                    "vf_loss": loss_info["vf_loss"],
+                    "entropy": loss_info["entropy"],
+                    "success_rate": rollout_info["success_rate"],
+                    "avg_reward": rollout_info["avg_reward"],
+                    "complexity": rollout_info["complexity"],
+                    "factor_hits": rollout_info["factor_hits"],
+                    "library_hits": rollout_info["library_hits"],
+                    "library_size": rollout_info["library_size"],
+                }, step=iteration)
+
             if iteration % self.config.log_interval == 0:
                 lib_str = (
                     f"lib={rollout_info['library_size']} "

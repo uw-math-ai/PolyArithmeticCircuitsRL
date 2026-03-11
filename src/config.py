@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 
 @dataclass
@@ -55,9 +55,9 @@ class Config:
     completion_bonus: float = 3.0
 
     # Model
-    hidden_dim: int = 128
-    embedding_dim: int = 128
-    num_gnn_layers: int = 3
+    hidden_dim: int = 256
+    embedding_dim: int = 256
+    num_gnn_layers: int = 4
     node_feature_dim: int = 4  # [is_input, is_constant, is_op, op_type_value]
 
     # PPO
@@ -68,8 +68,8 @@ class Config:
     gae_lambda: float = 0.95
     ent_coef: float = 0.01
     vf_coef: float = 0.5
-    batch_size: int = 64
-    steps_per_update: int = 2048
+    batch_size: int = 256
+    steps_per_update: int = 4096
     max_grad_norm: float = 0.5
 
     # SAC (discrete, masked)
@@ -77,12 +77,12 @@ class Config:
     sac_critic_lr: float = 3e-4
     sac_alpha_lr: float = 1e-4
     sac_tau: float = 0.01
-    sac_batch_size: int = 256
-    sac_steps_per_iter: int = 2048
+    sac_batch_size: int = 512
+    sac_steps_per_iter: int = 4096
     sac_update_to_data_ratio: float = 1.0
-    sac_replay_size: int = 100000
-    sac_min_replay_size: int = 10000
-    sac_initial_random_steps: int = 2000
+    sac_replay_size: int = 500000
+    sac_min_replay_size: int = 20000
+    sac_initial_random_steps: int = 5000
     sac_n_step: int = 3
 
     # State-dependent entropy target: -scale * log(|A_valid(s)|)
@@ -95,7 +95,7 @@ class Config:
     sac_current_complexity_fraction: float = 0.5
     sac_success_fraction: float = 0.2
     sac_recent_fraction: float = 0.2
-    sac_recent_window: int = 20000
+    sac_recent_window: int = 50000
 
     # Optional stabilizers
     sac_use_cql: bool = False
@@ -105,7 +105,7 @@ class Config:
     sac_bc_warmstart_enabled: bool = False
     sac_bc_samples: int = 5000
     sac_bc_steps: int = 1000
-    sac_bc_batch_size: int = 128
+    sac_bc_batch_size: int = 256
 
     # Optional fixed-complexity warm-up before adaptive curriculum
     sac_fixed_complexities: List[int] = field(default_factory=lambda: [3, 4])
@@ -116,10 +116,10 @@ class Config:
     mcts_simulations: int = 100
     mcts_c_puct: float = 1.4
     az_lr: float = 1e-3
-    az_games_per_iter: int = 100
+    az_games_per_iter: int = 200
     az_training_epochs: int = 10
-    az_batch_size: int = 64
-    az_buffer_size: int = 50000
+    az_batch_size: int = 256
+    az_buffer_size: int = 200000
     temperature_init: float = 1.0
     temperature_final: float = 0.1
     temperature_decay_steps: int = 30
@@ -134,6 +134,12 @@ class Config:
     device: str = "cpu"
     seed: int = 42
     log_interval: int = 10
+
+    # Weights & Biases logging
+    wandb_enabled: bool = False
+    wandb_project: str = "PolyArithmeticCircuitsRL"
+    wandb_entity: Optional[str] = None
+    wandb_run_name: Optional[str] = None
 
     @property
     def effective_max_degree(self) -> int:

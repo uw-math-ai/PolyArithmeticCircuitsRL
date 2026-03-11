@@ -4,3 +4,4 @@ torch_geometric
 sympy
 matplotlib
 pytest
+wandb

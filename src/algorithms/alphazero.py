@@ -219,6 +219,18 @@ class AlphaZeroTrainer:
             # Curriculum
             self._maybe_advance_curriculum()
 
+            if self.config.wandb_enabled:
+                import wandb
+                wandb.log({
+                    "iteration": iteration,
+                    "complexity": play_info["complexity"],
+                    "success_rate": play_info["success_rate"],
+                    "buffer_size": play_info["buffer_size"],
+                    "policy_loss": loss_info["policy_loss"],
+                    "value_loss": loss_info["value_loss"],
+                    "total_loss": loss_info["total_loss"],
+                }, step=iteration)
+
             # Logging
             if iteration % self.config.log_interval == 0:
                 print(
