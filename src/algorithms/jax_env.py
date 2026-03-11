@@ -191,18 +191,18 @@ def _convolve_2d_jax(a: jnp.ndarray, b: jnp.ndarray,
     # Reshape for conv: (batch=1, channels=1, H, W)
     a4d = a.reshape(1, 1, d, d).astype(jnp.float32)
     b4d = b.reshape(1, 1, d, d).astype(jnp.float32)
-    # Full 2D convolution: pad a, correlate with flipped b.
-    # Equivalently, use conv with b flipped.
+    # conv_general_dilated computes cross-correlation. To get polynomial
+    # convolution (a*b)[i,j] = sum a[m,n]*b[i-m,j-n], we flip b and pad a
+    # on the LEFT/TOP so that result[h,w] maps to product index (h,w).
     b_flip = b4d[:, :, ::-1, ::-1]
-    # Pad a to (1, 1, 2d-1, 2d-1).
-    a_padded = jnp.pad(a4d, ((0, 0), (0, 0), (0, d - 1), (0, d - 1)))
+    a_padded = jnp.pad(a4d, ((0, 0), (0, 0), (d - 1, 0), (d - 1, 0)))
     result = jax.lax.conv_general_dilated(
         a_padded, b_flip,
         window_strides=(1, 1),
         padding='VALID',
         dimension_numbers=('NCHW', 'OIHW', 'NCHW'),
     )
-    # Result shape: (1, 1, 2d-1, 2d-1). Truncate and cast back.
+    # Result shape: (1, 1, d, d). First d×d entries are the truncated product.
     return result[0, 0, :d, :d].astype(jnp.int32)
 
 
