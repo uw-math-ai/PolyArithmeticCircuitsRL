@@ -39,7 +39,7 @@ from flax.training import train_state
 
 from ..config import Config
 from ..environment.fast_polynomial import FastPoly
-from ..game_board.generator import sample_target, build_game_board
+from ..game_board.generator import sample_target, build_game_board, generate_random_circuit
 from .jax_env import (
     EnvConfig, EnvState, make_env_config,
     reset as env_reset, step as env_step,
@@ -140,6 +140,10 @@ class PPOMCTSJAXTrainer:
             functools.partial(get_observation, self.env_config)
         )
         self._jit_batched_mcts = jax.jit(self._batched_mcts_search)
+
+    # BFS game boards are only feasible up to this complexity. Above this
+    # threshold, targets are sampled via generate_random_circuit instead.
+    MAX_BOARD_COMPLEXITY = 6
 
     def _get_board(self, complexity: int) -> dict:
         if complexity not in self._boards:
@@ -265,6 +269,21 @@ class PPOMCTSJAXTrainer:
     # Data collection
     # ------------------------------------------------------------------
 
+    def _sample_one_target(self, complexity: int) -> FastPoly:
+        """Sample a single target polynomial of the given complexity.
+
+        Uses the BFS game board for low complexities (exact minimum-op
+        guarantees) and ``generate_random_circuit`` for high complexities
+        (instant, but the true minimum complexity may be lower).
+        """
+        if complexity <= self.MAX_BOARD_COMPLEXITY:
+            board = self._get_board(complexity)
+            poly, _ = sample_target(self.config, complexity, board)
+            return poly
+        else:
+            poly, _ = generate_random_circuit(self.config, complexity)
+            return poly
+
     def _sample_targets_multi(self, n: int) -> Tuple[List[FastPoly], List[int]]:
         """Sample n target polynomials, distributing across complexities.
 
@@ -285,18 +304,14 @@ class PPOMCTSJAXTrainer:
             remainder = n % len(self.fixed_complexities)
             for idx, c in enumerate(self.fixed_complexities):
                 count = per_c + (1 if idx < remainder else 0)
-                board = self._get_board(c)
                 for _ in range(count):
-                    poly, _ = sample_target(self.config, c, board)
-                    targets.append(poly)
+                    targets.append(self._sample_one_target(c))
                     labels.append(c)
             return targets, labels
         else:
-            board = self._get_board(self.current_complexity)
             targets = []
             for _ in range(n):
-                poly, _ = sample_target(self.config, self.current_complexity, board)
-                targets.append(poly)
+                targets.append(self._sample_one_target(self.current_complexity))
             return targets, [self.current_complexity] * n
 
     def _fastpoly_to_jax(self, poly: FastPoly) -> jnp.ndarray:
