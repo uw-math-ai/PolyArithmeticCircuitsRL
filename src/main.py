@@ -43,11 +43,18 @@ def save_training_plots(history: dict, results_dir: str) -> None:
 
     # --- Success rate ---
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(iters, history["success_rate"], color="green")
+    ax.plot(iters, history["success_rate"], color="green", label="Overall")
+    # Per-complexity curves if present.
+    per_c_keys = sorted(k for k in history if k.startswith("success_rate_C"))
+    for key in per_c_keys:
+        label = key.replace("success_rate_", "")
+        ax.plot(iters, history[key], label=label, alpha=0.7)
     ax.set_xlabel("Iteration")
     ax.set_ylabel("Success Rate")
     ax.set_title("Success Rate per Iteration")
     ax.set_ylim(-0.05, 1.05)
+    if per_c_keys:
+        ax.legend()
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     fig.savefig(os.path.join(results_dir, "success_rate.png"), dpi=150)
@@ -55,10 +62,16 @@ def save_training_plots(history: dict, results_dir: str) -> None:
 
     # --- Average reward ---
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.plot(iters, history["avg_reward"], color="orange")
+    ax.plot(iters, history["avg_reward"], color="orange", label="Overall")
+    per_c_reward_keys = sorted(k for k in history if k.startswith("avg_reward_C"))
+    for key in per_c_reward_keys:
+        label = key.replace("avg_reward_", "")
+        ax.plot(iters, history[key], label=label, alpha=0.7)
     ax.set_xlabel("Iteration")
     ax.set_ylabel("Avg Reward")
     ax.set_title("Average Reward per Iteration")
+    if per_c_reward_keys:
+        ax.legend()
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     fig.savefig(os.path.join(results_dir, "reward_per_episode.png"), dpi=150)
@@ -104,8 +117,11 @@ def main():
                         help="Number of MCTS simulations per action (default: 100)")
     parser.add_argument("--steps-per-update", type=int, default=None,
                         help="Environment steps collected per PPO update (default: 2048)")
-    parser.add_argument("--mcts-batch-size", type=int, default=64,
-                        help="Number of parallel environments for ppo-mcts-jax (default: 64)")
+    parser.add_argument("--mcts-batch-size", type=int, default=256,
+                        help="Number of parallel environments for ppo-mcts-jax (default: 256)")
+    parser.add_argument("--fixed-complexities", type=int, nargs="+", default=None,
+                        help="Train on these complexity levels in parallel (e.g. 5 6 7 8). "
+                             "Disables curriculum. max-complexity is auto-set to the maximum.")
     parser.add_argument("--sac-use-cql", action="store_true")
     parser.add_argument("--sac-cql-alpha", type=float, default=None)
     parser.add_argument("--sac-bc-warmstart", action="store_true")
@@ -199,15 +215,21 @@ def main():
     # Initialise Weights & Biases if enabled.
     if config.wandb_enabled:
         import wandb
+        tags = [args.algorithm]
+        if args.fixed_complexities:
+            tags.append(f"C{'_'.join(str(c) for c in args.fixed_complexities)}")
+        wandb_config = {
+            k: v for k, v in vars(config).items()
+            if not k.startswith("_")
+        }
+        if args.fixed_complexities:
+            wandb_config["fixed_complexities"] = args.fixed_complexities
         wandb.init(
             project=config.wandb_project,
             entity=config.wandb_entity,
             name=config.wandb_run_name,
-            config={
-                k: v for k, v in vars(config).items()
-                if not k.startswith("_")
-            },
-            tags=[args.algorithm],
+            config=wandb_config,
+            tags=tags,
         )
 
     print(f"Config: n_vars={config.n_variables}, mod={config.mod}, "
@@ -245,17 +267,34 @@ def main():
     elif args.algorithm == "ppo-mcts-jax":
         from .algorithms.ppo_mcts_jax import PPOMCTSJAXTrainer
 
+        # When fixed-complexities is set, ensure max_complexity accommodates all.
+        fixed_c = args.fixed_complexities
+        if fixed_c:
+            needed = max(fixed_c)
+            if config.max_complexity < needed:
+                config.max_complexity = needed
+            # Also scale max_steps proportionally if needed.
+            if config.max_steps < needed + 4:
+                config.max_steps = needed + 4
+
         trainer = PPOMCTSJAXTrainer(
-            config, batch_size=args.mcts_batch_size,
+            config,
+            batch_size=args.mcts_batch_size,
+            fixed_complexities=fixed_c,
         )
-        print(f"JAX PPO+MCTS with batch_size={args.mcts_batch_size}")
+        fc_str = f" fixed_complexities={fixed_c}" if fixed_c else ""
+        print(f"JAX PPO+MCTS with batch_size={args.mcts_batch_size}{fc_str}")
 
         if args.eval_only:
             print("Eval-only mode not supported for ppo-mcts-jax yet.")
             return
 
+        if fixed_c:
+            label = f"C{'_'.join(str(c) for c in fixed_c)}"
+        else:
+            label = f"C{config.max_complexity}"
         results_dir = args.results_dir or os.path.join(
-            "results", f"ppo-mcts-jax_C{config.max_complexity}"
+            "results", f"ppo-mcts-jax_{label}"
         )
         os.makedirs(results_dir, exist_ok=True)
 

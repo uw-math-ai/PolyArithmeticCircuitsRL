@@ -66,6 +66,11 @@ class PPOMCTSJAXTrainer:
     Runs B parallel environments, uses mctx.muzero_policy for batched tree
     search, and trains with PPO using optax.
 
+    Supports training on multiple fixed complexities simultaneously by splitting
+    the batch across complexities. When ``fixed_complexities`` is provided,
+    curriculum learning is disabled and targets are sampled uniformly from each
+    specified complexity level.
+
     Attributes:
         config: Shared hyperparameter configuration.
         env_config: JAX-compatible environment config.
@@ -73,18 +78,27 @@ class PPOMCTSJAXTrainer:
         tx: optax optimizer.
         train_state: Flax TrainState with params and optimizer state.
         batch_size: Number of parallel environments for data collection.
+        fixed_complexities: If set, train on these complexities in parallel
+            (disables curriculum).
     """
 
     def __init__(self, config: Config, device: str = "cpu",
-                 batch_size: int = 64) -> None:
+                 batch_size: int = 256,
+                 fixed_complexities: Optional[List[int]] = None) -> None:
         """Initialize the JAX PPO+MCTS trainer.
 
         Args:
             config: Configuration dataclass with all hyperparameters.
             device: Ignored (JAX auto-detects GPU/TPU).
             batch_size: Number of parallel environments during rollouts.
+            fixed_complexities: List of complexity levels to train on in
+                parallel (e.g. [5, 6, 7, 8]). Disables curriculum when set.
+                The batch is split evenly across these levels.
         """
         self.config = config
+        self.fixed_complexities = fixed_complexities
+        if fixed_complexities:
+            config.curriculum_enabled = False
         self.env_config = make_env_config(config)
         self.batch_size = batch_size
 
@@ -104,7 +118,7 @@ class PPOMCTSJAXTrainer:
             tx=self.tx,
         )
 
-        # Curriculum state.
+        # Curriculum state (only used when fixed_complexities is None).
         self.current_complexity = (
             config.starting_complexity if config.curriculum_enabled
             else config.max_complexity
@@ -251,14 +265,39 @@ class PPOMCTSJAXTrainer:
     # Data collection
     # ------------------------------------------------------------------
 
-    def _sample_targets(self, n: int) -> List[FastPoly]:
-        """Sample n target polynomials from the game board."""
-        board = self._get_board(self.current_complexity)
-        targets = []
-        for _ in range(n):
-            poly, _ = sample_target(self.config, self.current_complexity, board)
-            targets.append(poly)
-        return targets
+    def _sample_targets_multi(self, n: int) -> Tuple[List[FastPoly], List[int]]:
+        """Sample n target polynomials, distributing across complexities.
+
+        When ``fixed_complexities`` is set, the batch is split evenly across
+        all specified complexity levels. Otherwise falls back to the single
+        current_complexity used by curriculum.
+
+        Args:
+            n: Total number of targets to sample.
+
+        Returns:
+            (targets, complexity_labels) — lists of length n.
+        """
+        if self.fixed_complexities:
+            targets = []
+            labels = []
+            per_c = n // len(self.fixed_complexities)
+            remainder = n % len(self.fixed_complexities)
+            for idx, c in enumerate(self.fixed_complexities):
+                count = per_c + (1 if idx < remainder else 0)
+                board = self._get_board(c)
+                for _ in range(count):
+                    poly, _ = sample_target(self.config, c, board)
+                    targets.append(poly)
+                    labels.append(c)
+            return targets, labels
+        else:
+            board = self._get_board(self.current_complexity)
+            targets = []
+            for _ in range(n):
+                poly, _ = sample_target(self.config, self.current_complexity, board)
+                targets.append(poly)
+            return targets, [self.current_complexity] * n
 
     def _fastpoly_to_jax(self, poly: FastPoly) -> jnp.ndarray:
         """Convert FastPoly to flat JAX int32 coefficient array."""
@@ -268,11 +307,14 @@ class PPOMCTSJAXTrainer:
         """Collect rollout data using batched MCTS for action selection.
 
         Runs self.batch_size parallel episodes. At each step, all B
-        environments are searched simultaneously via mctx.
+        environments are searched simultaneously via mctx. When
+        ``fixed_complexities`` is set, the batch is split across complexity
+        levels and per-complexity metrics are tracked.
 
         Returns:
             (transitions, rollout_info) where transitions is a flat list
-            and rollout_info has episode statistics.
+            and rollout_info has episode statistics (including per-complexity
+            breakdowns when using fixed_complexities).
         """
         B = self.batch_size
         params = self.train_state.params
@@ -281,7 +323,8 @@ class PPOMCTSJAXTrainer:
         )
 
         # Sample targets and reset environments.
-        targets = self._sample_targets(B)
+        targets, complexity_labels = self._sample_targets_multi(B)
+        complexity_labels_np = np.array(complexity_labels)
         target_arrays = jnp.stack(
             [self._fastpoly_to_jax(t) for t in targets], axis=0
         )  # (B, target_size)
@@ -374,6 +417,22 @@ class PPOMCTSJAXTrainer:
             "avg_reward": float(avg_reward),
             "complexity": self.current_complexity,
         }
+
+        # Per-complexity breakdown.
+        if self.fixed_complexities:
+            for c in self.fixed_complexities:
+                mask_c = complexity_labels_np == c
+                n_c = mask_c.sum()
+                if n_c > 0:
+                    rollout_info[f"success_rate_C{c}"] = float(
+                        episode_successes[mask_c].sum() / n_c
+                    )
+                    rollout_info[f"avg_reward_C{c}"] = float(
+                        episode_rewards[mask_c].mean()
+                    )
+                    rollout_info[f"episodes_C{c}"] = int(n_c)
+            rollout_info["complexity"] = str(self.fixed_complexities)
+
         return transitions, rollout_info
 
     # ------------------------------------------------------------------
@@ -556,6 +615,11 @@ class PPOMCTSJAXTrainer:
             "pg_loss": [], "vf_loss": [], "entropy": [],
             "success_rate": [], "avg_reward": [], "complexity": [],
         }
+        # Per-complexity history when using fixed_complexities.
+        if self.fixed_complexities:
+            for c in self.fixed_complexities:
+                history[f"success_rate_C{c}"] = []
+                history[f"avg_reward_C{c}"] = []
 
         for iteration in range(1, num_iterations + 1):
             transitions, rollout_info = self.collect_rollouts()
@@ -570,23 +634,41 @@ class PPOMCTSJAXTrainer:
             history["avg_reward"].append(rollout_info["avg_reward"])
             history["complexity"].append(rollout_info["complexity"])
 
+            if self.fixed_complexities:
+                for c in self.fixed_complexities:
+                    history[f"success_rate_C{c}"].append(
+                        rollout_info.get(f"success_rate_C{c}", 0.0)
+                    )
+                    history[f"avg_reward_C{c}"].append(
+                        rollout_info.get(f"avg_reward_C{c}", 0.0)
+                    )
+
             if self.config.wandb_enabled:
                 import wandb
-                wandb.log({
+                log_dict = {
                     "iteration": iteration,
                     "pg_loss": loss_info["pg_loss"],
                     "vf_loss": loss_info["vf_loss"],
                     "entropy": loss_info["entropy"],
                     "success_rate": rollout_info["success_rate"],
                     "avg_reward": rollout_info["avg_reward"],
-                    "complexity": rollout_info["complexity"],
                     "episodes": rollout_info["episodes"],
-                }, step=iteration)
+                }
+                if self.fixed_complexities:
+                    for c in self.fixed_complexities:
+                        log_dict[f"success_rate_C{c}"] = rollout_info.get(
+                            f"success_rate_C{c}", 0.0
+                        )
+                        log_dict[f"avg_reward_C{c}"] = rollout_info.get(
+                            f"avg_reward_C{c}", 0.0
+                        )
+                else:
+                    log_dict["complexity"] = rollout_info["complexity"]
+                wandb.log(log_dict, step=iteration)
 
             if iteration % self.config.log_interval == 0:
-                print(
+                line = (
                     f"[PPO+MCTS-JAX iter {iteration}] "
-                    f"complexity={rollout_info['complexity']} "
                     f"episodes={rollout_info['episodes']} "
                     f"success={rollout_info['success_rate']:.2%} "
                     f"reward={rollout_info['avg_reward']:.3f} "
@@ -594,5 +676,17 @@ class PPOMCTSJAXTrainer:
                     f"vf_loss={loss_info['vf_loss']:.4f} "
                     f"entropy={loss_info['entropy']:.4f}"
                 )
+                if self.fixed_complexities:
+                    parts = []
+                    for c in self.fixed_complexities:
+                        sr = rollout_info.get(f"success_rate_C{c}", 0.0)
+                        parts.append(f"C{c}={sr:.1%}")
+                    line += " | " + " ".join(parts)
+                else:
+                    line = line.replace(
+                        f"episodes=",
+                        f"complexity={rollout_info['complexity']} episodes=",
+                    )
+                print(line)
 
         return history
