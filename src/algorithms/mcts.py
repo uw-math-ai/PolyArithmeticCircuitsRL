@@ -68,8 +68,13 @@ class MCTS:
 
             # Evaluate leaf
             if sim_game.done:
-                # Terminal state: use actual outcome
-                value = 1.0 if info.get("is_success", False) else -1.0
+                # Terminal state — use reward-scale values consistent with the
+                # value head (which now predicts actual returns, not [-1, 1]).
+                value = (
+                    self.config.success_reward
+                    if info.get("is_success", False)
+                    else 0.0
+                )
             else:
                 # Non-terminal: expand and evaluate with neural network
                 value = self._expand(node, sim_game)

@@ -235,7 +235,10 @@ def main():
         if args.algorithm == "ppo":
             trainer = PPOTrainer(config, model, device=config.device)
         elif args.algorithm == "ppo-mcts":
-            trainer = PPOMCTSTrainer(config, model, device=config.device)
+            log_path = os.path.join(results_dir, "log.txt")
+            trainer = PPOMCTSTrainer(
+                config, model, device=config.device, log_path=log_path,
+            )
         else:
             trainer = AlphaZeroTrainer(config, model, device=config.device)
 

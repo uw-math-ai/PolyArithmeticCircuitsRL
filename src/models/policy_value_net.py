@@ -55,12 +55,13 @@ class PolicyValueNet(nn.Module):
             nn.Linear(hidden, config.max_actions),
         )
 
-        # Value head
+        # Value head — no Tanh so the network can predict unbounded returns.
+        # (Tanh would cap output to [-1, 1], but actual returns can reach 10+
+        # with success_reward=10, completion_bonus=3, factor rewards, etc.)
         self.value_head = nn.Sequential(
             nn.Linear(emb, hidden),
             nn.ReLU(),
             nn.Linear(hidden, 1),
-            nn.Tanh(),
         )
 
     def forward(self, obs: dict) -> tuple:

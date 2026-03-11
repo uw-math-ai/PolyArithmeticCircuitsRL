@@ -1,0 +1,56 @@
+Bootstrap: docker
+From: nvidia/cuda:12.4.1-runtime-ubuntu22.04
+
+%labels
+    Author PolyArithmeticCircuitsRL
+    Description RL for minimal arithmetic circuits over polynomial rings
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+
+    apt-get update && apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+        python3-venv \
+        git \
+        && rm -rf /var/lib/apt/lists/*
+
+    # Create and activate a venv so pip doesn't complain about externally-managed
+    python3 -m venv /opt/venv
+    . /opt/venv/bin/activate
+
+    # PyTorch with CUDA 12.4 support
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu124
+
+    # PyG (torch_geometric) and its dependencies
+    pip install --no-cache-dir torch_geometric
+
+    # Remaining requirements
+    pip install --no-cache-dir numpy sympy matplotlib pytest
+
+    # Clean up pip cache
+    rm -rf /root/.cache/pip
+
+%environment
+    export PATH="/opt/venv/bin:$PATH"
+    export VIRTUAL_ENV="/opt/venv"
+    # Make NVIDIA runtime visible
+    export NVIDIA_VISIBLE_DEVICES=all
+    export NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+%runscript
+    cd /project
+    exec python3 -m src.main "$@"
+
+%help
+    Apptainer container for PolyArithmeticCircuitsRL.
+    GPU-enabled (CUDA 12.4).
+
+    Build:
+        apptainer build polyrl.sif container.def
+
+    Run training (bind project directory):
+        apptainer run --nv --bind /path/to/PolyArithmeticCircuitsRL:/project polyrl.sif --algorithm sac --iterations 200
+
+    Interactive shell:
+        apptainer shell --nv --bind /path/to/PolyArithmeticCircuitsRL:/project polyrl.sif

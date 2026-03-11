@@ -11,13 +11,15 @@ This implements an *Expert Iteration* loop:
   3. PPO updates train the network to approximate the MCTS-improved policy.
   4. The improved network makes MCTS even stronger → virtuous cycle.
 
-The importance sampling ratio in the PPO update is:
+The importance sampling ratio in the PPO update is the standard PPO ratio:
 
-    r(θ) = π_θ(a|s) / π_MCTS(a|s)
+    r(θ) = π_θ_new(a|s) / π_θ_old(a|s)
 
-where π_MCTS is the normalised visit-count distribution from MCTS search and
-π_θ is the network's own policy.  Clipping this ratio prevents the network from
-overshooting the MCTS target in any single update, maintaining training stability.
+where π_θ_old is the network's policy at data-collection time (not the MCTS
+visit counts).  Using MCTS probabilities as the denominator would make r ≈ 1
+(since MCTS search is guided by π_θ), yielding near-zero policy gradient.
+Instead, MCTS improves the quality of collected trajectories while PPO's
+clipped ratio drives the actual policy learning.
 
 Compared to standard AlphaZero (which uses cross-entropy loss on MCTS visit
 counts), the PPO formulation adds:
@@ -26,6 +28,7 @@ counts), the PPO formulation adds:
   - An entropy bonus to prevent premature convergence
 """
 
+import os
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -44,14 +47,18 @@ from .mcts import MCTS
 
 @dataclass
 class MCTSRolloutStep:
-    """Single (s, a, r, log π_MCTS, V, done) transition from MCTS rollout.
+    """Single (s, a, r, log π_θ, log π_MCTS, V, done) transition from MCTS rollout.
 
     Attributes:
         obs: Observation dict at time t (graph, target, mask).
         action: Integer action index selected by MCTS.
         reward: Scalar reward received after taking the action.
         mcts_log_prob: Log probability of the action under the MCTS visit
-                       distribution (the behaviour policy).
+                       distribution (kept for diagnostics / optional imitation).
+        network_log_prob: Log probability of the action under the network's own
+                          policy π_θ at collection time.  Used as old_log_prob
+                          in the PPO importance ratio so that the ratio reflects
+                          actual parameter changes between collection and update.
         value: Baseline value estimate V(s_t) from the network's value head.
         done: True if the episode ended at this step.
     """
@@ -59,6 +66,7 @@ class MCTSRolloutStep:
     action: int
     reward: float
     mcts_log_prob: float
+    network_log_prob: float
     value: float
     done: bool
 
@@ -80,6 +88,7 @@ class MCTSRolloutBuffer:
         action: int,
         reward: float,
         mcts_log_prob: float,
+        network_log_prob: float,
         value: float,
         done: bool,
     ) -> None:
@@ -90,10 +99,13 @@ class MCTSRolloutBuffer:
             action: Action selected by MCTS.
             reward: Immediate scalar reward.
             mcts_log_prob: Log prob of action under MCTS visit distribution.
+            network_log_prob: Log prob of action under the network's own policy.
             value: Value estimate V(s) from the network.
             done: Whether the episode ended.
         """
-        self.steps.append(MCTSRolloutStep(obs, action, reward, mcts_log_prob, value, done))
+        self.steps.append(MCTSRolloutStep(
+            obs, action, reward, mcts_log_prob, network_log_prob, value, done,
+        ))
 
     def clear(self) -> None:
         """Empty the buffer."""
@@ -125,7 +137,11 @@ class PPOMCTSTrainer:
     """
 
     def __init__(
-        self, config: Config, model: PolicyValueNet, device: str = "cpu"
+        self,
+        config: Config,
+        model: PolicyValueNet,
+        device: str = "cpu",
+        log_path: Optional[str] = None,
     ) -> None:
         """Initialise the PPO+MCTS trainer.
 
@@ -136,6 +152,8 @@ class PPOMCTSTrainer:
             config: Configuration dataclass with all hyperparameters.
             model: Shared policy-value network to train.
             device: PyTorch device ('cpu', 'cuda', or 'mps').
+            log_path: Optional path to a log file.  If given, all log
+                      messages are written to this file in addition to stdout.
         """
         self.config = config
         self.model = model.to(device)
@@ -165,6 +183,9 @@ class PPOMCTSTrainer:
         )
         self.success_history: List[bool] = []
 
+        # Logging.
+        self.log_path = log_path
+
         # Lazily-built BFS game boards keyed by complexity.
         self._boards: dict = {}
 
@@ -180,6 +201,13 @@ class PPOMCTSTrainer:
         if complexity not in self._boards:
             self._boards[complexity] = build_game_board(self.config, complexity)
         return self._boards[complexity]
+
+    def _log(self, msg: str) -> None:
+        """Print *msg* to stdout and append it to the log file (if set)."""
+        print(msg)
+        if self.log_path:
+            with open(self.log_path, "a") as f:
+                f.write(msg + "\n")
 
     def _get_temperature(self, step: int) -> float:
         """Compute MCTS temperature for action selection.
@@ -232,10 +260,10 @@ class PPOMCTSTrainer:
             step = 0
 
             while not self.env.done:
-                # Value estimate from the network (for GAE).
+                # Forward pass → logits (for network log prob) + value (for GAE).
                 obs_device = self._obs_to_device(obs)
                 with torch.no_grad():
-                    _, value = self.model(obs_device)
+                    logits, value = self.model(obs_device)
 
                 # MCTS search → visit-count action distribution.
                 temp = self._get_temperature(step)
@@ -243,9 +271,18 @@ class PPOMCTSTrainer:
                     self.env, temperature=temp
                 )
 
-                # Log prob of chosen action under MCTS behaviour policy.
+                # Log prob of chosen action under MCTS behaviour policy
+                # (kept for diagnostics).
                 mcts_prob = mcts_probs[action]
                 mcts_log_prob = float(np.log(max(mcts_prob, 1e-8)))
+
+                # Log prob under the network's own policy π_θ — this is the
+                # "old" log prob for the PPO importance ratio so that
+                # r(θ) = π_θ_new / π_θ_old  reflects actual parameter changes.
+                with torch.no_grad():
+                    dist = torch.distributions.Categorical(logits=logits)
+                    action_t = torch.tensor([action], device=self.device)
+                    network_lp = dist.log_prob(action_t).item()
 
                 next_obs, reward, done, info = self.env.step(action)
 
@@ -254,6 +291,7 @@ class PPOMCTSTrainer:
                     action=action,
                     reward=reward,
                     mcts_log_prob=mcts_log_prob,
+                    network_log_prob=network_lp,
                     value=value.item(),
                     done=done,
                 )
@@ -333,14 +371,16 @@ class PPOMCTSTrainer:
     ) -> dict:
         """Run the PPO clipped surrogate update over MCTS-collected data.
 
-        The key difference from standard PPO: the "old" log probabilities come
-        from the MCTS visit-count distribution (the behaviour policy), not from
-        the network's own policy at collection time.  The importance ratio
+        The importance ratio uses the network's own policy at collection time:
 
-            r(θ) = π_θ(a|s) / π_MCTS(a|s)
+            r(θ) = π_θ_new(a|s) / π_θ_old(a|s)
 
-        drives the network toward the MCTS-improved policy while the clipping
-        ensures conservative steps.
+        This is standard PPO — the "old" log probs come from the network's
+        policy when the data was collected, NOT from the MCTS visit counts.
+        Using MCTS probs would make r ≈ 1 (since MCTS is guided by π_θ),
+        yielding near-zero policy loss.  Instead, MCTS improves data quality
+        (better actions → better trajectories), while PPO's clipped ratio
+        reflects actual parameter changes and drives meaningful updates.
 
         Args:
             buffer: MCTSRolloutBuffer with collected transitions.
@@ -358,8 +398,11 @@ class PPOMCTSTrainer:
 
         adv_tensor = torch.tensor(advantages, dtype=torch.float32, device=self.device)
         ret_tensor = torch.tensor(returns, dtype=torch.float32, device=self.device)
+        # Use the network's own log probs (not MCTS) as "old" for the PPO
+        # ratio.  This ensures r(θ) = π_θ_new / π_θ_old reflects actual
+        # parameter changes, giving a non-trivial policy gradient signal.
         old_log_probs = torch.tensor(
-            [s.mcts_log_prob for s in steps], dtype=torch.float32, device=self.device
+            [s.network_log_prob for s in steps], dtype=torch.float32, device=self.device
         )
         actions = torch.tensor(
             [s.action for s in steps], dtype=torch.long, device=self.device
@@ -455,14 +498,14 @@ class PPOMCTSTrainer:
         ):
             self.current_complexity += 1
             self.success_history.clear()
-            print(f"[Curriculum] Advanced to complexity {self.current_complexity}")
+            self._log(f"[Curriculum] Advanced to complexity {self.current_complexity}")
         elif (
             rate <= self.config.backoff_threshold
             and self.current_complexity > self.config.starting_complexity
         ):
             self.current_complexity -= 1
             self.success_history.clear()
-            print(f"[Curriculum] Backed off to complexity {self.current_complexity}")
+            self._log(f"[Curriculum] Backed off to complexity {self.current_complexity}")
 
     def train(self, num_iterations: int) -> dict:
         """Run the full PPO+MCTS training loop.
@@ -512,7 +555,7 @@ class PPOMCTSTrainer:
                     f"lhits={rollout_info['library_hits']} "
                     if self.config.factor_library_enabled else ""
                 )
-                print(
+                self._log(
                     f"[PPO+MCTS iter {iteration}] "
                     f"complexity={rollout_info['complexity']} "
                     f"episodes={rollout_info['episodes']} "
