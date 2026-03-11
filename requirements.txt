@@ -5,3 +5,9 @@ sympy
 matplotlib
 pytest
 wandb
+
+# JAX dependencies (for ppo-mcts-jax algorithm)
+jax[cuda12]
+flax
+optax
+mctx

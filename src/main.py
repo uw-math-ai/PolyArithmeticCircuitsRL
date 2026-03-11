@@ -77,7 +77,7 @@ def set_seed(seed: int):
 
 def main():
     parser = argparse.ArgumentParser(description="Polynomial Arithmetic Circuits RL")
-    parser.add_argument("--algorithm", choices=["ppo", "ppo-mcts", "alphazero", "sac"],
+    parser.add_argument("--algorithm", choices=["ppo", "ppo-mcts", "ppo-mcts-jax", "alphazero", "sac"],
                         default="ppo", help="Training algorithm")
     parser.add_argument("--iterations", type=int, default=100,
                         help="Number of training iterations")
@@ -104,6 +104,8 @@ def main():
                         help="Number of MCTS simulations per action (default: 100)")
     parser.add_argument("--steps-per-update", type=int, default=None,
                         help="Environment steps collected per PPO update (default: 2048)")
+    parser.add_argument("--mcts-batch-size", type=int, default=64,
+                        help="Number of parallel environments for ppo-mcts-jax (default: 64)")
     parser.add_argument("--sac-use-cql", action="store_true")
     parser.add_argument("--sac-cql-alpha", type=float, default=None)
     parser.add_argument("--sac-bc-warmstart", action="store_true")
@@ -236,6 +238,33 @@ def main():
 
         print("\n=== Final Evaluation ===")
         trainer.evaluate(verbose=True, num_trials=100)
+
+        if config.wandb_enabled:
+            import wandb
+            wandb.finish()
+    elif args.algorithm == "ppo-mcts-jax":
+        from .algorithms.ppo_mcts_jax import PPOMCTSJAXTrainer
+
+        trainer = PPOMCTSJAXTrainer(
+            config, batch_size=args.mcts_batch_size,
+        )
+        print(f"JAX PPO+MCTS with batch_size={args.mcts_batch_size}")
+
+        if args.eval_only:
+            print("Eval-only mode not supported for ppo-mcts-jax yet.")
+            return
+
+        results_dir = args.results_dir or os.path.join(
+            "results", f"ppo-mcts-jax_C{config.max_complexity}"
+        )
+        os.makedirs(results_dir, exist_ok=True)
+
+        print(f"\n=== Training with PPO+MCTS (JAX) ===")
+        print(f"Results will be saved to {results_dir}")
+        history = trainer.train(args.iterations)
+
+        if history:
+            save_training_plots(history, results_dir)
 
         if config.wandb_enabled:
             import wandb

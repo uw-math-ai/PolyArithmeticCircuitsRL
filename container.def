@@ -26,7 +26,10 @@ From: nvidia/cuda:12.4.1-runtime-ubuntu22.04
     pip install --no-cache-dir torch_geometric
 
     # Remaining requirements
-    pip install --no-cache-dir numpy sympy matplotlib pytest
+    pip install --no-cache-dir numpy sympy matplotlib pytest wandb
+
+    # JAX with CUDA 12 support, Flax, optax, mctx (for ppo-mcts-jax)
+    pip install --no-cache-dir "jax[cuda12]" flax optax mctx
 
     # Clean up pip cache
     rm -rf /root/.cache/pip
