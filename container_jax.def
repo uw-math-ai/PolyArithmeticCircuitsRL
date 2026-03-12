@@ -1,0 +1,57 @@
+Bootstrap: docker
+From: nvidia/cuda:12.4.1-runtime-ubuntu22.04
+
+%labels
+    Author PolyArithmeticCircuitsRL
+    Description JAX-only container for ppo-mcts-jax training
+
+%post
+    ln -s /mmfs1/gscratch /gscratch
+    ln -s /mmfs1/data /data
+    ln -s /mmfs1/sw /sw
+    export DEBIAN_FRONTEND=noninteractive
+
+    apt-get update && apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+        python3-venv \
+        git \
+        && rm -rf /var/lib/apt/lists/*
+
+    python3 -m venv /opt/venv
+    . /opt/venv/bin/activate
+
+    # JAX with CUDA 12 support + training deps
+    pip install --no-cache-dir "jax[cuda12]" flax optax mctx
+
+    # Remaining requirements (no PyTorch needed)
+    pip install --no-cache-dir numpy sympy matplotlib wandb
+
+    # Clean up
+    rm -rf /root/.cache/pip
+
+%environment
+    export PATH="/opt/venv/bin:$PATH"
+    export VIRTUAL_ENV="/opt/venv"
+    export NVIDIA_VISIBLE_DEVICES=all
+    export NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+%runscript
+    case ${@} in
+        "")
+            exec /bin/bash
+            ;;
+        *)
+            exec ${@}
+            ;;
+    esac
+
+%help
+    JAX-only Apptainer container for ppo-mcts-jax training.
+    Much smaller than the full container (no PyTorch/PyG).
+
+    Build:
+        apptainer build container_jax.sif container_jax.def
+
+    Run:
+        apptainer run --nv container_jax.sif python -m src.main --algorithm ppo-mcts-jax ...

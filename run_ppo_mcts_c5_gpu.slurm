@@ -16,13 +16,13 @@ module load cuda
 # Verify GPU is visible before starting
 apptainer run --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
-  container.sif \
+  container_jax.sif \
   python -u -c "import jax; print('JAX devices:', jax.devices())"
 
 # Run C5 training
 apptainer run --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
-  container.sif \
+  container_jax.sif \
   python -u -m src.main \
     --algorithm ppo-mcts-jax \
     --fixed-complexities 5 \
