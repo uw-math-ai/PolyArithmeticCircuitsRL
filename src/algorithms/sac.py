@@ -934,7 +934,17 @@ class SACTrainer:
         phase = (iteration - 1) // self.config.sac_fixed_complexity_iters
         return fixed[phase]
 
-    def train(self, num_iterations: int):
+    def train(self, num_iterations: int) -> dict:
+        """Run the full SAC training loop.
+
+        Returns:
+            History dict with metric lists for plotting.
+        """
+        history = {
+            "pg_loss": [], "vf_loss": [], "entropy": [],
+            "success_rate": [], "avg_reward": [], "complexity": [],
+        }
+
         if self.config.sac_bc_warmstart_enabled:
             print("[SAC] Running BC warm start...")
             self._behavior_clone_warmstart()
@@ -950,6 +960,14 @@ class SACTrainer:
 
             if not in_fixed_phase:
                 self._maybe_advance_curriculum()
+
+            # Track history for plots (map SAC losses to PPO-style keys).
+            history["pg_loss"].append(loss_info["actor_loss"])
+            history["vf_loss"].append(loss_info["critic_loss"])
+            history["entropy"].append(loss_info["entropy"])
+            history["success_rate"].append(rollout_info["success_rate"])
+            history["avg_reward"].append(rollout_info["avg_reward"])
+            history["complexity"].append(rollout_info["complexity"])
 
             if self.config.wandb_enabled:
                 import wandb
@@ -991,6 +1009,8 @@ class SACTrainer:
                     f"alpha={loss_info['alpha']:.4f} "
                     f"entropy={loss_info['entropy']:.4f}"
                 )
+
+        return history
 
     def evaluate(
         self,

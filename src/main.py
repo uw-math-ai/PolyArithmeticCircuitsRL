@@ -275,10 +275,20 @@ def main():
             trainer.evaluate(verbose=True, num_trials=100)
             return
 
+        results_dir = args.results_dir or os.path.join(
+            "results", f"sac_C{config.max_complexity}"
+        )
+        os.makedirs(results_dir, exist_ok=True)
+        save_path = os.path.join(results_dir, "checkpoint.pt")
+
         print(f"\n=== Training with {args.algorithm.upper()} ===")
-        trainer.train(args.iterations)
-        trainer.save_checkpoint(args.save_path)
-        print(f"\nSaved checkpoint to {args.save_path}")
+        print(f"Results will be saved to {results_dir}")
+        history = trainer.train(args.iterations)
+        trainer.save_checkpoint(save_path)
+        print(f"\nSaved checkpoint to {save_path}")
+
+        if history:
+            save_training_plots(history, results_dir)
 
         print("\n=== Final Evaluation ===")
         trainer.evaluate(verbose=True, num_trials=100)
