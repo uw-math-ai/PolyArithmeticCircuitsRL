@@ -41,7 +41,8 @@ from ..config import Config
 from ..models.policy_value_net import PolicyValueNet
 from ..environment.circuit_game import CircuitGame
 from ..environment.factor_library import FactorLibrary
-from ..game_board.generator import sample_target, build_game_board
+from ..game_board.generator import sample_target, build_game_board, generate_random_circuit
+from ..environment.fast_polynomial import FastPoly
 from .mcts import MCTS
 
 
@@ -189,18 +190,21 @@ class PPOMCTSTrainer:
         # Lazily-built BFS game boards keyed by complexity.
         self._boards: dict = {}
 
+    MAX_BOARD_COMPLEXITY = 4
+
     def _get_board(self, complexity: int) -> dict:
-        """Return (or build) the BFS game board for a given complexity.
-
-        Args:
-            complexity: Number of operations for polynomial enumeration.
-
-        Returns:
-            Game board dict as returned by build_game_board().
-        """
         if complexity not in self._boards:
             self._boards[complexity] = build_game_board(self.config, complexity)
         return self._boards[complexity]
+
+    def _sample_target(self, complexity: int) -> FastPoly:
+        """Sample a target, using BFS for low complexity and random circuits for high."""
+        if complexity <= self.MAX_BOARD_COMPLEXITY:
+            board = self._get_board(complexity)
+            poly, _ = sample_target(self.config, complexity, board)
+            return poly
+        poly, _ = generate_random_circuit(self.config, complexity)
+        return poly
 
     def _log(self, msg: str) -> None:
         """Print *msg* to stdout and append it to the log file (if set)."""
@@ -253,8 +257,7 @@ class PPOMCTSTrainer:
         self.model.eval()
 
         while len(buffer) < self.config.steps_per_update:
-            board = self._get_board(self.current_complexity)
-            target_poly, _ = sample_target(self.config, self.current_complexity, board)
+            target_poly = self._sample_target(self.current_complexity)
             obs = self.env.reset(target_poly)
             episode_reward = 0.0
             step = 0

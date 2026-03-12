@@ -28,7 +28,7 @@ from ..environment.circuit_game import CircuitGame
 from ..environment.fast_polynomial import FastPoly
 from ..environment.factor_library import FactorLibrary
 from ..evaluation.evaluate import evaluate_model
-from ..game_board.generator import build_game_board, sample_target
+from ..game_board.generator import build_game_board, sample_target, generate_random_circuit
 from ..models.gnn_encoder import CircuitGNN
 
 
@@ -512,10 +512,22 @@ class SACTrainer:
             min=self.config.sac_alpha_min, max=self.config.sac_alpha_max
         )
 
+    # BFS boards are only feasible up to this complexity.
+    MAX_BOARD_COMPLEXITY = 4
+
     def _get_board(self, complexity: int):
         if complexity not in self._boards:
             self._boards[complexity] = build_game_board(self.config, complexity)
         return self._boards[complexity]
+
+    def _sample_target(self, complexity: int) -> FastPoly:
+        """Sample a target, using BFS for low complexity and random circuits for high."""
+        if complexity <= self.MAX_BOARD_COMPLEXITY:
+            board = self._get_board(complexity)
+            poly, _ = sample_target(self.config, complexity, board)
+            return poly
+        poly, _ = generate_random_circuit(self.config, complexity)
+        return poly
 
     def _clone_obs(self, obs: dict) -> dict:
         graph = obs["graph"]
@@ -660,8 +672,7 @@ class SACTrainer:
         library_hits = 0  # Subset of factor_hits where the factor was library-known.
 
         while steps_collected < self.config.sac_steps_per_iter:
-            board = self._get_board(self.current_complexity)
-            target_poly, _ = sample_target(self.config, self.current_complexity, board)
+            target_poly = self._sample_target(self.current_complexity)
             obs = self.env.reset(target_poly)
 
             episode_reward = 0.0

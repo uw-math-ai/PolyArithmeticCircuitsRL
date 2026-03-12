@@ -12,7 +12,8 @@ import torch.optim as optim
 from ..config import Config
 from ..models.policy_value_net import PolicyValueNet
 from ..environment.circuit_game import CircuitGame
-from ..game_board.generator import sample_target, build_game_board
+from ..game_board.generator import sample_target, build_game_board, generate_random_circuit
+from ..environment.fast_polynomial import FastPoly
 from .mcts import MCTS
 
 
@@ -51,10 +52,21 @@ class AlphaZeroTrainer:
         # Game boards (lazy)
         self._boards = {}
 
+    MAX_BOARD_COMPLEXITY = 4
+
     def _get_board(self, complexity: int):
         if complexity not in self._boards:
             self._boards[complexity] = build_game_board(self.config, complexity)
         return self._boards[complexity]
+
+    def _sample_target(self, complexity: int) -> FastPoly:
+        """Sample a target, using BFS for low complexity and random circuits for high."""
+        if complexity <= self.MAX_BOARD_COMPLEXITY:
+            board = self._get_board(complexity)
+            poly, _ = sample_target(self.config, complexity, board)
+            return poly
+        poly, _ = generate_random_circuit(self.config, complexity)
+        return poly
 
     def _get_temperature(self, step: int, total_steps: int) -> float:
         """Temperature schedule: decay from init to final."""
@@ -96,8 +108,7 @@ class AlphaZeroTrainer:
         total_games = self.config.az_games_per_iter
 
         for game_idx in range(total_games):
-            board = self._get_board(self.current_complexity)
-            target_poly, _ = sample_target(self.config, self.current_complexity, board)
+            target_poly = self._sample_target(self.current_complexity)
 
             trajectory, success = self.self_play_game(target_poly)
             successes += int(success)
