@@ -26,6 +26,7 @@ Flow per iteration:
 
 import functools
 import math
+import time
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -39,7 +40,7 @@ from flax.training import train_state
 
 from ..config import Config
 from ..environment.fast_polynomial import FastPoly
-from ..game_board.generator import sample_target, build_game_board, generate_random_circuit
+from ..game_board.generator import generate_random_circuit
 from .jax_env import (
     EnvConfig, EnvState, make_env_config,
     reset as env_reset, step as env_step,
@@ -125,9 +126,6 @@ class PPOMCTSJAXTrainer:
         )
         self.success_history: List[bool] = []
 
-        # Lazily-built game boards.
-        self._boards = {}
-
         # JIT-compile core functions.
         self._jit_apply = jax.jit(self.network.apply)
         self._jit_env_step = jax.jit(
@@ -140,15 +138,6 @@ class PPOMCTSJAXTrainer:
             functools.partial(get_observation, self.env_config)
         )
         self._jit_batched_mcts = jax.jit(self._batched_mcts_search)
-
-    # BFS game boards are only feasible up to this complexity. Above this
-    # threshold, targets are sampled via generate_random_circuit instead.
-    MAX_BOARD_COMPLEXITY = 6
-
-    def _get_board(self, complexity: int) -> dict:
-        if complexity not in self._boards:
-            self._boards[complexity] = build_game_board(self.config, complexity)
-        return self._boards[complexity]
 
     # ------------------------------------------------------------------
     # MCTS via mctx
@@ -262,6 +251,7 @@ class PPOMCTSJAXTrainer:
             num_simulations=self.config.mcts_simulations,
             max_depth=self.config.max_steps,
             invalid_actions=~obs_batch['mask'],  # True = invalid
+            temperature=self.config.temperature_init,
         )
         return policy_output
 
@@ -270,19 +260,16 @@ class PPOMCTSJAXTrainer:
     # ------------------------------------------------------------------
 
     def _sample_one_target(self, complexity: int) -> FastPoly:
-        """Sample a single target polynomial of the given complexity.
+        """Sample a target polynomial by generating a random circuit.
 
-        Uses the BFS game board for low complexities (exact minimum-op
-        guarantees) and ``generate_random_circuit`` for high complexities
-        (instant, but the true minimum complexity may be lower).
+        Uses ``generate_random_circuit`` which is O(complexity) — instant
+        compared to the BFS game board which is combinatorially explosive
+        for complexity >= 4.  The true minimum complexity of the resulting
+        target may be lower than ``complexity``, but this is fine for
+        training: the agent still needs to discover a valid circuit.
         """
-        if complexity <= self.MAX_BOARD_COMPLEXITY:
-            board = self._get_board(complexity)
-            poly, _ = sample_target(self.config, complexity, board)
-            return poly
-        else:
-            poly, _ = generate_random_circuit(self.config, complexity)
-            return poly
+        poly, _ = generate_random_circuit(self.config, complexity)
+        return poly
 
     def _sample_targets_multi(self, n: int) -> Tuple[List[FastPoly], List[int]]:
         """Sample n target polynomials, distributing across complexities.
@@ -637,10 +624,25 @@ class PPOMCTSJAXTrainer:
                 history[f"avg_reward_C{c}"] = []
 
         for iteration in range(1, num_iterations + 1):
+            if iteration == 1:
+                print("Iteration 1: JIT-compiling MCTS + env (this may take a few minutes)...",
+                      flush=True)
+            iter_start = time.time()
+
             transitions, rollout_info = self.collect_rollouts()
+
+            if iteration == 1:
+                print(f"  Rollout done ({time.time() - iter_start:.1f}s). "
+                      "Running PPO update...", flush=True)
+
             advantages, returns = self.compute_gae(transitions)
             loss_info = self.update(transitions, advantages, returns)
             self._maybe_advance_curriculum()
+
+            iter_time = time.time() - iter_start
+            if iteration == 1:
+                print(f"  Iteration 1 complete ({iter_time:.1f}s). "
+                      "Subsequent iterations should be much faster.", flush=True)
 
             history["pg_loss"].append(loss_info["pg_loss"])
             history["vf_loss"].append(loss_info["vf_loss"])
@@ -689,7 +691,8 @@ class PPOMCTSJAXTrainer:
                     f"reward={rollout_info['avg_reward']:.3f} "
                     f"pg_loss={loss_info['pg_loss']:.4f} "
                     f"vf_loss={loss_info['vf_loss']:.4f} "
-                    f"entropy={loss_info['entropy']:.4f}"
+                    f"entropy={loss_info['entropy']:.4f} "
+                    f"({iter_time:.1f}s/iter)"
                 )
                 if self.fixed_complexities:
                     parts = []

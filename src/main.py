@@ -213,9 +213,18 @@ def main():
     if args.wandb_run_name is not None:
         config.wandb_run_name = args.wandb_run_name
 
-    # Auto-detect device (skip torch import for JAX-only path).
+    # Auto-detect device.
     is_jax = args.algorithm == "ppo-mcts-jax"
-    if not is_jax:
+    if is_jax:
+        import jax
+        jax_devices = jax.devices()
+        jax_backend = jax_devices[0].platform if jax_devices else "cpu"
+        config.device = f"jax:{jax_backend}"
+        print(f"JAX backend: {jax_backend} | devices: {jax_devices}")
+        if jax_backend == "cpu":
+            print("WARNING: JAX is running on CPU. For GPU, ensure jax[cuda12] "
+                  "is installed and --nv is passed to apptainer.")
+    else:
         import torch
         if config.device == "cpu" and torch.cuda.is_available():
             config.device = "cuda"
