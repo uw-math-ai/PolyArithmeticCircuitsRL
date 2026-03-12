@@ -8,15 +8,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 
 from .config import Config
-from .models.policy_value_net import PolicyValueNet
-from .algorithms.ppo import PPOTrainer
-from .algorithms.ppo_mcts import PPOMCTSTrainer
-from .algorithms.alphazero import AlphaZeroTrainer
-from .algorithms.sac import SACTrainer
-from .evaluation.evaluate import evaluate_model
 
 
 def save_training_plots(history: dict, results_dir: str) -> None:
@@ -80,12 +73,20 @@ def save_training_plots(history: dict, results_dir: str) -> None:
     print(f"Plots saved to {results_dir}")
 
 
-def set_seed(seed: int):
+def set_seed(seed: int, use_torch: bool = True):
+    """Set random seeds for reproducibility.
+
+    Args:
+        seed: Random seed.
+        use_torch: Whether to also seed PyTorch (skipped for JAX-only runs).
+    """
     random.seed(seed)
     np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
+    if use_torch:
+        import torch
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
 
 
 def main():
@@ -113,6 +114,10 @@ def main():
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--no-curriculum", action="store_true")
+    parser.add_argument("--max-degree", type=int, default=None,
+                        help="Max degree per variable (default: auto = max_complexity)")
+    parser.add_argument("--ent-coef", type=float, default=None,
+                        help="Entropy coefficient for PPO (default: 0.01)")
     parser.add_argument("--mcts-simulations", type=int, default=None,
                         help="Number of MCTS simulations per action (default: 100)")
     parser.add_argument("--steps-per-update", type=int, default=None,
@@ -183,6 +188,10 @@ def main():
         config.sac_fixed_complexity_iters = args.sac_fixed_complexity_iters
     if args.sac_target_entropy_scale is not None:
         config.sac_target_entropy_scale = args.sac_target_entropy_scale
+    if args.max_degree is not None:
+        config.max_degree = args.max_degree
+    if args.ent_coef is not None:
+        config.ent_coef = args.ent_coef
     if args.mcts_simulations is not None:
         config.mcts_simulations = args.mcts_simulations
     if args.steps_per_update is not None:
@@ -204,13 +213,16 @@ def main():
     if args.wandb_run_name is not None:
         config.wandb_run_name = args.wandb_run_name
 
-    # Auto-detect device
-    if config.device == "cpu" and torch.cuda.is_available():
-        config.device = "cuda"
-    if config.device == "cpu" and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        config.device = "mps"
+    # Auto-detect device (skip torch import for JAX-only path).
+    is_jax = args.algorithm == "ppo-mcts-jax"
+    if not is_jax:
+        import torch
+        if config.device == "cpu" and torch.cuda.is_available():
+            config.device = "cuda"
+        if config.device == "cpu" and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            config.device = "mps"
 
-    set_seed(config.seed)
+    set_seed(config.seed, use_torch=not is_jax)
 
     # Initialise Weights & Biases if enabled.
     if config.wandb_enabled:
@@ -238,6 +250,7 @@ def main():
           f"target_size={config.target_size}")
 
     if args.algorithm == "sac":
+        from .algorithms.sac import SACTrainer
         trainer = SACTrainer(config, device=config.device)
         actor_params = sum(p.numel() for p in trainer.actor.parameters())
         critic_params = sum(p.numel() for p in trainer.critic.parameters())
@@ -309,6 +322,12 @@ def main():
             import wandb
             wandb.finish()
     else:
+        from .models.policy_value_net import PolicyValueNet
+        from .algorithms.ppo import PPOTrainer
+        from .algorithms.ppo_mcts import PPOMCTSTrainer
+        from .algorithms.alphazero import AlphaZeroTrainer
+        from .evaluation.evaluate import evaluate_model
+
         # Build model
         model = PolicyValueNet(config)
         print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")

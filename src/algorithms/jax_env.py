@@ -64,6 +64,7 @@ class EnvConfig(NamedTuple):
     success_reward: float
     step_penalty: float
     gamma: float
+    use_reward_shaping: bool
 
 
 def make_env_config(config) -> EnvConfig:
@@ -83,6 +84,7 @@ def make_env_config(config) -> EnvConfig:
         success_reward=config.success_reward,
         step_penalty=config.step_penalty,
         gamma=config.gamma,
+        use_reward_shaping=config.use_reward_shaping,
     )
 
 
@@ -207,6 +209,38 @@ def _convolve_2d_jax(a: jnp.ndarray, b: jnp.ndarray,
 
 
 # ---------------------------------------------------------------------------
+# Reward shaping helpers (potential-based, Ng et al. 1999)
+# ---------------------------------------------------------------------------
+
+def _term_similarity(node_coeffs: jnp.ndarray,
+                     target_coeffs: jnp.ndarray) -> jnp.ndarray:
+    """Fraction of matching nonzero target coefficients. Pure JAX scalar.
+
+    Mirrors FastPoly.term_similarity: counts positions where both the target
+    has a nonzero coefficient and the node matches it, divided by the total
+    number of nonzero target terms.
+    """
+    target_nonzero = target_coeffs != 0
+    total = jnp.maximum(target_nonzero.sum(), 1).astype(jnp.float32)
+    matching = ((node_coeffs == target_coeffs) & target_nonzero).sum().astype(jnp.float32)
+    return matching / total
+
+
+def _best_similarity(node_coeffs: jnp.ndarray, num_nodes: jnp.ndarray,
+                     target_coeffs: jnp.ndarray,
+                     max_nodes: int) -> jnp.ndarray:
+    """Max term_similarity across all active circuit nodes.
+
+    This is the shaping potential phi(s). A value of 1.0 means some node
+    already matches the target exactly.
+    """
+    sims = jax.vmap(lambda nc: _term_similarity(nc, target_coeffs))(node_coeffs)
+    mask = jnp.arange(max_nodes) < num_nodes
+    sims = jnp.where(mask, sims, 0.0)
+    return sims.max()
+
+
+# ---------------------------------------------------------------------------
 # Environment init / step  (pure functions)
 # ---------------------------------------------------------------------------
 
@@ -304,6 +338,13 @@ def step(env_config: EnvConfig, state: EnvState,
     poly_i = state.node_coeffs[i]
     poly_j = state.node_coeffs[j]
 
+    # Snapshot shaping potential *before* adding new node.
+    if env_config.use_reward_shaping:
+        phi_before = _best_similarity(
+            state.node_coeffs, state.num_nodes,
+            state.target_coeffs, max_nodes,
+        )
+
     # Compute new polynomial.
     new_coeffs_add = poly_add(poly_i, poly_j, mod)
     new_coeffs_mul = poly_mul(poly_i, poly_j, mod,
@@ -341,10 +382,19 @@ def step(env_config: EnvConfig, state: EnvState,
     at_max_nodes = num_nodes >= max_nodes
     done = is_success | at_max_steps | at_max_nodes
 
-    # Reward: step_penalty + success_reward if success.
-    reward = env_config.step_penalty + jnp.where(
-        is_success, env_config.success_reward, 0.0
-    )
+    # Reward: step_penalty + success_reward if success, else shaping delta.
+    if env_config.use_reward_shaping:
+        phi_after = _best_similarity(
+            node_coeffs, num_nodes, state.target_coeffs, max_nodes,
+        )
+        shaping = env_config.gamma * phi_after - phi_before
+        reward = env_config.step_penalty + jnp.where(
+            is_success, env_config.success_reward, shaping
+        )
+    else:
+        reward = env_config.step_penalty + jnp.where(
+            is_success, env_config.success_reward, 0.0
+        )
 
     next_state = EnvState(
         node_coeffs=node_coeffs,
