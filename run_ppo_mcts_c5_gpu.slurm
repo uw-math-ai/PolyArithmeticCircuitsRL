@@ -7,18 +7,20 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=64G
 #SBATCH --gres=gpu:1
-#SBATCH --time=24:00:00
+#SBATCH --time=8:00:00
 #SBATCH --output=results/slurm/%x_%j.out
 
 cd /gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL
 module load cuda
 
 apptainer run --nv --bind /gscratch:/gscratch \
+  --env PYTHONUNBUFFERED=1 \
   container.sif \
-  python -m src.main \
+  python -u -m src.main \
     --algorithm ppo-mcts-jax \
     --fixed-complexities 5 \
     --iterations 500 \
-    --mcts-batch-size 256 \
-    --mcts-simulations 50 \
+    --mcts-batch-size 512 \
+    --mcts-simulations 32 \
+    --ent-coef 0.05 \
     --wandb
