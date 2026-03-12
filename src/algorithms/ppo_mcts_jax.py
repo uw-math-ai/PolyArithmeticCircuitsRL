@@ -37,6 +37,7 @@ import numpy as np
 import optax
 import flax.linen as nn
 from flax.training import train_state
+from tqdm import tqdm
 
 from ..config import Config
 from ..environment.fast_polynomial import FastPoly
@@ -623,10 +624,11 @@ class PPOMCTSJAXTrainer:
                 history[f"success_rate_C{c}"] = []
                 history[f"avg_reward_C{c}"] = []
 
-        for iteration in range(1, num_iterations + 1):
-            if iteration == 1:
-                print("Iteration 1: JIT-compiling MCTS + env (this may take a few minutes)...",
-                      flush=True)
+        print("Iteration 1: JIT-compiling MCTS + env (this may take a few minutes)...",
+              flush=True)
+
+        pbar = tqdm(range(1, num_iterations + 1), desc="Training", unit="iter")
+        for iteration in pbar:
             iter_start = time.time()
 
             transitions, rollout_info = self.collect_rollouts()
@@ -643,6 +645,14 @@ class PPOMCTSJAXTrainer:
             if iteration == 1:
                 print(f"  Iteration 1 complete ({iter_time:.1f}s). "
                       "Subsequent iterations should be much faster.", flush=True)
+
+            # Update tqdm postfix with key metrics.
+            pbar.set_postfix({
+                "success": f"{rollout_info['success_rate']:.1%}",
+                "reward": f"{rollout_info['avg_reward']:.2f}",
+                "entropy": f"{loss_info['entropy']:.2f}",
+                "s/iter": f"{iter_time:.1f}",
+            })
 
             history["pg_loss"].append(loss_info["pg_loss"])
             history["vf_loss"].append(loss_info["vf_loss"])
@@ -705,6 +715,6 @@ class PPOMCTSJAXTrainer:
                         f"episodes=",
                         f"complexity={rollout_info['complexity']} episodes=",
                     )
-                print(line)
+                tqdm.write(line)
 
         return history

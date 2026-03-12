@@ -25,7 +25,7 @@ From: nvidia/cuda:12.4.1-runtime-ubuntu22.04
     pip install --no-cache-dir "jax[cuda12]" flax optax mctx
 
     # Remaining requirements (no PyTorch needed)
-    pip install --no-cache-dir numpy sympy matplotlib wandb
+    pip install --no-cache-dir numpy sympy matplotlib wandb tqdm
 
     # Clean up
     rm -rf /root/.cache/pip
