@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=ppo_mcts_c6_gpu
-#SBATCH --account=amath
-#SBATCH --partition=gpu-l40s
+#SBATCH --account=stf
+#SBATCH --partition=gpu-2080ti
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
@@ -25,6 +25,7 @@ apptainer run --nv --bind /gscratch:/gscratch \
   container_jax.sif \
   python -u -m src.main \
     --algorithm ppo-mcts-jax \
+    --n-variables 3 \
     --fixed-complexities 6 \
     --iterations 200 \
     --mcts-batch-size 256 \
