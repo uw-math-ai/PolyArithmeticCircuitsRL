@@ -143,69 +143,70 @@ def poly_add(a: jnp.ndarray, b: jnp.ndarray, mod: int) -> jnp.ndarray:
 
 def poly_mul(a: jnp.ndarray, b: jnp.ndarray, mod: int,
              n_variables: int, max_degree: int) -> jnp.ndarray:
-    """Multiply two polynomials mod p using reshape + n-d convolution + truncate.
+    """Multiply two polynomials mod p using n-d convolution + truncate.
 
-    For 2 variables with max_degree d, coeffs are (d+1)x(d+1) arrays.
-    We reshape flat vectors, convolve, truncate, flatten, and reduce mod p.
+    Supports n_variables = 1, 2, or 3 via jax.lax.conv_general_dilated.
+    Coefficients are reshaped to (d+1)^n arrays, convolved, truncated back
+    to (d+1)^n, flattened, and reduced mod p.
     """
     shape = (max_degree + 1,) * n_variables
     a_nd = a.reshape(shape)
     b_nd = b.reshape(shape)
-
-    if n_variables == 1:
-        # 1D convolution: jnp.convolve, truncate to max_degree+1.
-        result = jnp.convolve(a_nd, b_nd)
-        result = result[:max_degree + 1]
-    elif n_variables == 2:
-        # 2D convolution via jax.scipy.signal.
-        from jax.scipy.signal import correlate2d
-        # correlate2d with flipped kernel = convolve
-        b_flip = b_nd[::-1, ::-1]
-        # Pad a to get full convolution result, then use 'same' size trick.
-        # Actually, use direct approach: convolve = correlate with flipped kernel.
-        # Full convolution output shape = (2*d+1, 2*d+1); we only need (d+1, d+1).
-        full_size = 2 * max_degree + 1
-        a_pad = jnp.zeros((full_size, full_size), dtype=a.dtype)
-        a_pad = a_pad.at[:max_degree + 1, :max_degree + 1].set(a_nd)
-        # Convolve via correlate with flipped b.
-        result_2d = jnp.zeros((max_degree + 1, max_degree + 1), dtype=a.dtype)
-        # Direct nested loop replaced by: slide b_flip across a_pad.
-        # For small sizes (7x7), this is fine to express as:
-        result_full = _convolve_2d_jax(a_nd, b_nd, max_degree)
-        result = result_full[:max_degree + 1, :max_degree + 1]
-    else:
-        # General n-d: fall back to nested-loop approach via scan.
-        # For now, only support n_variables <= 2 in the JAX path.
-        raise NotImplementedError(
-            f"JAX poly_mul not implemented for n_variables={n_variables}"
-        )
-
+    result = _convolve_nd_jax(a_nd, b_nd, n_variables, max_degree)
     return result.flatten() % mod
 
 
-def _convolve_2d_jax(a: jnp.ndarray, b: jnp.ndarray,
-                     max_degree: int) -> jnp.ndarray:
-    """2D polynomial multiplication truncated to (max_degree+1)^2.
+# Dimension number strings for jax.lax.conv_general_dilated by spatial rank.
+_CONV_DIM_NUMBERS = {
+    1: ('NCH', 'OIH', 'NCH'),
+    2: ('NCHW', 'OIHW', 'NCHW'),
+    3: ('NCDHW', 'OIDHW', 'NCDHW'),
+}
 
-    Uses jax.lax.conv_general_dilated for GPU-friendly 2D convolution.
+
+def _convolve_nd_jax(a: jnp.ndarray, b: jnp.ndarray,
+                     n_variables: int, max_degree: int) -> jnp.ndarray:
+    """N-dimensional polynomial multiplication truncated to (max_degree+1)^n.
+
+    Uses jax.lax.conv_general_dilated for GPU-friendly n-D convolution.
+    Supports n_variables = 1, 2, or 3 (matching JAX's supported spatial dims).
+
+    Args:
+        a: n-d array of shape (d+1,)*n_variables (int32 coefficients).
+        b: n-d array of shape (d+1,)*n_variables (int32 coefficients).
+        n_variables: Number of polynomial variables (1, 2, or 3).
+        max_degree: Maximum degree per variable.
+
+    Returns:
+        n-d int32 array of shape (d+1,)*n_variables — the truncated product.
     """
     d = max_degree + 1
-    # Reshape for conv: (batch=1, channels=1, H, W)
-    a4d = a.reshape(1, 1, d, d).astype(jnp.float32)
-    b4d = b.reshape(1, 1, d, d).astype(jnp.float32)
-    # conv_general_dilated computes cross-correlation. To get polynomial
-    # convolution (a*b)[i,j] = sum a[m,n]*b[i-m,j-n], we flip b and pad a
-    # on the LEFT/TOP so that result[h,w] maps to product index (h,w).
-    b_flip = b4d[:, :, ::-1, ::-1]
-    a_padded = jnp.pad(a4d, ((0, 0), (0, 0), (d - 1, 0), (d - 1, 0)))
+    shape = (d,) * n_variables
+
+    # Reshape for conv: (batch=1, channels=1, *spatial_dims)
+    a_conv = a.reshape((1, 1) + shape).astype(jnp.float32)
+    b_conv = b.reshape((1, 1) + shape).astype(jnp.float32)
+
+    # Flip kernel along all spatial axes for convolution (correlate w/ flipped = convolve).
+    flip_slices = (slice(None), slice(None)) + tuple(
+        slice(None, None, -1) for _ in range(n_variables)
+    )
+    b_flip = b_conv[flip_slices]
+
+    # Pad input on the left/front of each spatial dimension by (d-1).
+    pad_config = [(0, 0), (0, 0)] + [(d - 1, 0)] * n_variables
+    a_padded = jnp.pad(a_conv, pad_config)
+
     result = jax.lax.conv_general_dilated(
         a_padded, b_flip,
-        window_strides=(1, 1),
+        window_strides=(1,) * n_variables,
         padding='VALID',
-        dimension_numbers=('NCHW', 'OIHW', 'NCHW'),
+        dimension_numbers=_CONV_DIM_NUMBERS[n_variables],
     )
-    # Result shape: (1, 1, d, d). First d×d entries are the truncated product.
-    return result[0, 0, :d, :d].astype(jnp.int32)
+
+    # Extract the first d entries along each spatial dimension.
+    out_slices = (0, 0) + tuple(slice(None, d) for _ in range(n_variables))
+    return result[out_slices].astype(jnp.int32)
 
 
 # ---------------------------------------------------------------------------

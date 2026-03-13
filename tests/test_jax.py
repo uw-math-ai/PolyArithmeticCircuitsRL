@@ -133,6 +133,57 @@ class TestPolyArithmetic:
         expected[1, 1] = 1  # x0 * x1
         np.testing.assert_array_equal(result, expected.flatten())
 
+    def test_poly_mul_3d(self):
+        """x0 * x1 and x1 * x2 in 3 variables, mod 5."""
+        # 3 variables, max_degree=4. Shape (5,5,5), flattened size 125.
+        d = 5
+        # x0 * x1: coefficient at (1,0,0) * (0,1,0) -> (1,1,0)
+        a = np.zeros((d, d, d), dtype=np.int32)
+        a[1, 0, 0] = 1  # x0
+        b = np.zeros((d, d, d), dtype=np.int32)
+        b[0, 1, 0] = 1  # x1
+        result = poly_mul(
+            jnp.array(a.flatten()), jnp.array(b.flatten()),
+            mod=5, n_variables=3, max_degree=4,
+        )
+        expected = np.zeros((d, d, d), dtype=np.int32)
+        expected[1, 1, 0] = 1  # x0 * x1
+        np.testing.assert_array_equal(result, expected.flatten())
+
+        # x1 * x2: coefficient at (0,1,0) * (0,0,1) -> (0,1,1)
+        c = np.zeros((d, d, d), dtype=np.int32)
+        c[0, 1, 0] = 1  # x1
+        e = np.zeros((d, d, d), dtype=np.int32)
+        e[0, 0, 1] = 1  # x2
+        result2 = poly_mul(
+            jnp.array(c.flatten()), jnp.array(e.flatten()),
+            mod=5, n_variables=3, max_degree=4,
+        )
+        expected2 = np.zeros((d, d, d), dtype=np.int32)
+        expected2[0, 1, 1] = 1  # x1 * x2
+        np.testing.assert_array_equal(result2, expected2.flatten())
+
+    def test_poly_mul_3d_higher_degree(self):
+        """(x0 + x1) * (x0 + x2) in 3 variables, mod 5."""
+        d = 5
+        a = np.zeros((d, d, d), dtype=np.int32)
+        a[1, 0, 0] = 1  # x0
+        a[0, 1, 0] = 1  # x1
+        b = np.zeros((d, d, d), dtype=np.int32)
+        b[1, 0, 0] = 1  # x0
+        b[0, 0, 1] = 1  # x2
+        result = poly_mul(
+            jnp.array(a.flatten()), jnp.array(b.flatten()),
+            mod=5, n_variables=3, max_degree=4,
+        )
+        # (x0+x1)(x0+x2) = x0^2 + x0*x2 + x0*x1 + x1*x2
+        expected = np.zeros((d, d, d), dtype=np.int32)
+        expected[2, 0, 0] = 1  # x0^2
+        expected[1, 0, 1] = 1  # x0*x2
+        expected[1, 1, 0] = 1  # x0*x1
+        expected[0, 1, 1] = 1  # x1*x2
+        np.testing.assert_array_equal(result, expected.flatten())
+
     def test_poly_mul_mod(self):
         """Multiplication result is reduced mod p."""
         # (3) * (2) = 6 mod 5 = 1 in 1 variable, degree 2.
