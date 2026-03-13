@@ -332,7 +332,7 @@ def main():
 
         print(f"\n=== Training with PPO+MCTS (JAX) ===")
         print(f"Results will be saved to {results_dir}")
-        history = trainer.train(args.iterations)
+        history = trainer.train(args.iterations, results_dir=results_dir)
 
         if history:
             save_training_plots(history, results_dir)

@@ -26,6 +26,8 @@ Flow per iteration:
 
 import functools
 import math
+import os
+import pickle
 import time
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
@@ -596,10 +598,51 @@ class PPOMCTSJAXTrainer:
             print(f"[Curriculum] Backed off to complexity {self.current_complexity}")
 
     # ------------------------------------------------------------------
+    # Checkpoint save / load
+    # ------------------------------------------------------------------
+
+    def save_checkpoint(self, path: str) -> None:
+        """Save model params, optimizer state, and config to a pickle file.
+
+        Args:
+            path: File path (e.g. 'results/.../checkpoint_00050.pkl').
+        """
+        state_dict = {
+            "params": self.train_state.params,
+            "opt_state": self.train_state.opt_state,
+            "step": int(self.train_state.step),
+            "config": self.config,
+            "fixed_complexities": self.fixed_complexities,
+            "current_complexity": self.current_complexity,
+            "algorithm": "ppo-mcts-jax",
+        }
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            pickle.dump(state_dict, f)
+
+    def load_checkpoint(self, path: str) -> None:
+        """Load model params and optimizer state from a pickle checkpoint.
+
+        Args:
+            path: Path to a checkpoint saved by save_checkpoint().
+        """
+        with open(path, "rb") as f:
+            state_dict = pickle.load(f)
+        self.train_state = self.train_state.replace(
+            params=state_dict["params"],
+            opt_state=state_dict["opt_state"],
+            step=state_dict["step"],
+        )
+        self.current_complexity = state_dict.get(
+            "current_complexity", self.current_complexity
+        )
+
+    # ------------------------------------------------------------------
     # Main train loop
     # ------------------------------------------------------------------
 
-    def train(self, num_iterations: int) -> dict:
+    def train(self, num_iterations: int,
+              results_dir: str = "results") -> dict:
         """Run the full PPO+MCTS (JAX) training loop.
 
         Each iteration:
@@ -607,13 +650,16 @@ class PPOMCTSJAXTrainer:
           2. Compute GAE.
           3. PPO update.
           4. Adjust curriculum.
+          5. Save checkpoint every 50 iterations.
 
         Args:
             num_iterations: Number of collect + update cycles.
+            results_dir: Directory for saving checkpoints.
 
         Returns:
             History dict with metric lists.
         """
+        checkpoint_interval = 50
         history = {
             "pg_loss": [], "vf_loss": [], "entropy": [],
             "success_rate": [], "avg_reward": [], "complexity": [],
@@ -716,5 +762,13 @@ class PPOMCTSJAXTrainer:
                         f"complexity={rollout_info['complexity']} episodes=",
                     )
                 tqdm.write(line)
+
+            # Save periodic checkpoints.
+            if iteration % checkpoint_interval == 0 or iteration == num_iterations:
+                ckpt_path = os.path.join(
+                    results_dir, f"checkpoint_{iteration:05d}.pkl"
+                )
+                self.save_checkpoint(ckpt_path)
+                tqdm.write(f"  Saved checkpoint: {ckpt_path}")
 
         return history
