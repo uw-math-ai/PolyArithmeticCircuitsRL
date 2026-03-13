@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=ppo_mcts_c5_gpu
-#SBATCH --account=stf
-#SBATCH --partition=gpu-2080ti
+#SBATCH --account=amath
+#SBATCH --partition=gpu-rtx6k
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
