@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 #SBATCH --gres=gpu:1
-#SBATCH --time=0:30:00
+#SBATCH --time=2:30:00
 #SBATCH --output=results/slurm/%x_%j.out
 
 cd /gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL
