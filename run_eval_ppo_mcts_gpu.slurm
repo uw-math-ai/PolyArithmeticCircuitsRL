@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=eval_ppo_mcts
-#SBATCH --account=amath
+#SBATCH --account=stf
 #SBATCH --partition=gpu-rtx6k
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

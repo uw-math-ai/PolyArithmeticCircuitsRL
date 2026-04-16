@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=jax_c5_c8
-#SBATCH --account=amath
+#SBATCH --account=stf
 #SBATCH --partition=gpu-l40s
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=sac_c6_gpu
-#SBATCH --account=amath
+#SBATCH --account=stf
 #SBATCH --partition=gpu-l40s
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
