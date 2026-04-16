@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=jax_c5_c8
-#SBATCH --account=amath
-#SBATCH --partition=gpu-l40s
+#SBATCH --partition=ckpt
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16

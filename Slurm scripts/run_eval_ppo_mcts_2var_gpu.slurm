@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=eval_ppo_mcts_2var
-#SBATCH --account=amath
-#SBATCH --partition=gpu-rtx6k
+#SBATCH --partition=ckpt
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8

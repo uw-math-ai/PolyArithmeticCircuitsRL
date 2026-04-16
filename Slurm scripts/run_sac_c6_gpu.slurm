@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=sac_c6_gpu
-#SBATCH --account=amath
-#SBATCH --partition=gpu-l40s
+#SBATCH --partition=ckpt
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
