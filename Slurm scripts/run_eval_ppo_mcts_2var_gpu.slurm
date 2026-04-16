@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=eval_ppo_mcts
+#SBATCH --job-name=eval_ppo_mcts_2var
 #SBATCH --account=amath
 #SBATCH --partition=gpu-rtx6k
 #SBATCH --nodes=1
@@ -10,15 +10,18 @@
 #SBATCH --time=0:30:00
 #SBATCH --output=results/slurm/%x_%j.out
 
+set -euo pipefail
+
 cd /gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL
 module load cuda
+mkdir -p results/slurm
 
-# Evaluate C5 checkpoints
+# Evaluate C5 2-var checkpoints
 apptainer run --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
   container_jax.sif \
   python -u eval_ppo_mcts_jax.py \
-    --checkpoint-dir results/ppo-mcts-jax_C5 \
+    --checkpoint-dir results/ppo-mcts-jax_fl_C5_2var \
     --iterations 50 100 150 200 \
     --complexities 5 \
     --num-trials 1000 \
@@ -26,12 +29,12 @@ apptainer run --nv --bind /gscratch:/gscratch \
     --temperature 0.1 \
     --wandb
 
-# Evaluate C6 checkpoints
+# Evaluate C6 2-var checkpoints
 apptainer run --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
   container_jax.sif \
   python -u eval_ppo_mcts_jax.py \
-    --checkpoint-dir results/ppo-mcts-jax_C6 \
+    --checkpoint-dir results/ppo-mcts-jax_fl_C6_2var \
     --iterations 50 100 150 200 \
     --complexities 6 \
     --num-trials 1000 \

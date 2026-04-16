@@ -30,7 +30,7 @@ Mechanism
 
 3. Completion bonuses fire when the circuit contains both pieces for one final op:
    - Additive: T - v_new already in the circuit → +completion_bonus.
-   - Multiplicative: T / v_new is in the circuit or is a scalar → +completion_bonus.
+   - Multiplicative: T / v_new is already in the circuit → +completion_bonus.
 
 4. After a successful episode, every agent-built node is registered in the library
    so future episodes can benefit from it.
@@ -352,8 +352,7 @@ class FactorLibrary:
         over F_5: ZZ remainder is 5, which reduces to 0 mod 5).
 
         If the remainder vanishes mod p, returns the quotient as a FastPoly
-        (with coefficients reduced mod p). The quotient may be a scalar
-        (constant polynomial); callers can test this via quotient.is_scalar().
+        (with coefficients reduced mod p).
 
         Returns None if:
           - divisor is the zero polynomial.

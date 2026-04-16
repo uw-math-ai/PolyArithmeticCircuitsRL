@@ -179,7 +179,7 @@ An in-memory cache that accumulates knowledge about sub-computations across epis
 
 **Completion bonus** — At each step, two cheap checks determine whether the circuit is exactly one operation away from success:
 - *Additive*: $T - v$ is already in the circuit → the agent could do $v + (T-v) = T$ next.
-- *Multiplicative*: the exact quotient $T/v$ is already in the circuit, or is a scalar → the agent could do $v \times (T/v) = T$ next.
+- *Multiplicative*: the exact quotient $T/v$ is already in the circuit → the agent could do $v \times (T/v) = T$ next.
 
 Each direction fires at most once per episode to prevent exploitation.
 
@@ -358,7 +358,7 @@ By the **potential-based shaping theorem** (Ng et al., 1999), $r_{\text{shaping}
 
 The completion bonus fires when the newly built node $v$ creates a "one-step gap" to success:
 - **Additive:** $T - v$ already exists in the circuit (one ADD away from $T$)
-- **Multiplicative:** $T / v$ divides exactly and the quotient is in the circuit or is a scalar (one MUL away from $T$)
+- **Multiplicative:** $T / v$ divides exactly and the quotient is already in the circuit (one MUL away from $T$)
 
 ---
 
@@ -393,7 +393,7 @@ $$r_{\text{complete}} = r_c \quad (\text{default } +3.0, \text{ fires once per e
 - If $v$ is **library-known**, dynamic discovery runs (SymPy gated):
   1. Factorize $T - v$ over $\mathbb{Z}$ → new additive subgoals extend $\mathcal{F}$.
   2. Compute exact quotient $T / v$ over $\mathbb{Z}$ → if exact, add quotient and its factors to $\mathcal{F}$ as multiplicative subgoals.
-  3. **Multiplicative completion**: if $T/v$ is a scalar or is already in the circuit → $r_{\text{complete}} = r_c$ (separate from additive, fires once).
+  3. **Multiplicative completion**: if $T/v$ is already in the circuit → $r_{\text{complete}} = r_c$ (separate from additive, fires once).
 
 **At episode end (on success):**
 - All agent-constructed nodes $v_{n_{\text{init}}}, \ldots, v_{N-1}$ are registered in the factor library, available as subgoals in future episodes.

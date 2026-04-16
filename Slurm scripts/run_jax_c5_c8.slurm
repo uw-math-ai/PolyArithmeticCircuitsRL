@@ -10,18 +10,16 @@
 #SBATCH --time=8:00:00
 #SBATCH --output=results/slurm/%x_%j.out
 
-# ---- IMPORTANT ----
-# If you see a Python 3.6 SyntaxError, rebuild the container:
-#   apptainer build container.sif container.def
-# The old container.sif uses Python 3.6; the new def uses Ubuntu 22.04 / Python 3.10+.
+set -euo pipefail
 
 cd /gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL
 module load cuda
+mkdir -p results/slurm
 
 # PYTHONUNBUFFERED=1 ensures logs stream immediately (no buffering).
 apptainer run --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
-  container.sif \
+  container_jax.sif \
   python -u -m src.main \
     --algorithm ppo-mcts-jax \
     --fixed-complexities 5 6 7 8 \
@@ -31,4 +29,9 @@ apptainer run --nv --bind /gscratch:/gscratch \
     --mcts-batch-size 512 \
     --mcts-simulations 32 \
     --ent-coef 0.05 \
+    --factor-subgoal-reward 1.0 \
+    --factor-library-bonus 0.5 \
+    --completion-bonus 3.0 \
+    --results-dir results/ppo-mcts-jax_fl_C5_C8 \
+    --wandb-run-name ppo-mcts-jax_fl_C5_C8 \
     --wandb
