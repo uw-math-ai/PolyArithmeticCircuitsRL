@@ -1,5 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=ppo_mcts_c6_gpu
+#SBATCH --account=stf
 #SBATCH --partition=ckpt
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -16,13 +17,13 @@ module load cuda
 mkdir -p results/slurm
 
 # Verify GPU is visible before starting
-apptainer run --nv --bind /gscratch:/gscratch \
+apptainer exec --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
   container_jax.sif \
   python -u -c "import jax; print('JAX devices:', jax.devices())"
 
 # Run C6 training
-apptainer run --nv --bind /gscratch:/gscratch \
+apptainer exec --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
   container_jax.sif \
   python -u -m src.main \

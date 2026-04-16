@@ -1,5 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=sac_c5_gpu
+#SBATCH --account=stf
 #SBATCH --partition=ckpt
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -15,12 +16,12 @@ cd /gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL
 module load cuda
 mkdir -p results/slurm
 
-apptainer run --nv --bind /gscratch:/gscratch \
+apptainer exec --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
   container.sif \
   python -u -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count()); print('Device 0:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none')"
 
-apptainer run --nv --bind /gscratch:/gscratch \
+apptainer exec --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
   container.sif \
   python -u -m src.main \

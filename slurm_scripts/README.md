@@ -4,8 +4,8 @@ This folder is the canonical home for Hyak job scripts.
 
 Current assumption for job submission:
 
+- use `#SBATCH --account=stf`
 - use `#SBATCH --partition=ckpt`
-- do not set an explicit `#SBATCH --account=...`
 
 If Hyak rejects that combination for your user, update the scripts to the
 account/partition pair reported by `hyakalloc`.
