@@ -2,13 +2,19 @@
 """Evaluate a trained DQN+HER agent.
 
 Usage:
-    python scripts/evaluate.py --checkpoint runs/best_lvl2.pt --episodes 200
+    python scripts/evaluate.py --checkpoint runs/best_lvl6.pt --episodes 200
 """
 
 import argparse
 from dataclasses import replace
 from typing import Optional
+from pathlib import Path
+import sys
 import warnings
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from poly_circuit_rl.config import Config
 from poly_circuit_rl.env.circuit_env import PolyCircuitEnv

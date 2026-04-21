@@ -36,7 +36,7 @@ class Config:
     """
     # --- Environment ---
     n_vars: int = 2
-    max_ops: int = 4
+    max_ops: int = 6
     L: int = 16               # max visible nodes in observation
     max_nodes: int = 20       # hard cap on circuit nodes
     m: int = 16               # number of evaluation points
@@ -88,7 +88,7 @@ class Config:
     her_k: int = 4
 
     # --- Curriculum ---
-    curriculum_levels: Tuple[int, ...] = (1, 2, 3, 4)
+    curriculum_levels: Tuple[int, ...] = (1, 2, 3, 4, 5, 6)
     curriculum_window: int = 100
     curriculum_train_threshold: float = 0.50
     curriculum_eval_threshold: float = 0.70

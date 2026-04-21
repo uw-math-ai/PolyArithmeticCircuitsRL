@@ -152,6 +152,65 @@ class InterestingPolynomialSampler:
         return len(self._all_polys)
 
 
+class FrozenSplitSampler:
+    """Loads a pre-built JSONL split produced by scripts/build_dataset.py.
+
+    Skips graph enumeration entirely — the dataset is enumerated once and
+    reused across runs, which gives reproducibility and saves ~2 min per run.
+    Accepts rows with either ``poly_key`` (canonical) or just ``expr_str``.
+    """
+
+    def __init__(self, jsonl_path: str, n_vars: int):
+        from ..core.poly import Poly  # local import to avoid cycles
+        self.n_vars = n_vars
+        self._path = jsonl_path
+        self.var_names: List[str] = (
+            ["x"] if n_vars == 1 else [f"x{i}" for i in range(n_vars)]
+        )
+
+        self.by_length: Dict[int, List[Tuple[Poly, Dict]]] = defaultdict(list)
+        self._all_polys: List[Tuple[Poly, Dict]] = []
+
+        path = Path(jsonl_path)
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                rec = json.loads(line)
+                sl = rec.get("shortest_length")
+                if sl is None or sl <= 0:
+                    continue
+                sl = int(sl)
+                poly: Poly = {}
+                if "poly_key" in rec:
+                    for monom, num, den in rec["poly_key"]:
+                        poly[tuple(monom)] = Fraction(num, den)
+                else:
+                    poly = _sympy_expr_to_poly(rec["expr_str"], self.var_names)
+                entry = (poly, rec)
+                self._all_polys.append(entry)
+                self.by_length[sl].append(entry)
+        if not self._all_polys:
+            raise ValueError(f"Frozen split at {self._path} contains no usable polys")
+
+    def sample(self, rng: random.Random, max_ops: int) -> Tuple[Poly, Optional[Dict]]:
+        candidates = []
+        for length, entries in self.by_length.items():
+            if length <= max_ops:
+                candidates.extend(entries)
+        if not candidates:
+            available = sorted(self.by_length.keys())
+            raise ValueError(
+                f"No frozen-split targets with shortest_length <= {max_ops} in {self._path}. "
+                f"Available lengths: {available}"
+            )
+        return rng.choice(candidates)
+
+    def __len__(self) -> int:
+        return len(self._all_polys)
+
+
 class GenerativeInterestingPolynomialSampler:
     """Auto-generates interesting polynomials via graph enumeration at init time.
 

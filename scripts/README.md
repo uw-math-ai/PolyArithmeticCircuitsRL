@@ -1,87 +1,134 @@
-# scripts/ - Training and evaluation entrypoints
+# scripts/ - CLI entrypoints and helper wrappers
 
-Command-line wrappers for training and checkpoint evaluation.
+This folder contains Python entrypoints and shell wrappers for common workflows.
 
-## `train.py`
-
-Runs curriculum DQN+HER training.
-
-### Examples
+## Quick workflow (recommended)
 
 ```bash
-# Basic
+# 1) Build dataset split for complexity up to 6
+bash scripts/make_dataset.sh
+
+# 2) Train using that split
+bash scripts/train_with_split.sh
+
+# 3) Evaluate a checkpoint
+bash scripts/eval_checkpoint.sh runs/split_train_*/best_lvl6.pt
+```
+
+You can override defaults through environment variables, for example:
+
+```bash
+N_VARS=2 MAX_OPS=6 TOTAL_STEPS=800000 SEED=43 bash scripts/train_with_split.sh
+```
+
+## Python entrypoints
+
+### `train.py`
+
+Trains curriculum DQN + HER.
+
+```bash
 python scripts/train.py
-
-# Use precomputed interesting-polynomial JSONL
-python scripts/train.py \
-  --interesting ../Game-Board-Generation/pre-training-data/game_board_C4.analysis.jsonl
-
-# Disable fallback auto-generation
-python scripts/train.py --no-auto-interesting
-
-# Bound auto-generation graph growth
-python scripts/train.py --gen-max-graph-nodes 20000 --gen-max-successors 30
-
-# Tune shaping reward
-python scripts/train.py --shaping_coeff 0.2
+python scripts/train.py --n_vars 2 --max_ops 6 --total_steps 500000
+python scripts/train.py --interesting data/polys_nvars2_maxops6.train.jsonl \
+  --eval_jsonl data/polys_nvars2_maxops6.eval.jsonl
 ```
 
-### Key arguments
+Key args:
+- `--max_ops` default: `6`
+- `--interesting`: training split JSONL
+- `--eval_jsonl`: held-out eval split JSONL
+- `--no-auto-interesting`: disable auto graph-generated fallback
 
-| Argument | Default | Description |
-|---|---|---|
-| `--n_vars` | `2` | Number of variables |
-| `--max_ops` | `4` | Max op budget per episode |
-| `--L` | `16` | Visible node slots |
-| `--max_nodes` | `L` | Hard node cap (`<= L`) |
-| `--m` | `16` | Eval-point count |
-| `--step_cost` | `0.05` | Base penalty for `ADD`/`MUL` |
-| `--reward_mode` | `full` | Reward composition (`sparse`, `shaped`, `full`) |
-| `--shaping_coeff` | `0.0` | Eval-distance shaping bonus scale |
-| `--d_model` | `64` | Transformer hidden size |
-| `--n_heads` | `4` | Attention heads |
-| `--n_layers` | `3` | Transformer layers |
-| `--lr` | `1e-3` | Learning rate |
-| `--batch_size` | `256` | Replay batch size |
-| `--buffer_size` | `100000` | Replay capacity |
-| `--eps_decay_steps` | `50000` | Epsilon decay horizon |
-| `--total_steps` | `500000` | Total env steps |
-| `--seed` | `42` | RNG seed |
-| `--log_dir` | `runs/` | Checkpoint directory |
-| `--interesting` | `None` | JSONL path for precomputed interesting polynomials |
-| `--no-auto-interesting` | `False` | Disable fallback auto-generation |
-| `--gen-max-graph-nodes` | `None` | Auto-generation graph node cap |
-| `--gen-max-successors` | `None` | Auto-generation per-node expansion cap |
-| `--gen-max-seconds` | `60.0` | Auto-generation wall-clock cap (seconds) |
+### `evaluate.py`
 
-If `--interesting` is omitted and auto-generation is enabled, training uses `GenerativeInterestingPolynomialSampler` as fallback.
-
-Checkpoints:
-- periodic best: `log_dir/best_lvl{level}.pt`
-- final: `log_dir/final.pt`
-
-## `evaluate.py`
-
-Evaluates a saved checkpoint with deterministic policy.
+Evaluates one checkpoint.
 
 ```bash
-python scripts/evaluate.py \
-  --checkpoint runs/best_lvl2.pt \
-  --episodes 200
+python scripts/evaluate.py --checkpoint runs/best_lvl3.pt --episodes 200
+python scripts/evaluate.py --checkpoint runs/best_lvl3.pt --max_ops 6 --episodes 200
 ```
 
-Optional override:
+### `build_dataset.py`
+
+One-time offline dataset generation and train/eval split.
 
 ```bash
-python scripts/evaluate.py \
-  --checkpoint runs/best_lvl2.pt \
-  --max_ops 4 \
-  --episodes 200
+python scripts/build_dataset.py --n_vars 2 --max_ops 6 --out_dir data/
 ```
 
-Behavior:
-- Loads model architecture and environment-critical defaults from the checkpoint's saved `Config`.
-- If `--max_ops` is provided, only `max_ops` is overridden for evaluation.
-- Legacy checkpoints without a saved config fall back to `Config()` and emit a warning.
+Important options:
+- `--only_shortcut` / `--no-only_shortcut`
+- `--eval_frac 0.2`
+- `--max_graph_nodes`, `--max_successors`, `--max_seconds`
 
-Outputs success rate, average reward, and average steps.
+For very small budgets (for example `max_ops <= 2`), `--no-only_shortcut` is often needed to avoid empty splits.
+
+### `run_baselines.py`
+
+Runs symbolic/search baselines on random targets or a held-out split.
+
+```bash
+python scripts/run_baselines.py --n_vars 2 --max_ops 6 \
+  --eval_jsonl data/polys_nvars2_maxops6.eval.jsonl \
+  --skip_exhaustive
+```
+
+For `max_ops > 4`, use `--skip_exhaustive` unless you intentionally want a very expensive exhaustive run.
+
+## Shell wrappers
+
+### `make_dataset.sh`
+
+Builds `data/polys_nvars{N}_maxops{K}.{train,eval}.jsonl`.
+
+Defaults:
+- `N_VARS=2`
+- `MAX_OPS=6`
+- `OUT_DIR=./data`
+
+Example:
+
+```bash
+N_VARS=2 MAX_OPS=6 bash scripts/make_dataset.sh
+```
+
+### `train_with_split.sh`
+
+Ensures split files exist (auto-build enabled by default), then trains with
+`--interesting` and `--eval_jsonl` wired up.
+
+Defaults:
+- `N_VARS=2`
+- `MAX_OPS=6`
+- `TOTAL_STEPS=500000`
+- `AUTO_BUILD_DATASET=1`
+
+### `eval_checkpoint.sh`
+
+Evaluates one checkpoint with default `EPISODES=500`.
+
+Optional env override:
+- `MAX_OPS_OVERRIDE=6`
+
+## Full multi-run orchestrator
+
+### `run_all_tmux.sh`
+
+Launches dataset build, multi-seed training, baselines, and checkpoint sweeps in tmux.
+
+```bash
+bash scripts/run_all_tmux.sh
+```
+
+Defaults:
+- `MAX_OPS=6`
+- `SEEDS="42 43 44"`
+- `LEVELS="1 2 3 4 5 6"` (derived from `MAX_OPS`)
+
+Attach / stop:
+
+```bash
+tmux attach -t polyrl
+tmux kill-session -t polyrl
+```

@@ -58,7 +58,7 @@ sampled batch for demos to maintain representation during training.
 - creates factor library, env, agent, and optional MCTS
 - **expert demo pre-fill**: generates BFS-optimal demonstrations and loads into buffer
 - sampler selection (JSONL, auto-generative, or random-only)
-- curriculum over `curriculum_levels` (default `(1,2,3,4)`)
+- curriculum over `curriculum_levels` (default `(1,2,3,4,5,6)`)
 - mixed interesting/random sampling at higher levels
 - interleaved train updates after `learning_starts`
 - periodic evaluation and checkpointing

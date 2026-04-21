@@ -29,7 +29,7 @@ Use `default.yaml` for experiment notes and quick copy/paste, but treat `Config`
 - `her_k`: number of relabeled future-goal samples per transition
 
 ### Curriculum
-- `curriculum_levels`: default `(1,2,3,4)`
+- `curriculum_levels`: default `(1,2,3,4,5,6)`
 - `curriculum_window`, `curriculum_train_threshold`, `curriculum_eval_threshold`
 
 ### Training

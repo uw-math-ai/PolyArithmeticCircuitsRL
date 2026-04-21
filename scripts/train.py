@@ -9,11 +9,16 @@ Usage:
     python scripts/train.py --interesting data/game_board_C4.analysis.jsonl
 
     # Override hyperparameters
-    python scripts/train.py --n_vars 2 --max_ops 4 --total_steps 500000
+    python scripts/train.py --n_vars 2 --max_ops 6 --total_steps 500000
 """
 
 import argparse
 import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from poly_circuit_rl.config import Config
 from poly_circuit_rl.rl.trainer import train
@@ -70,6 +75,8 @@ def main():
     # Data
     parser.add_argument("--interesting", type=str, default=None,
                         help="Path to analysis JSONL for interesting polynomials")
+    parser.add_argument("--eval_jsonl", type=str, default=None,
+                        help="Path to held-out eval JSONL (from scripts/build_dataset.py)")
     parser.add_argument("--no-auto-interesting", action="store_true",
                         help="Disable auto-generation of interesting polynomials")
     parser.add_argument("--gen-max-graph-nodes", type=int, default=None,
@@ -111,7 +118,11 @@ def main():
     print(f"  d_model={config.d_model}, n_heads={config.n_heads}, n_layers={config.n_layers}")
     print(f"  total_steps={config.total_steps}, seed={config.seed}")
 
-    train(config=config, interesting_jsonl=args.interesting)
+    train(
+        config=config,
+        interesting_jsonl=args.interesting,
+        eval_jsonl=args.eval_jsonl,
+    )
 
 
 if __name__ == "__main__":

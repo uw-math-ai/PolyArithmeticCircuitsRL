@@ -9,6 +9,7 @@ from poly_circuit_rl.core.factor_library import FactorLibrary
 from poly_circuit_rl.core.poly import add, make_var, poly_hashkey
 from poly_circuit_rl.env.circuit_env import PolyCircuitEnv
 from poly_circuit_rl.rl.trainer import (
+    _presample_eval_targets,
     evaluate,
     maybe_sample_target_poly,
     should_mix_interesting_targets,
@@ -72,6 +73,18 @@ class _ScriptedSolveAgent:
         if set_action < len(mask) and mask[set_action] == 1:
             return set_action
         return encode_action(ACTION_ADD, 0, 1, self.config.L)
+
+
+class _BudgetLimitedEvalSampler:
+    def __init__(self, min_ops: int):
+        self.min_ops = min_ops
+        self.calls = []
+
+    def sample(self, rng, max_ops):
+        self.calls.append(max_ops)
+        if max_ops < self.min_ops:
+            raise ValueError("no eval targets at this budget")
+        return f"eval-{max_ops}", {"source": "eval"}
 
 
 class TestTrainerSampling(unittest.TestCase):
@@ -206,6 +219,35 @@ class TestTrainerSampling(unittest.TestCase):
         )
         self.assertIsNotNone(ev["mean_gap_to_optimal"])
         self.assertGreaterEqual(ev["mean_gap_to_optimal"], 0.0)
+
+    def test_presample_eval_targets_keeps_level_gate_and_random_fallback(self):
+        config = Config(
+            n_vars=1,
+            m=4,
+            L=4,
+            max_nodes=4,
+            eval_episodes=3,
+            interesting_ratio=1.0,
+            curriculum_levels=(1, 2, 3),
+            auto_interesting=False,
+        )
+        sampler = _BudgetLimitedEvalSampler(min_ops=3)
+        targets = _presample_eval_targets(
+            config,
+            [1, 2, 3],
+            interesting_sampler=None,
+            eval_sampler=sampler,
+        )
+
+        # Level-0 gate should avoid interesting sampling entirely.
+        self.assertEqual(sampler.calls.count(1), 0)
+        self.assertEqual(sampler.calls.count(2), config.eval_episodes)
+        self.assertEqual(sampler.calls.count(3), config.eval_episodes)
+
+        # Level-1 had sampler budget misses => random fallback.
+        self.assertTrue(all(isinstance(t, dict) for t in targets[1]))
+        # Level-2 uses eval sampler directly with ratio=1.
+        self.assertEqual(targets[2], ["eval-3"] * config.eval_episodes)
 
 
 if __name__ == "__main__":

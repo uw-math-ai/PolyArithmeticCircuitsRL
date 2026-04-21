@@ -17,6 +17,7 @@ from ..core.factor_library import FactorLibrary
 from ..core.poly import Poly, PolyKey, poly_hashkey
 from ..env.circuit_env import PolyCircuitEnv
 from ..env.samplers import (
+    FrozenSplitSampler,
     GenerativeInterestingPolynomialSampler,
     InterestingPolynomialSampler,
     RandomCircuitSampler,
@@ -59,7 +60,10 @@ def maybe_sample_target_poly(
         return None
     if rng.random() >= config.interesting_ratio:
         return None
-    target_poly, _ = interesting_sampler.sample(rng, max_ops=max_ops)
+    try:
+        target_poly, _ = interesting_sampler.sample(rng, max_ops=max_ops)
+    except ValueError:
+        return None
     return target_poly
 
 
@@ -79,20 +83,27 @@ def _presample_eval_targets(
     config: Config,
     levels: List[int],
     interesting_sampler,
+    eval_sampler=None,
 ) -> Dict[int, List[Poly]]:
-    """Deterministically pre-sample held-out eval targets per curriculum level."""
+    """Deterministically pre-sample held-out eval targets per curriculum level.
+
+    If ``eval_sampler`` is provided, it is used for the interesting-target
+    share (same level/ratio gating as training). Random-circuit fallback is
+    used whenever interesting sampling is disabled or unavailable.
+    """
     rng = _random.Random(config.seed + 90_000)
     eval_targets: Dict[int, List[Poly]] = {}
     for level_idx, max_ops in enumerate(levels):
         random_sampler = RandomCircuitSampler(n_vars=config.n_vars, max_steps=max_ops)
         targets: List[Poly] = []
+        interesting_source = eval_sampler if eval_sampler is not None else interesting_sampler
         for _ in range(config.eval_episodes):
             target_poly = maybe_sample_target_poly(
                 level_idx,
                 max_ops,
                 config,
                 rng,
-                interesting_sampler,
+                interesting_source,
             )
             if target_poly is None:
                 target_poly, _ = random_sampler.sample(rng)
@@ -305,6 +316,7 @@ def evaluate(
 def train(
     config: Optional[Config] = None,
     interesting_jsonl: Optional[str] = None,
+    eval_jsonl: Optional[str] = None,
     wandb_project: Optional[str] = None,
     wandb_entity: Optional[str] = None,
     wandb_run_name: Optional[str] = None,
@@ -407,14 +419,32 @@ def train(
 
     # Optional interesting polynomial sampler
     interesting_sampler = None
-    if interesting_jsonl and Path(interesting_jsonl).exists():
-        try:
-            interesting_sampler = InterestingPolynomialSampler(
-                interesting_jsonl, n_vars=config.n_vars,
+    eval_sampler = None
+    if interesting_jsonl is not None:
+        if not Path(interesting_jsonl).exists():
+            raise FileNotFoundError(
+                f"interesting_jsonl path does not exist: {interesting_jsonl}"
             )
-            print(f"Loaded {len(interesting_sampler)} interesting polynomials")
+        try:
+            # Frozen-split files carry a ".train.jsonl"/".eval.jsonl" suffix and
+            # a "poly_key" field. Load with the fast FrozenSplitSampler if it
+            # looks like one; fall back to legacy InterestingPolynomialSampler.
+            if interesting_jsonl.endswith(".jsonl") and ".train." in interesting_jsonl:
+                interesting_sampler = FrozenSplitSampler(
+                    interesting_jsonl, n_vars=config.n_vars,
+                )
+            else:
+                interesting_sampler = InterestingPolynomialSampler(
+                    interesting_jsonl, n_vars=config.n_vars,
+                )
+            print(f"Loaded {len(interesting_sampler)} training polynomials from {interesting_jsonl}")
+            by_len = getattr(interesting_sampler, "by_length", {})
+            if by_len:
+                print(f"  train pool by shortest_length: { {k: len(v) for k, v in sorted(by_len.items())} }")
         except Exception as e:
-            print(f"Warning: could not load interesting polys: {e}")
+            raise RuntimeError(
+                f"Failed to load training split from {interesting_jsonl}: {e}"
+            ) from e
     elif config.auto_interesting:
         max_steps = max(config.curriculum_levels)
         try:
@@ -429,6 +459,22 @@ def train(
             print(f"Auto-generating interesting polynomials (max_steps={max_steps})")
         except Exception as e:
             print(f"Warning: could not init auto interesting sampler: {e}")
+
+    if eval_jsonl is not None:
+        if not Path(eval_jsonl).exists():
+            raise FileNotFoundError(
+                f"eval_jsonl path does not exist: {eval_jsonl}"
+            )
+        try:
+            eval_sampler = FrozenSplitSampler(eval_jsonl, n_vars=config.n_vars)
+            print(f"Loaded {len(eval_sampler)} held-out eval polynomials from {eval_jsonl}")
+            by_len = getattr(eval_sampler, "by_length", {})
+            if by_len:
+                print(f"  eval  pool by shortest_length: { {k: len(v) for k, v in sorted(by_len.items())} }")
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to load eval split from {eval_jsonl}: {e}"
+            ) from e
 
     # Oracle mask diagnostic
     if config.oracle_mask and interesting_sampler is not None:
@@ -486,7 +532,9 @@ def train(
     episode = 0
 
     levels = list(config.curriculum_levels)
-    eval_targets_by_level = _presample_eval_targets(config, levels, interesting_sampler)
+    eval_targets_by_level = _presample_eval_targets(
+        config, levels, interesting_sampler, eval_sampler=eval_sampler,
+    )
     optimal_ops_by_level: Dict[int, Dict[PolyKey, Optional[int]]] = {}
     exhaustive_by_max_ops: Dict[int, ExhaustiveSearch] = {}
     for level_idx, level_max_ops in enumerate(levels):

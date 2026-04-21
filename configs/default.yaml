@@ -3,7 +3,7 @@
 
 # --- Environment ---
 n_vars: 2
-max_ops: 4
+max_ops: 6
 L: 16
 max_nodes: 20
 m: 16
@@ -50,7 +50,7 @@ learning_starts: 200
 her_k: 4
 
 # --- Curriculum ---
-curriculum_levels: [1, 2, 3, 4]
+curriculum_levels: [1, 2, 3, 4, 5, 6]
 curriculum_window: 100
 curriculum_train_threshold: 0.50
 curriculum_eval_threshold: 0.70
