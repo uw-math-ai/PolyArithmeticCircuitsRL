@@ -1,0 +1,55 @@
+# configs/ - Hyperparameter reference
+
+`default.yaml` is a reference template. Training uses values from `Config` in `poly_circuit_rl/config.py` unless explicitly overridden in code/CLI.
+
+Use `default.yaml` for experiment notes and quick copy/paste, but treat `Config` as the source of truth for runtime defaults.
+
+## Parameter groups
+
+### Environment
+- `n_vars`, `max_ops`, `L`, `max_nodes`, `m`, `eval_low`, `eval_high`
+- `step_cost`: base penalty for `ADD`/`MUL`
+- `reward_mode`: one of `sparse`, `shaped`, `full`
+- `shaping_coeff`: eval-distance shaping bonus strength (default `0.0`, disabled — can mislead toward naive term-by-term construction).
+- `factor_shaping_coeff`: penalty for `ADD` producing factorizable results (default `0.0`, disabled). Uses SymPy to check if the result of an ADD could have been built more efficiently via MUL of its factors.
+- `factor_library_max_size`: LRU cap for cross-episode factor cache
+- `eval_norm_scale`: tanh normalization scale for eval vectors in observations
+- `max_episode_steps`: optional hard cap on episode length (`None` uses derived default)
+- `allow_partial_demos`: whether to tolerate low-yield demo prefill
+
+### Transformer
+- `d_pos`, `d_model`, `n_heads`, `n_layers`, `dropout`
+
+### DQN
+- `lr`, `gamma`, `batch_size`, `buffer_size`
+- `eps_start`, `eps_end`, `eps_decay_steps`
+- `target_update_tau`, `train_freq`, `learning_starts`
+
+### HER
+- `her_k`: number of relabeled future-goal samples per transition
+
+### Curriculum
+- `curriculum_levels`: default `(1,2,3,4)`
+- `curriculum_window`, `curriculum_train_threshold`, `curriculum_eval_threshold`
+
+### Training
+- `total_steps`, `eval_every`, `eval_episodes`, `seed`, `log_dir`
+- `wandb_artifact_min_interval_steps`: minimum step spacing between best-model artifact uploads
+
+### Sampling
+- `interesting_ratio`: interesting/random mix at curriculum levels `>= 1`
+- `auto_interesting`: enable fallback auto-generation when no JSONL is provided
+- `gen_max_graph_nodes`: auto-generation graph size cap
+- `gen_max_successors`: auto-generation branching cap
+- `gen_max_seconds`: wall-clock cap for auto-generation graph construction
+
+### MCTS
+- `use_mcts`: enable MCTS for action selection (default `True`)
+- `mcts_simulations`: number of tree simulations per action (default `50`)
+- `mcts_c_puct`: PUCT exploration constant (default `1.5`)
+- `mcts_temperature`: temperature for visit-count action selection (default `1.0`)
+
+## Notes
+
+- `scripts/train.py` exposes only a subset of config fields as CLI flags.
+- For full control (for example custom curriculum arrays), instantiate `Config(...)` directly in Python.

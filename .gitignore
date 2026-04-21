@@ -8,3 +8,5 @@ MAIL/
 .DS_Store
 .DS_Store
 wandb/
+runs/
+poly_circuit_rl/runs/

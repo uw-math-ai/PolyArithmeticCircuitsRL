@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "poly-circuit-rl"
+version = "0.1.0"
+description = "Reinforcement learning for minimum-operation arithmetic circuit synthesis"
+readme = "scripts/README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "torch",
+  "gymnasium",
+  "networkx",
+  "sympy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["poly_circuit_rl*"]

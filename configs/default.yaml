@@ -1,0 +1,82 @@
+# Default configuration for poly_circuit_rl training.
+# Override via command-line args: python scripts/train.py --n_vars 3 --max_ops 6
+
+# --- Environment ---
+n_vars: 2
+max_ops: 4
+L: 16
+max_nodes: 20
+m: 16
+eval_low: -3
+eval_high: 3
+step_cost: 0.05
+shaping_coeff: 0.0
+factor_shaping_coeff: 0.0
+reward_mode: full
+
+# --- Factor library ---
+factor_library_enabled: true
+factor_subgoal_reward: 0.3
+factor_library_bonus: 0.15
+completion_bonus: 0.5
+factor_library_max_size: 10000
+
+# --- Expert demos / observation scaling ---
+expert_demo_count: 1000
+allow_partial_demos: true
+eval_norm_scale: 100.0
+max_episode_steps: null  # uses derived default when null
+
+# --- Transformer ---
+d_pos: 8
+d_model: 64
+n_heads: 4
+n_layers: 3
+dropout: 0.1
+
+# --- DQN ---
+lr: 0.001
+gamma: 0.99
+batch_size: 256
+buffer_size: 100000
+eps_start: 1.0
+eps_end: 0.02
+eps_decay_steps: 50000
+target_update_tau: 0.005
+train_freq: 4
+learning_starts: 200
+
+# --- HER ---
+her_k: 4
+
+# --- Curriculum ---
+curriculum_levels: [1, 2, 3, 4]
+curriculum_window: 100
+curriculum_train_threshold: 0.50
+curriculum_eval_threshold: 0.70
+
+# --- Training ---
+total_steps: 500000
+eval_every: 1000
+eval_episodes: 50
+seed: 42
+log_dir: "runs/"
+wandb_artifact_min_interval_steps: 50000
+
+# --- Mixed sampling ---
+interesting_ratio: 0.7
+
+# --- Auto-generation of interesting polynomials ---
+auto_interesting: true
+gen_max_graph_nodes: 100000
+gen_max_successors: 50
+gen_max_seconds: 60.0
+
+# --- Diagnostics ---
+oracle_mask: false
+
+# --- MCTS ---
+use_mcts: true
+mcts_simulations: 50
+mcts_c_puct: 1.5
+mcts_temperature: 1.0
