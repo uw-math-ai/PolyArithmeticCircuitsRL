@@ -536,19 +536,23 @@ def train(
         config, levels, interesting_sampler, eval_sampler=eval_sampler,
     )
     optimal_ops_by_level: Dict[int, Dict[PolyKey, Optional[int]]] = {}
-    exhaustive_by_max_ops: Dict[int, ExhaustiveSearch] = {}
-    for level_idx, level_max_ops in enumerate(levels):
-        if level_max_ops > 4:
-            continue
-        search = exhaustive_by_max_ops.get(level_max_ops)
-        if search is None:
-            search = ExhaustiveSearch(config)
-            search.build(level_max_ops)
-            exhaustive_by_max_ops[level_max_ops] = search
-        optimal_ops_by_level[level_idx] = {
-            poly_hashkey(target): search.find_optimal(target)
-            for target in eval_targets_by_level[level_idx]
-        }
+    skip_optimal_precompute = os.getenv("SKIP_OPTIMAL_PRECOMPUTE", "0") == "1"
+    if skip_optimal_precompute:
+        print("Skipping exhaustive optimal-ops precompute (SKIP_OPTIMAL_PRECOMPUTE=1).")
+    else:
+        exhaustive_by_max_ops: Dict[int, ExhaustiveSearch] = {}
+        for level_idx, level_max_ops in enumerate(levels):
+            if level_max_ops > 4:
+                continue
+            search = exhaustive_by_max_ops.get(level_max_ops)
+            if search is None:
+                search = ExhaustiveSearch(config)
+                search.build(level_max_ops)
+                exhaustive_by_max_ops[level_max_ops] = search
+            optimal_ops_by_level[level_idx] = {
+                poly_hashkey(target): search.find_optimal(target)
+                for target in eval_targets_by_level[level_idx]
+            }
 
     train_rng = _random.Random(config.seed + 100)
     last_log_time = time.perf_counter()

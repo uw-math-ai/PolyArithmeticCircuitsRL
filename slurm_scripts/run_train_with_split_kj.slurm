@@ -30,6 +30,7 @@ export TOTAL_STEPS="${TOTAL_STEPS:-500000}"
 export SEED="${SEED:-42}"
 export DATA_DIR="${DATA_DIR:-data}"
 export AUTO_BUILD_DATASET=0
+export SKIP_OPTIMAL_PRECOMPUTE="${SKIP_OPTIMAL_PRECOMPUTE:-1}"
 export ENABLE_WANDB="${ENABLE_WANDB:-1}"
 export WANDB_PROJECT="${WANDB_PROJECT:-PolyArithmeticCircuitsRL}"
 export WANDB_ENTITY="${WANDB_ENTITY:-}"
@@ -55,6 +56,7 @@ export LOG_DIR
 echo "[train] Starting at $(date)"
 echo "[train] N_VARS=$N_VARS MAX_OPS=$MAX_OPS TOTAL_STEPS=$TOTAL_STEPS SEED=$SEED"
 echo "[train] LOG_DIR=$LOG_DIR"
+echo "[train] SKIP_OPTIMAL_PRECOMPUTE=$SKIP_OPTIMAL_PRECOMPUTE"
 echo "[train] ENABLE_WANDB=$ENABLE_WANDB"
 
 EXTRA_ARGS=()
@@ -63,12 +65,30 @@ if [ "$ENABLE_WANDB" = "1" ]; then
   if [ -n "$WANDB_ENTITY" ]; then
     EXTRA_ARGS+=(--wandb-entity "$WANDB_ENTITY")
   fi
+  if [ -z "${WANDB_API_KEY:-}" ] && [ -f "$HOME/.netrc" ]; then
+    WANDB_API_KEY_FROM_NETRC="$(
+      awk '
+        $1=="machine" {inblock=($2=="api.wandb.ai"); next}
+        inblock && $1=="password" {print $2; exit}
+      ' "$HOME/.netrc"
+    )"
+    if [ -n "$WANDB_API_KEY_FROM_NETRC" ]; then
+      export WANDB_API_KEY="$WANDB_API_KEY_FROM_NETRC"
+      echo "[train] Loaded WANDB_API_KEY from $HOME/.netrc"
+    fi
+    unset WANDB_API_KEY_FROM_NETRC
+  fi
   if [ -z "${WANDB_API_KEY:-}" ]; then
-    echo "[train] WARNING: ENABLE_WANDB=1 but WANDB_API_KEY is not set in this job environment."
+    echo "[train] WARNING: ENABLE_WANDB=1 but WANDB_API_KEY is not set and could not be read from $HOME/.netrc."
   fi
 fi
 
-apptainer exec --nv --bind /gscratch:/gscratch container.sif \
+export APPTAINERENV_SKIP_OPTIMAL_PRECOMPUTE="$SKIP_OPTIMAL_PRECOMPUTE"
+if [ -n "${WANDB_API_KEY:-}" ]; then
+  export APPTAINERENV_WANDB_API_KEY="$WANDB_API_KEY"
+fi
+
+apptainer exec --nv --bind /gscratch:/gscratch --bind "$HOME:$HOME" container.sif \
   bash scripts/train_with_split.sh "${EXTRA_ARGS[@]}"
 
 echo "[train] Done at $(date)"
