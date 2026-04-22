@@ -1,0 +1,25 @@
+CUDA available: True
+Device count: 1
+Device 0: Tesla P100-PCIE-16GB
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from /mmfs1/home/nmorato/.netrc.
+wandb: Currently logged in as: nmorato (zengrf-university-of-washington) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: WARNING Path /mmfs1/gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL wasn't read/writable
+wandb: WARNING Falling back to temporary directory /tmp.
+wandb: setting up run 8c1ua3yw
+wandb: Tracking run with wandb version 0.25.1
+wandb: Run data is saved locally in /tmp/wandb/run-20260421_182857-8c1ua3yw
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run sac_fl_C5_2var
+wandb: ⭐️ View project at https://wandb.ai/zengrf-university-of-washington/PolyArithmeticCircuitsRL
+wandb: 🚀 View run at https://wandb.ai/zengrf-university-of-washington/PolyArithmeticCircuitsRL/runs/8c1ua3yw
+Config: n_vars=2, mod=5, max_complexity=5, device=cuda
+Max nodes=8, max_actions=72, target_size=36
+SAC actor parameters: 688,968
+SAC critic parameters: 773,264
+
+=== Training with SAC ===
+Results will be saved to results/sac_fl_C5_2var
+[SAC iter 10] phase=fixed complexity=3 success=0.00% reward=-0.337 buffer=40960 lib=0 fhits=76 lhits=0 critic=0.1072 actor=-0.7595 alpha=0.1990 entropy=3.3010
+[SAC iter 20] phase=fixed complexity=3 success=0.00% reward=-0.321 buffer=81920 lib=0 fhits=88 lhits=0 critic=0.0978 actor=-0.7391 alpha=0.1975 entropy=3.2953
+/var/spool/slurmd/job34761636/slurm_script: line 39: 36639 Killed                  apptainer exec --nv --bind /gscratch:/gscratch --env PYTHONUNBUFFERED=1 container.sif python -u -m src.main --algorithm sac --n-variables 2 --no-curriculum --max-complexity 5 --device cuda --iterations 500 --factor-subgoal-reward 1.0 --factor-library-bonus 0.5 --completion-bonus 3.0 --results-dir results/sac_fl_C5_2var --wandb-run-name sac_fl_C5_2var --wandb
+[2026-04-21T19:04:34.670] error: Detected 1 oom_kill event in StepId=34761636.batch. Some of the step tasks have been OOM Killed.

@@ -1,0 +1,76 @@
+JAX backend: gpu | devices: [CudaDevice(id=0)]
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from /mmfs1/home/nmorato/.netrc.
+wandb: Currently logged in as: nmorato (zengrf-university-of-washington) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: WARNING Path /mmfs1/gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL wasn't read/writable
+wandb: WARNING Falling back to temporary directory /tmp.
+wandb: setting up run s8uyjw39
+wandb: Tracking run with wandb version 0.25.1
+wandb: Run data is saved locally in /tmp/wandb/run-20260421_183001-s8uyjw39
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run ppo-mcts-jax_fl_C5_C8
+wandb: ⭐️ View project at https://wandb.ai/zengrf-university-of-washington/PolyArithmeticCircuitsRL
+wandb: 🚀 View run at https://wandb.ai/zengrf-university-of-washington/PolyArithmeticCircuitsRL/runs/s8uyjw39
+Config: n_vars=2, mod=5, max_complexity=6, device=jax:gpu
+Max nodes=9, max_actions=90, target_size=49
+JAX PPO+MCTS with batch_size=512 fixed_complexities=[5, 6, 7, 8]
+
+=== Training with PPO+MCTS (JAX) ===
+Results will be saved to results/ppo-mcts-jax_fl_C5_C8
+Iteration 1: JIT-compiling MCTS + env (this may take a few minutes)...
+Training:   0%|          | 0/500 [00:00<?, ?iter/s]2026-04-21 18:30:17.991928: W external/xla/xla/service/gpu/autotuning/conv_algorithm_picker.cc:847] None of the algorithms provided by cuDNN heuristics worked; trying fallback algorithms.
+2026-04-21 18:30:17.992947: W external/xla/xla/service/gpu/autotuning/conv_algorithm_picker.cc:850] Conv: %cudnn-conv = (f32[1,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(%bitcast.28, %bitcast.30), window={size=7x7}, dim_labels=bf01_oi01->bf01, feature_group_count=512, custom_call_target="__cudnn$convForward", metadata={op_name="jit(_batched_mcts_search)/jit(main)/while/body/vmap(while)/body/conv_general_dilated" source_file="/mmfs1/gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL/src/algorithms/jax_env.py" source_line=248}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_conv_backend_config":{"conv_result_scale":1,"activation_mode":"kNone","side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[]}
+Training:   0%|          | 0/500 [00:09<?, ?iter/s]
+jax.errors.SimplifiedTraceback: For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/lib/python3.10/runpy.py", line 196, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.10/runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "/mmfs1/gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL/src/main.py", line 411, in <module>
+    main()
+  File "/mmfs1/gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL/src/main.py", line 335, in main
+    history = trainer.train(args.iterations, results_dir=results_dir)
+  File "/mmfs1/gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL/src/algorithms/ppo_mcts_jax.py", line 803, in train
+    transitions, rollout_info = self.collect_rollouts()
+  File "/mmfs1/gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL/src/algorithms/ppo_mcts_jax.py", line 454, in collect_rollouts
+    policy_output = self._jit_batched_mcts(
+jaxlib._jax.XlaRuntimeError: UNKNOWN: Failed to determine best cudnn convolution algorithm for:
+%cudnn-conv = (f32[1,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(%bitcast.28, %bitcast.30), window={size=7x7}, dim_labels=bf01_oi01->bf01, feature_group_count=512, custom_call_target="__cudnn$convForward", metadata={op_name="jit(_batched_mcts_search)/jit(main)/while/body/vmap(while)/body/conv_general_dilated" source_file="/mmfs1/gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL/src/algorithms/jax_env.py" source_line=248}, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"cudnn_conv_backend_config":{"conv_result_scale":1,"activation_mode":"kNone","side_input_scale":0,"leakyrelu_alpha":0},"force_earliest_schedule":false,"reification_cost":[]}
+
+Original error: INTERNAL: All algorithms tried for (f32[1,512,7,7]{3,2,1,0}, u8[0]{0}) custom-call(f32[1,512,13,13]{3,2,1,0}, f32[512,1,7,7]{3,2,1,0}), window={size=7x7}, dim_labels=bf01_oi01->bf01, feature_group_count=512, custom_call_target="__cudnn$convForward", backend_config={"cudnn_conv_backend_config":{"activation_mode":"kNone","conv_result_scale":1,"leakyrelu_alpha":0,"side_input_scale":0},"force_earliest_schedule":false,"operation_queue_id":"0","reification_cost":[],"wait_on_operation_queues":[]} failed. Falling back to default algorithm.  Per-algorithm errors:
+  Profiling failure on cuDNN engine eng0{}: UNKNOWN: <unknown cudnn status: 5003>
+in external/xla/xla/stream_executor/cuda/cuda_dnn.cc(5888): 'status'
+  Profiling failure on cuDNN engine eng1{}: UNKNOWN: <unknown cudnn status: 5003>
+in external/xla/xla/stream_executor/cuda/cuda_dnn.cc(5888): 'status'
+  Profiling failure on cuDNN engine eng28{}: UNKNOWN: <unknown cudnn status: 5003>
+in external/xla/xla/stream_executor/cuda/cuda_dnn.cc(5888): 'status'
+  Profiling failure on cuDNN engine eng0{}: UNKNOWN: <unknown cudnn status: 5003>
+in external/xla/xla/stream_executor/cuda/cuda_dnn.cc(5888): 'status'
+  Profiling failure on cuDNN engine eng28{k2=3,k3=0}: UNKNOWN: <unknown cudnn status: 5003>
+in external/xla/xla/stream_executor/cuda/cuda_dnn.cc(5888): 'status'
+  Profiling failure on cuDNN engine eng28{k2=0,k3=0}: UNKNOWN: <unknown cudnn status: 5003>
+in external/xla/xla/stream_executor/cuda/cuda_dnn.cc(5888): 'status'
+  Profiling failure on cuDNN engine eng28{k2=1,k3=0}: UNKNOWN: <unknown cudnn status: 5003>
+in external/xla/xla/stream_executor/cuda/cuda_dnn.cc(5888): 'status'
+  Profiling failure on cuDNN engine eng1{k2=0,k3=0}: UNKNOWN: <unknown cudnn status: 5003>
+in external/xla/xla/stream_executor/cuda/cuda_dnn.cc(5888): 'status'
+  Profiling failure on cuDNN engine eng1{k2=4,k3=0}: UNKNOWN: <unknown cudnn status: 5003>
+in external/xla/xla/stream_executor/cuda/cuda_dnn.cc(5888): 'status'
+  Profiling failure on cuDNN engine eng1{k2=1,k3=0}: UNKNOWN: <unknown cudnn status: 5003>
+in external/xla/xla/stream_executor/cuda/cuda_dnn.cc(5888): 'status'
+  Profiling failure on cuDNN engine eng2{k2=4,k3=0}: UNKNOWN: CUDNN_STATUS_EXECUTION_FAILED
+in external/xla/xla/stream_executor/cuda/cuda_dnn.cc(5888): 'status'
+  Profiling failure on cuDNN engine eng2{k2=1,k3=0}: UNKNOWN: CUDNN_STATUS_EXECUTION_FAILED
+in external/xla/xla/stream_executor/cuda/cuda_dnn.cc(5888): 'status'
+  Profiling failure on cuDNN engine eng3{k11=2}: UNKNOWN: <unknown cudnn status: 5003>
+in external/xla/xla/stream_executor/cuda/cuda_dnn.cc(5888): 'status'
+  Profiling failure on cuDNN engine eng4{}: UNKNOWN: <unknown cudnn status: 5003>
+in external/xla/xla/stream_executor/cuda/cuda_dnn.cc(5888): 'status'
+
+To ignore this failure and try to use a fallback algorithm (which may have suboptimal performance), use XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false.  Please also file a bug for the root cause of failing autotuning.
+[1;34mwandb[0m: 
+[1;34mwandb[0m: 🚀 View run [33mppo-mcts-jax_fl_C5_C8[0m at: [34mhttps://wandb.ai/zengrf-university-of-washington/PolyArithmeticCircuitsRL/runs/s8uyjw39[0m
+[1;34mwandb[0m: Find logs at: [1;35m../../../../../../tmp/wandb/run-20260421_183001-s8uyjw39/logs[0m
