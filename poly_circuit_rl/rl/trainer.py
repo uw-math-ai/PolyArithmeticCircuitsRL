@@ -498,8 +498,13 @@ def train(
     print(f"Action dim: {config.action_dim}  |  Obs dim: {config.obs_dim}")
 
     # --- Expert demo pre-fill ---
-    if config.expert_demo_count > 0:
+    skip_expert_demos = os.getenv("SKIP_EXPERT_DEMOS", "0") == "1"
+    if skip_expert_demos:
+        print("Skipping expert demo prefill (SKIP_EXPERT_DEMOS=1).")
+    elif config.expert_demo_count > 0:
         try:
+            print(f"Preparing expert demos (count={config.expert_demo_count})...")
+            demo_t0 = time.perf_counter()
             from ..env.expert_demos import ExpertDemoGenerator
 
             demo_gen = ExpertDemoGenerator(config)
@@ -518,8 +523,11 @@ def train(
                 assert config.allow_partial_demos, msg
             for t in demos:
                 agent.buffer.add(t)
-            print(f"Pre-filled {len(demos)} expert demo transitions "
-                  f"({len(agent.buffer)} total in buffer)")
+            print(
+                f"Pre-filled {len(demos)} expert demo transitions "
+                f"({len(agent.buffer)} total in buffer) "
+                f"in {time.perf_counter() - demo_t0:.1f}s"
+            )
         except Exception as e:
             print(f"Warning: expert demo generation failed: {e}")
 
