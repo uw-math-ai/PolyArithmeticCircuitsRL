@@ -85,6 +85,14 @@ def main():
                         help="Per-node expansion cap during auto-generation")
     parser.add_argument("--gen-max-seconds", type=float, default=defaults.gen_max_seconds,
                         help="Wall-clock cap for auto-generation graph enumeration")
+    parser.add_argument("--wandb", action="store_true",
+                        help="Enable Weights & Biases logging")
+    parser.add_argument("--wandb-project", type=str, default="PolyArithmeticCircuitsRL",
+                        help="W&B project name (used when --wandb is set)")
+    parser.add_argument("--wandb-entity", type=str, default=None,
+                        help="W&B entity/team (optional)")
+    parser.add_argument("--wandb-run-name", type=str, default=None,
+                        help="W&B run name (optional)")
 
     args = parser.parse_args()
 
@@ -117,11 +125,17 @@ def main():
     print(f"  obs_dim={config.obs_dim}, action_dim={config.action_dim}")
     print(f"  d_model={config.d_model}, n_heads={config.n_heads}, n_layers={config.n_layers}")
     print(f"  total_steps={config.total_steps}, seed={config.seed}")
+    if args.wandb:
+        print(f"  wandb_project={args.wandb_project}, wandb_entity={args.wandb_entity}, "
+              f"wandb_run_name={args.wandb_run_name}")
 
     train(
         config=config,
         interesting_jsonl=args.interesting,
         eval_jsonl=args.eval_jsonl,
+        wandb_project=args.wandb_project if args.wandb else None,
+        wandb_entity=args.wandb_entity if args.wandb else None,
+        wandb_run_name=args.wandb_run_name if args.wandb else None,
     )
 
 
