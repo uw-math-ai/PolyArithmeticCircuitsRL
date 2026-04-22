@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-cd /gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL
+cd /gscratch/stf/kj66/PolyArithmeticCircuitsRL
 module load cuda
 mkdir -p results/slurm
 
