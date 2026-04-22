@@ -1,0 +1,64 @@
+Bootstrap: docker
+From: nvidia/cuda:12.4.1-runtime-ubuntu22.04
+
+%labels
+    Author PolyArithmeticCircuitsRL
+    Description kj-branch runtime container for DQN+HER training on Hyak
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+
+    # Hyak mount compatibility (safe if already present).
+    ln -s /mmfs1/gscratch /gscratch || true
+    ln -s /mmfs1/data /data || true
+    ln -s /mmfs1/sw /sw || true
+
+    apt-get update && apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+        python3-venv \
+        git \
+        && rm -rf /var/lib/apt/lists/*
+
+    python3 -m venv /opt/venv
+    . /opt/venv/bin/activate
+
+    pip install --no-cache-dir --upgrade pip
+    # PyTorch built for CUDA 12.4.
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu124
+    # kj-branch runtime dependencies.
+    pip install --no-cache-dir \
+        numpy \
+        gymnasium \
+        networkx \
+        sympy \
+        wandb \
+        pytest
+
+    rm -rf /root/.cache/pip
+
+%environment
+    export PATH="/opt/venv/bin:$PATH"
+    export VIRTUAL_ENV="/opt/venv"
+    export NVIDIA_VISIBLE_DEVICES=all
+    export NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+%runscript
+    case ${@} in
+        "")
+            exec /bin/bash
+            ;;
+        *)
+            exec ${@}
+            ;;
+    esac
+
+%help
+    Apptainer image for kj-branch training on Hyak.
+
+    Build:
+        apptainer build --fakeroot container.sif container.def
+
+    Smoke test:
+        apptainer exec container.sif \
+          python -c "import torch,gymnasium,networkx,sympy,wandb; print('ok')"
