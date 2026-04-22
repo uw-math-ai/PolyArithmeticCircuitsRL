@@ -24,6 +24,7 @@ from src.environment.action_space import (
     get_valid_actions_mask,
 )
 from src.environment.circuit_game import CircuitGame
+from src.environment.factor_library import FactorLibrary
 
 
 # ========== Polynomial Utils Tests (SymPy — kept for backward compat) ==========
@@ -369,6 +370,52 @@ class TestCircuitGame:
         action = encode_action(0, 0, 2, self.config.max_nodes)
         _, _, _, info = self.game.step(action)
         assert info["is_success"]
+
+
+class TestFactorLibraryRewards:
+    def setup_method(self):
+        self.config = Config(n_variables=2, mod=5, max_complexity=4, max_steps=6)
+        self.mod = 5
+        self.n_vars = 2
+        self.max_deg = self.config.effective_max_degree
+        self.x0 = FastPoly.variable(0, self.n_vars, self.max_deg, self.mod)
+        self.x1 = FastPoly.variable(1, self.n_vars, self.max_deg, self.mod)
+        self.one = FastPoly.constant(1, self.n_vars, self.max_deg, self.mod)
+
+    def _make_env(self) -> CircuitGame:
+        lib = FactorLibrary(
+            mod=self.config.mod,
+            n_vars=self.config.n_variables,
+            max_degree=self.config.effective_max_degree,
+        )
+        return CircuitGame(self.config, factor_library=lib)
+
+    def test_additive_completion_bonus_is_exact(self):
+        env = self._make_env()
+        target = self.x0 + self.x1 + self.one
+        env.reset(target)
+
+        action = encode_action(0, 0, 1, self.config.max_nodes)  # x0 + x1
+        _, reward, _, info = env.step(action)
+
+        assert info["additive_complete"]
+        assert reward >= self.config.completion_bonus + self.config.step_penalty
+
+    def test_scalar_exact_quotient_does_not_trigger_mult_completion(self):
+        env = self._make_env()
+        syms = create_variables(self.n_vars)
+        target = sympy_to_fast(3 * (syms[0] + 1), syms, self.mod, self.max_deg)
+
+        known_factor = self.x0 + self.one
+        env.factor_library.register(known_factor, step_num=1)
+        env.reset(target)
+
+        action = encode_action(0, 0, 2, self.config.max_nodes)  # x0 + 1
+        _, _, _, info = env.step(action)
+
+        assert info["factor_hit"]
+        assert info["library_hit"]
+        assert not info["mult_complete"]
 
 
 if __name__ == "__main__":

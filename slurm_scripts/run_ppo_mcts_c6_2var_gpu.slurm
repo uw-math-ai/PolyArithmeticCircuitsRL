@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=ppo_mcts_c6_2var_gpu
-#SBATCH --account=amath
-#SBATCH --partition=gpu-rtx6k
+#SBATCH --account=stf
+#SBATCH --partition=ckpt
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
@@ -10,17 +10,20 @@
 #SBATCH --time=2:00:00
 #SBATCH --output=results/slurm/%x_%j.out
 
+set -euo pipefail
+
 cd /gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL
 module load cuda
+mkdir -p results/slurm
 
-# Verify GPU is visible before starting
-apptainer run --nv --bind /gscratch:/gscratch \
+# Verify JAX/CUDA is visible before starting.
+apptainer exec --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
   container_jax.sif \
   python -u -c "import jax; print('JAX devices:', jax.devices())"
 
-# Run C6 training (2 variables + constant)
-apptainer run --nv --bind /gscratch:/gscratch \
+# Run JAX PPO+MCTS with the factor library on fixed C6 2-variable targets.
+apptainer exec --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
   container_jax.sif \
   python -u -m src.main \
@@ -31,4 +34,9 @@ apptainer run --nv --bind /gscratch:/gscratch \
     --mcts-batch-size 256 \
     --mcts-simulations 16 \
     --ent-coef 0.05 \
+    --factor-subgoal-reward 1.0 \
+    --factor-library-bonus 0.5 \
+    --completion-bonus 3.0 \
+    --results-dir results/ppo-mcts-jax_fl_C6_2var \
+    --wandb-run-name ppo-mcts-jax_fl_C6_2var \
     --wandb

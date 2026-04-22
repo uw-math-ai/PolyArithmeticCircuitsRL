@@ -43,12 +43,12 @@ from tqdm import tqdm
 
 from ..config import Config
 from ..environment.fast_polynomial import FastPoly
+from ..environment.factor_library import FactorLibrary
 from ..game_board.generator import generate_random_circuit
 from .jax_env import (
     EnvConfig, EnvState, make_env_config,
     reset as env_reset, step as env_step,
-    get_observation, get_valid_actions_mask,
-    decode_action, poly_add, poly_mul,
+    get_observation, make_empty_subgoal_arrays,
 )
 from .jax_net import PolicyValueNet, create_network, init_params
 
@@ -105,6 +105,7 @@ class PPOMCTSJAXTrainer:
             config.curriculum_enabled = False
         self.env_config = make_env_config(config)
         self.batch_size = batch_size
+        self.library_cache_size = 512
 
         # Network.
         self.network = create_network(config)
@@ -128,6 +129,15 @@ class PPOMCTSJAXTrainer:
             else config.max_complexity
         )
         self.success_history: List[bool] = []
+
+        factor_library: Optional[FactorLibrary] = None
+        if config.factor_library_enabled:
+            factor_library = FactorLibrary(
+                mod=config.mod,
+                n_vars=config.n_variables,
+                max_degree=config.effective_max_degree,
+            )
+        self.factor_library = factor_library
 
         # JIT-compile core functions.
         self._jit_apply = jax.jit(self.network.apply)
@@ -169,7 +179,8 @@ class PPOMCTSJAXTrainer:
             embedding=obs_batch,  # Pass full obs as embedding for recurrent_fn.
         )
 
-    def _recurrent_fn(self, params, rng_key, action, embedding):
+    def _recurrent_fn(self, params, rng_key, action, embedding,
+                      library_coeffs, library_mask):
         """Simulate one environment step for mctx tree expansion.
 
         This is the "dynamics model" — since we have a perfect simulator,
@@ -192,8 +203,13 @@ class PPOMCTSJAXTrainer:
         env_states = embedding['_env_state']  # Batched EnvState
 
         # vmap env_step over batch.
-        next_states, rewards, dones, successes = jax.vmap(
-            lambda s, a: env_step(self.env_config, s, a)
+        (
+            next_states, rewards, dones, successes,
+            _factor_hits, _library_hits, _additive_complete, _mult_complete
+        ) = jax.vmap(
+            lambda s, a: env_step(
+                self.env_config, s, a, library_coeffs, library_mask
+            )
         )(env_states, action)
 
         # Get observations for next states.
@@ -220,7 +236,8 @@ class PPOMCTSJAXTrainer:
         )
         return recurrent_output, new_embedding
 
-    def _batched_mcts_search(self, params, rng_key, obs_batch, env_states):
+    def _batched_mcts_search(self, params, rng_key, obs_batch, env_states,
+                             library_coeffs, library_mask):
         """Run batched MCTS using mctx.muzero_policy.
 
         Args:
@@ -246,17 +263,89 @@ class PPOMCTSJAXTrainer:
         # Invalid action masking: mctx uses -inf in prior_logits.
         # Our logits already have -1e9 for invalid actions, which works.
 
+        recurrent_fn = functools.partial(
+            self._recurrent_fn,
+            library_coeffs=library_coeffs,
+            library_mask=library_mask,
+        )
+
         policy_output = mctx.muzero_policy(
             params=params,
             rng_key=rng_key,
             root=root,
-            recurrent_fn=self._recurrent_fn,
+            recurrent_fn=recurrent_fn,
             num_simulations=self.config.mcts_simulations,
             max_depth=self.config.max_steps,
             invalid_actions=~obs_batch['mask'],  # True = invalid
             temperature=self.config.temperature_init,
         )
         return policy_output
+
+    def _key_to_fastpoly(self, key: bytes) -> FastPoly:
+        """Reconstruct a FastPoly from a canonical key."""
+        shape = (self.config.effective_max_degree + 1,) * self.config.n_variables
+        coeffs = np.frombuffer(key, dtype=np.int64).copy().reshape(shape)
+        return FastPoly(coeffs, self.config.mod)
+
+    def _export_library_cache(self):
+        """Export the session factor library as a dense JAX cache."""
+        if self.factor_library is None or len(self.factor_library) == 0:
+            return (
+                jnp.zeros((self.library_cache_size, self.env_config.target_size), dtype=jnp.int32),
+                jnp.zeros((self.library_cache_size,), dtype=jnp.bool_),
+            )
+
+        items = sorted(
+            self.factor_library._known.items(),
+            key=lambda kv: (kv[1], len(kv[0])),
+        )[: self.library_cache_size]
+        coeff_rows = []
+        for key, _step_num in items:
+            poly = self._key_to_fastpoly(key)
+            coeff_rows.append(self._fastpoly_to_jax(poly))
+
+        lib_coeffs = np.zeros(
+            (self.library_cache_size, self.env_config.target_size), dtype=np.int32
+        )
+        lib_mask = np.zeros((self.library_cache_size,), dtype=bool)
+        if coeff_rows:
+            arr = np.stack([np.array(r, dtype=np.int32) for r in coeff_rows], axis=0)
+            lib_coeffs[: arr.shape[0]] = arr
+            lib_mask[: arr.shape[0]] = True
+        return jnp.array(lib_coeffs), jnp.array(lib_mask)
+
+    def _prepare_initial_subgoals(self, targets: List[FastPoly]):
+        """Factorize targets on the host and build fixed-size JAX subgoal arrays."""
+        B = len(targets)
+        max_subgoals = self.env_config.max_subgoals
+        target_size = self.env_config.target_size
+
+        coeffs = np.zeros((B, max_subgoals, target_size), dtype=np.int32)
+        active = np.zeros((B, max_subgoals), dtype=bool)
+        library_known = np.zeros((B, max_subgoals), dtype=bool)
+
+        if self.factor_library is None or not self.config.factor_library_enabled:
+            return jnp.array(coeffs), jnp.array(active), jnp.array(library_known)
+
+        for i, target in enumerate(targets):
+            factors = self.factor_library.factorize_target(target)
+            known = self.factor_library.filter_known(factors)
+            for j, factor in enumerate(factors[:max_subgoals]):
+                coeffs[i, j] = np.array(self._fastpoly_to_jax(factor), dtype=np.int32)
+                active[i, j] = True
+                library_known[i, j] = factor.canonical_key() in known
+
+        return jnp.array(coeffs), jnp.array(active), jnp.array(library_known)
+
+    def _state_to_fastpolys(self, state_np) -> List[FastPoly]:
+        """Convert a single JAX env state snapshot to the node list needed by FactorLibrary."""
+        num_nodes = int(state_np.num_nodes)
+        shape = (self.config.effective_max_degree + 1,) * self.config.n_variables
+        nodes = []
+        for idx in range(num_nodes):
+            coeffs = np.array(state_np.node_coeffs[idx], dtype=np.int64).reshape(shape)
+            nodes.append(FastPoly(coeffs, self.config.mod))
+        return nodes
 
     # ------------------------------------------------------------------
     # Data collection
@@ -333,16 +422,23 @@ class PPOMCTSJAXTrainer:
         target_arrays = jnp.stack(
             [self._fastpoly_to_jax(t) for t in targets], axis=0
         )  # (B, target_size)
+        subgoal_coeffs, subgoal_active, subgoal_library_known = (
+            self._prepare_initial_subgoals(targets)
+        )
+        library_coeffs, library_mask = self._export_library_cache()
 
         # Batch reset.
         states = jax.vmap(
-            lambda tc: env_reset(self.env_config, tc)
-        )(target_arrays)
+            lambda tc, sgc, sga, sgl: env_reset(self.env_config, tc, sgc, sga, sgl)
+        )(target_arrays, subgoal_coeffs, subgoal_active, subgoal_library_known)
 
         transitions = []
         episode_rewards = np.zeros(B)
         episode_successes = np.zeros(B, dtype=bool)
         active = np.ones(B, dtype=bool)  # Track which envs are still running.
+        factor_hits = 0
+        library_hits = 0
+        successful_final_states = []
 
         for step_idx in range(self.config.max_steps):
             if not active.any():
@@ -357,6 +453,7 @@ class PPOMCTSJAXTrainer:
             rng, search_rng = jax.random.split(rng)
             policy_output = self._jit_batched_mcts(
                 params, search_rng, obs_batch, states,
+                library_coeffs, library_mask,
             )
 
             # Sample actions from MCTS visit counts (with temperature).
@@ -376,8 +473,14 @@ class PPOMCTSJAXTrainer:
             ]  # (B,)
 
             # Step all environments.
-            next_states, rewards, dones, successes = jax.vmap(
-                lambda s, a: env_step(self.env_config, s, a)
+            (
+                next_states, rewards, dones, successes,
+                factor_hits_step, library_hits_step,
+                _additive_complete, _mult_complete,
+            ) = jax.vmap(
+                lambda s, a: env_step(
+                    self.env_config, s, a, library_coeffs, library_mask
+                )
             )(states, actions)
 
             # Convert to numpy for storage.
@@ -385,6 +488,8 @@ class PPOMCTSJAXTrainer:
             rewards_np = np.array(rewards)
             dones_np = np.array(dones)
             successes_np = np.array(successes)
+            factor_hits_np = np.array(factor_hits_step)
+            library_hits_np = np.array(library_hits_step)
             values_np = np.array(values)
             network_lp_np = np.array(network_log_probs)
 
@@ -404,10 +509,25 @@ class PPOMCTSJAXTrainer:
                     episode_rewards[i] += rewards_np[i]
                     if successes_np[i]:
                         episode_successes[i] = True
+                    if factor_hits_np[i]:
+                        factor_hits += 1
+                    if library_hits_np[i]:
+                        library_hits += 1
                     if dones_np[i]:
+                        if successes_np[i]:
+                            successful_final_states.append(
+                                jax.tree.map(lambda x: np.array(x[i]), next_states)
+                            )
                         active[i] = False
 
             states = next_states
+
+        if self.factor_library is not None:
+            for state_np in successful_final_states:
+                nodes = self._state_to_fastpolys(state_np)
+                self.factor_library.register_episode_nodes(
+                    nodes, self.config.n_variables + 1
+                )
 
         # Track success history for curriculum.
         for s in episode_successes:
@@ -421,6 +541,9 @@ class PPOMCTSJAXTrainer:
             "success_rate": float(success_rate),
             "avg_reward": float(avg_reward),
             "complexity": self.current_complexity,
+            "factor_hits": factor_hits,
+            "library_hits": library_hits,
+            "library_size": len(self.factor_library) if self.factor_library else 0,
         }
 
         # Per-complexity breakdown.
@@ -726,6 +849,9 @@ class PPOMCTSJAXTrainer:
                     "success_rate": rollout_info["success_rate"],
                     "avg_reward": rollout_info["avg_reward"],
                     "episodes": rollout_info["episodes"],
+                    "factor_hits": rollout_info["factor_hits"],
+                    "library_hits": rollout_info["library_hits"],
+                    "library_size": rollout_info["library_size"],
                 }
                 if self.fixed_complexities:
                     for c in self.fixed_complexities:
@@ -743,6 +869,9 @@ class PPOMCTSJAXTrainer:
                 line = (
                     f"[PPO+MCTS-JAX iter {iteration}] "
                     f"episodes={rollout_info['episodes']} "
+                    f"lib={rollout_info['library_size']} "
+                    f"fhits={rollout_info['factor_hits']} "
+                    f"lhits={rollout_info['library_hits']} "
                     f"success={rollout_info['success_rate']:.2%} "
                     f"reward={rollout_info['avg_reward']:.3f} "
                     f"pg_loss={loss_info['pg_loss']:.4f} "

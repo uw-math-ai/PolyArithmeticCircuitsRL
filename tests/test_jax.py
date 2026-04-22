@@ -236,7 +236,7 @@ class TestEnvResetStep:
         # action: add node 0 (x0) and node 1 (x1) -> op=0, i=0, j=1
         action = encode_action(jnp.int32(0), jnp.int32(0), jnp.int32(1),
                                env_config.max_nodes)
-        next_state, reward, done, is_success = step(env_config, initial_state, action)
+        next_state, reward, done, is_success, *_ = step(env_config, initial_state, action)
 
         assert int(next_state.num_nodes) == int(initial_state.num_nodes) + 1
         assert int(next_state.num_edges) == 4  # bidirectional to both operands
@@ -246,7 +246,7 @@ class TestEnvResetStep:
         """Adding x0 + x1 when target is x0+x1 should yield success."""
         action = encode_action(jnp.int32(0), jnp.int32(0), jnp.int32(1),
                                env_config.max_nodes)
-        next_state, reward, done, is_success = step(env_config, initial_state, action)
+        next_state, reward, done, is_success, *_ = step(env_config, initial_state, action)
 
         assert bool(is_success)
         assert bool(done)
@@ -258,8 +258,68 @@ class TestEnvResetStep:
         jit_step = jax.jit(functools.partial(step, env_config))
         action = encode_action(jnp.int32(0), jnp.int32(0), jnp.int32(1),
                                env_config.max_nodes)
-        next_state, reward, done, is_success = jit_step(initial_state, action)
+        next_state, reward, done, is_success, *_ = jit_step(initial_state, action)
         assert next_state.num_nodes.shape == ()
+
+    def test_fl_additive_completion(self, config):
+        """JAX env awards additive completion when one add-away from target."""
+        ec = make_env_config(config)
+        d = ec.max_degree + 1
+        target_nd = np.zeros((d, d), dtype=np.int32)
+        target_nd[1, 0] = 1  # x0
+        target_nd[0, 1] = 1  # x1
+        target_nd[0, 0] = 1  # 1
+        state = reset(ec, jnp.array(target_nd.flatten(), dtype=jnp.int32))
+
+        action = encode_action(jnp.int32(0), jnp.int32(0), jnp.int32(1), ec.max_nodes)
+        next_state, reward, done, is_success, factor_hit, library_hit, add_complete, mult_complete = step(
+            ec, state, action
+        )
+
+        assert bool(add_complete)
+        assert not bool(mult_complete)
+        assert float(reward) >= ec.completion_bonus + ec.step_penalty
+
+    def test_fl_initial_subgoal_reward(self, config):
+        """A preloaded initial subgoal should trigger factor and library bonus rewards."""
+        ec = make_env_config(config)
+        d = ec.max_degree + 1
+
+        target_nd = np.zeros((d, d), dtype=np.int32)
+        target_nd[2, 0] = 1  # x0^2
+        target_nd[1, 0] = 2  # 2*x0
+        target_nd[0, 0] = 1  # 1
+
+        subgoal_nd = np.zeros((d, d), dtype=np.int32)
+        subgoal_nd[1, 0] = 1  # x0
+        subgoal_nd[0, 0] = 1  # 1
+
+        max_subgoals = ec.max_subgoals
+        subgoal_coeffs = np.zeros((max_subgoals, ec.target_size), dtype=np.int32)
+        subgoal_active = np.zeros((max_subgoals,), dtype=bool)
+        subgoal_library_known = np.zeros((max_subgoals,), dtype=bool)
+        subgoal_coeffs[0] = subgoal_nd.flatten()
+        subgoal_active[0] = True
+        subgoal_library_known[0] = True
+
+        state = reset(
+            ec,
+            jnp.array(target_nd.flatten(), dtype=jnp.int32),
+            jnp.array(subgoal_coeffs, dtype=jnp.int32),
+            jnp.array(subgoal_active),
+            jnp.array(subgoal_library_known),
+        )
+
+        action = encode_action(jnp.int32(0), jnp.int32(0), jnp.int32(2), ec.max_nodes)
+        _next_state, reward, _done, _is_success, factor_hit, library_hit, _add_complete, _mult_complete = step(
+            ec, state, action
+        )
+
+        assert bool(factor_hit)
+        assert bool(library_hit)
+        assert float(reward) >= (
+            ec.step_penalty + ec.factor_subgoal_reward + ec.factor_library_bonus
+        )
 
     def test_get_observation(self, env_config, initial_state):
         """Observation dict has expected keys and shapes."""
@@ -436,7 +496,7 @@ class TestMCTXIntegration:
         def recurrent_fn(params, rng_key, action, embedding):
             env_states = embedding['_env_state']
             import functools
-            next_states, rewards, dones, _ = jax.vmap(
+            next_states, rewards, dones, _, *_ = jax.vmap(
                 lambda s, a: step(ec, s, a)
             )(env_states, action)
             next_obs = jax.vmap(lambda s: get_observation(ec, s))(next_states)

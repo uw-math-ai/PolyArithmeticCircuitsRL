@@ -119,9 +119,7 @@ class FastPoly:
         """Return True if this is a non-zero constant (degree-0) polynomial.
 
         A scalar polynomial has a non-zero constant term and all higher-degree
-        coefficients equal to zero. Used when checking multiplicative completion
-        bonuses: if T / v_new reduces to a scalar, the agent only needs to
-        multiply v_new by that constant to reach T.
+        coefficients equal to zero.
 
         Returns:
             True if the polynomial is a non-zero constant, False if it has any

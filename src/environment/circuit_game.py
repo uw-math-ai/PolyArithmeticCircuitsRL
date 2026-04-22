@@ -44,8 +44,8 @@ class CircuitGame:
         subgoal set for the remainder of the episode.
       - Awards completion_bonus when the circuit contains both pieces for a single
         final operation: additive (T - v_new already in circuit) or multiplicative
-        (exact quotient T / v_new already in circuit or is a scalar). Each fires at
-        most once per direction per episode.
+        (exact quotient T / v_new already in circuit). Each fires at most once per
+        direction per episode.
       - Registers all constructed nodes into the library after a successful episode.
 
     Attributes:
@@ -183,8 +183,8 @@ class CircuitGame:
           - completion_bonus (+3.0 default): when the circuit now contains both
             pieces for one final operation to reach T:
               * Additive: T - v_new already in the circuit (fires at most once).
-              * Multiplicative: T / v_new is exact and quotient is in circuit or
-                is a scalar (fires at most once, separate from additive).
+              * Multiplicative: T / v_new is exact and the quotient is already in
+                the circuit (fires at most once, separate from additive).
 
         After a successful episode, all constructed nodes are registered in the
         FactorLibrary so future episodes can benefit from them.
@@ -334,11 +334,11 @@ class CircuitGame:
                 )
                 if quotient is not None:
                     # Multiplicative completion bonus (fires at most once).
-                    #   T / v_new is a scalar  →  just multiply v_new by that constant.
-                    #   T / v_new in circuit   →  one MUL away from T.
+                    # It is only awarded when the exact quotient is already an
+                    # existing node, so the state is literally one MUL away from T.
                     if not self._mult_complete_hit:
                         q_key = quotient.canonical_key()
-                        if quotient.is_scalar() or q_key in existing_keys:
+                        if q_key in existing_keys:
                             reward += self.config.completion_bonus
                             self._mult_complete_hit = True
                             mult_complete = True

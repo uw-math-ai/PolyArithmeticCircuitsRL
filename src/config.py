@@ -49,7 +49,7 @@ class Config:
     # Completion bonus fired when the agent creates a node v such that the
     # circuit now contains both v and its "complement" for one final operation:
     #   Additive:       T - v  is already in the circuit  (one add away from T)
-    #   Multiplicative: T / v  is in the circuit or a scalar (one mul away from T)
+    #   Multiplicative: T / v  is already in the circuit (one mul away from T)
     # Fires at most once per direction (additive / multiplicative) per episode,
     # so the agent cannot farm it by repeatedly building the same node.
     completion_bonus: float = 3.0
