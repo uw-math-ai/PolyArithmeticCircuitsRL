@@ -31,7 +31,10 @@ export SEED="${SEED:-42}"
 export DATA_DIR="${DATA_DIR:-data}"
 export AUTO_BUILD_DATASET=0
 export SKIP_OPTIMAL_PRECOMPUTE="${SKIP_OPTIMAL_PRECOMPUTE:-1}"
-export SKIP_EXPERT_DEMOS="${SKIP_EXPERT_DEMOS:-1}"
+export SKIP_EXPERT_DEMOS="${SKIP_EXPERT_DEMOS:-0}"
+export EXPERT_DEMO_COUNT="${EXPERT_DEMO_COUNT:-300}"
+export DEMOS_PER_ADVANCE="${DEMOS_PER_ADVANCE:-150}"
+export ALLOW_PARTIAL_DEMOS="${ALLOW_PARTIAL_DEMOS:-1}"
 export ENABLE_WANDB="${ENABLE_WANDB:-1}"
 export WANDB_PROJECT="${WANDB_PROJECT:-PolyArithmeticCircuitsRL}"
 export WANDB_ENTITY="${WANDB_ENTITY:-}"
@@ -59,9 +62,20 @@ echo "[train] N_VARS=$N_VARS MAX_OPS=$MAX_OPS TOTAL_STEPS=$TOTAL_STEPS SEED=$SEE
 echo "[train] LOG_DIR=$LOG_DIR"
 echo "[train] SKIP_OPTIMAL_PRECOMPUTE=$SKIP_OPTIMAL_PRECOMPUTE"
 echo "[train] SKIP_EXPERT_DEMOS=$SKIP_EXPERT_DEMOS"
+echo "[train] EXPERT_DEMO_COUNT=$EXPERT_DEMO_COUNT"
+echo "[train] DEMOS_PER_ADVANCE=$DEMOS_PER_ADVANCE"
+echo "[train] ALLOW_PARTIAL_DEMOS=$ALLOW_PARTIAL_DEMOS"
 echo "[train] ENABLE_WANDB=$ENABLE_WANDB"
 
 EXTRA_ARGS=()
+EXTRA_ARGS+=(--expert-demo-count "$EXPERT_DEMO_COUNT")
+EXTRA_ARGS+=(--demos-per-advance "$DEMOS_PER_ADVANCE")
+if [ "$ALLOW_PARTIAL_DEMOS" = "1" ]; then
+  EXTRA_ARGS+=(--allow-partial-demos)
+else
+  EXTRA_ARGS+=(--no-allow-partial-demos)
+fi
+
 if [ "$ENABLE_WANDB" = "1" ]; then
   EXTRA_ARGS+=(--wandb --wandb-project "$WANDB_PROJECT" --wandb-run-name "$WANDB_RUN_NAME")
   if [ -n "$WANDB_ENTITY" ]; then

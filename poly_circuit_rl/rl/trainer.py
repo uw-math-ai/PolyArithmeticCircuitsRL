@@ -38,9 +38,20 @@ def _seed_everything(seed: int) -> None:
         torch.backends.cudnn.benchmark = False
 
 
-def should_use_mcts_for_level(level_idx: int, config: Config) -> bool:
-    """Use MCTS from curriculum level 1 onward when enabled."""
-    return config.use_mcts and level_idx >= 1
+def should_use_mcts_for_level(
+    level_idx: int,
+    config: Config,
+    episodes_at_level: int = 0,
+) -> bool:
+    """Use MCTS from curriculum level 1 onward, after a per-level warmup.
+
+    The warmup lets Q-values adapt to the new target distribution before MCTS
+    amplifies them. Before warmup completes, the agent runs pure DQN at the
+    new level.
+    """
+    if not (config.use_mcts and level_idx >= 1):
+        return False
+    return episodes_at_level >= config.mcts_warmup_episodes
 
 
 def should_mix_interesting_targets(level_idx: int, config: Config) -> bool:
@@ -499,9 +510,10 @@ def train(
 
     # --- Expert demo pre-fill ---
     skip_expert_demos = os.getenv("SKIP_EXPERT_DEMOS", "0") == "1"
+    demo_gen = None
     if skip_expert_demos:
         print("Skipping expert demo prefill (SKIP_EXPERT_DEMOS=1).")
-    elif config.expert_demo_count > 0:
+    elif config.expert_demo_count > 0 or config.demos_per_advance > 0:
         try:
             print(f"Preparing expert demos (count={config.expert_demo_count})...")
             demo_t0 = time.perf_counter()
@@ -509,27 +521,29 @@ def train(
 
             demo_gen = ExpertDemoGenerator(config)
             demo_gen.build_graph(max_steps=max(config.curriculum_levels))
-            demos = demo_gen.generate_demos(
-                env,
-                num_demos=config.expert_demo_count,
-                curriculum_levels=config.curriculum_levels,
-            )
-            if len(demos) < 0.5 * config.expert_demo_count:
-                msg = (
-                    f"Expert demo prefill is low: requested {config.expert_demo_count}, "
-                    f"generated {len(demos)} transitions."
+            if config.expert_demo_count > 0:
+                demos = demo_gen.generate_demos(
+                    env,
+                    num_demos=config.expert_demo_count,
+                    curriculum_levels=config.curriculum_levels,
                 )
-                warnings.warn(msg, stacklevel=2)
-                assert config.allow_partial_demos, msg
-            for t in demos:
-                agent.buffer.add(t)
-            print(
-                f"Pre-filled {len(demos)} expert demo transitions "
-                f"({len(agent.buffer)} total in buffer) "
-                f"in {time.perf_counter() - demo_t0:.1f}s"
-            )
+                if len(demos) < 0.5 * config.expert_demo_count:
+                    msg = (
+                        f"Expert demo prefill is low: requested {config.expert_demo_count}, "
+                        f"generated {len(demos)} transitions."
+                    )
+                    warnings.warn(msg, stacklevel=2)
+                    assert config.allow_partial_demos, msg
+                for t in demos:
+                    agent.buffer.add(t)
+                print(
+                    f"Pre-filled {len(demos)} expert demo transitions "
+                    f"({len(agent.buffer)} total in buffer) "
+                    f"in {time.perf_counter() - demo_t0:.1f}s"
+                )
         except Exception as e:
             print(f"Warning: expert demo generation failed: {e}")
+            demo_gen = None
 
     cur_level = 0
     cur_max_ops = config.curriculum_levels[cur_level]
@@ -538,6 +552,7 @@ def train(
     best_sr = 0.0
     best_eval_avg_reward = float("-inf")
     episode = 0
+    episodes_at_level = 0
 
     levels = list(config.curriculum_levels)
     eval_targets_by_level = _presample_eval_targets(
@@ -581,9 +596,14 @@ def train(
             interesting_sampler,
         )
 
-        ep_mcts = train_mcts if should_use_mcts_for_level(cur_level, config) else None
+        ep_mcts = (
+            train_mcts
+            if should_use_mcts_for_level(cur_level, config, episodes_at_level)
+            else None
+        )
         result = collect_episode(env, agent, max_ops=cur_max_ops, target_poly=target_poly, mcts=ep_mcts)
         episode += 1
+        episodes_at_level += 1
         window.append(1.0 if result["solved"] else 0.0)
         sr = sum(window) / len(window) if window else 0.0
 
@@ -640,12 +660,52 @@ def train(
             cur_max_ops = config.curriculum_levels[cur_level]
             window.clear()
             last_eval_sr = None
-            print(f"=== ADVANCE: Level {cur_level}, max_ops={cur_max_ops} (buffer retained) ===")
+            episodes_at_level = 0
+
+            buf_before = len(agent.buffer)
+            demos_before = agent.buffer.count_demos()
+            eps_before = agent._epsilon()
+
+            # 1. Prune stale on-policy transitions (keep all demos + last N on-policy)
+            dropped = 0
+            if config.buffer_keep_recent > 0:
+                dropped = agent.buffer.prune_non_demos(config.buffer_keep_recent)
+
+            # 2. Inject fresh demos targeted at the new level
+            fresh_demo_count = 0
+            if demo_gen is not None and config.demos_per_advance > 0:
+                try:
+                    fresh = demo_gen.generate_demos(
+                        env,
+                        num_demos=config.demos_per_advance,
+                        curriculum_levels=(cur_max_ops,),
+                    )
+                    for t in fresh:
+                        agent.buffer.add(t)
+                    fresh_demo_count = len(fresh)
+                except Exception as e:
+                    warnings.warn(f"fresh-demo generation failed at advance: {e}", stacklevel=2)
+
+            # 3. Bump epsilon floor for re-exploration
+            agent.bump_epsilon_floor(config.eps_advance_floor)
+            eps_after = agent._epsilon()
+
+            print(
+                f"=== ADVANCE: Level {cur_level}, max_ops={cur_max_ops} | "
+                f"pruned {dropped} stale | pushed {fresh_demo_count} fresh demos | "
+                f"buf {buf_before}->{len(agent.buffer)} (demos {demos_before}->{agent.buffer.count_demos()}) | "
+                f"eps {eps_before:.3f}->{eps_after:.3f} ==="
+            )
             if wb is not None:
                 wb.log(
                     {
                         "curriculum/level": cur_level,
                         "curriculum/max_ops": cur_max_ops,
+                        "curriculum/buffer_pruned": dropped,
+                        "curriculum/fresh_demos": fresh_demo_count,
+                        "curriculum/buffer_size_after": len(agent.buffer),
+                        "curriculum/eps_before": eps_before,
+                        "curriculum/eps_after": eps_after,
                     },
                     step=agent.total_steps,
                 )
@@ -654,7 +714,7 @@ def train(
         while next_eval_step is not None and agent.total_steps >= next_eval_step:
             eval_mcts = (
                 MCTS(agent, eval_env, config)
-                if should_use_mcts_for_level(cur_level, config)
+                if should_use_mcts_for_level(cur_level, config, episodes_at_level)
                 else None
             )
             ev = evaluate(

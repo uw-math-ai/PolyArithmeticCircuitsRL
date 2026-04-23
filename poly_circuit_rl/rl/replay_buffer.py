@@ -190,5 +190,22 @@ class HERReplayBuffer:
         self.buffer.clear()
         self.pos = 0
 
+    def prune_non_demos(self, keep_recent: int) -> int:
+        """Keep all is_demo=True transitions + the last `keep_recent` non-demo.
+
+        Returns the number of transitions dropped. Preserves insertion order so
+        future pushes continue FIFO overwrite semantics.
+        """
+        demos = [t for t in self.buffer if t.is_demo]
+        non_demos = [t for t in self.buffer if not t.is_demo]
+        kept_non_demos = non_demos[-keep_recent:] if keep_recent > 0 else []
+        dropped = len(self.buffer) - len(demos) - len(kept_non_demos)
+        self.buffer = demos + kept_non_demos
+        self.pos = len(self.buffer) % self.capacity
+        return dropped
+
+    def count_demos(self) -> int:
+        return sum(1 for t in self.buffer if t.is_demo)
+
     def __len__(self) -> int:
         return len(self.buffer)

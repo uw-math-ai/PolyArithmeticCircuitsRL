@@ -67,6 +67,29 @@ def main():
         help="Epsilon decay steps",
     )
 
+    # Runtime knobs (None = use Config default)
+    parser.add_argument("--expert-demo-count", type=int, default=None,
+                        help="Expert demos for startup prefill (Config default used if omitted)")
+    parser.add_argument("--demos-per-advance", type=int, default=None,
+                        help="Fresh demos injected at each curriculum advance")
+    parser.add_argument("--allow-partial-demos", dest="allow_partial_demos",
+                        action=argparse.BooleanOptionalAction, default=None,
+                        help="Accept partial demo prefill (default True in Config)")
+    parser.add_argument("--curriculum-train-threshold", type=float, default=None,
+                        help="Train SR gate for curriculum advance")
+    parser.add_argument("--curriculum-eval-threshold", type=float, default=None,
+                        help="Eval SR gate for curriculum advance")
+    parser.add_argument("--curriculum-window", type=int, default=None,
+                        help="Window size for train-SR running average")
+    parser.add_argument("--eps-advance-floor", type=float, default=None,
+                        help="Eps rewound to this value at each advance")
+    parser.add_argument("--mcts-warmup-episodes", type=int, default=None,
+                        help="Episodes at a new level before MCTS activates")
+    parser.add_argument("--buffer-keep-recent", type=int, default=None,
+                        help="Non-demo transitions kept at advance (demos always kept)")
+    parser.add_argument("--eval-episodes", type=int, default=None,
+                        help="Episodes per eval checkpoint")
+
     # Training
     parser.add_argument("--total_steps", type=int, default=defaults.total_steps, help="Total env steps")
     parser.add_argument("--seed", type=int, default=defaults.seed, help="Random seed")
@@ -96,7 +119,7 @@ def main():
 
     args = parser.parse_args()
 
-    config = Config(
+    config_kwargs = dict(
         n_vars=args.n_vars,
         max_ops=args.max_ops,
         L=args.L,
@@ -120,6 +143,25 @@ def main():
         gen_max_successors=args.gen_max_successors,
         gen_max_seconds=args.gen_max_seconds,
     )
+
+    # Runtime knobs: only override Config defaults when user explicitly passed the flag
+    optional_overrides = {
+        "expert_demo_count":          args.expert_demo_count,
+        "demos_per_advance":          args.demos_per_advance,
+        "allow_partial_demos":        args.allow_partial_demos,
+        "curriculum_train_threshold": args.curriculum_train_threshold,
+        "curriculum_eval_threshold":  args.curriculum_eval_threshold,
+        "curriculum_window":          args.curriculum_window,
+        "eps_advance_floor":          args.eps_advance_floor,
+        "mcts_warmup_episodes":       args.mcts_warmup_episodes,
+        "buffer_keep_recent":         args.buffer_keep_recent,
+        "eval_episodes":              args.eval_episodes,
+    }
+    for k, v in optional_overrides.items():
+        if v is not None:
+            config_kwargs[k] = v
+
+    config = Config(**config_kwargs)
 
     print(f"Config: n_vars={config.n_vars}, L={config.L}, m={config.m}")
     print(f"  obs_dim={config.obs_dim}, action_dim={config.action_dim}")

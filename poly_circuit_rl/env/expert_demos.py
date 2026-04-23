@@ -12,15 +12,16 @@ from __future__ import annotations
 
 import logging
 import random
+import time
 from collections import deque
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import numpy as np
-from sympy import expand
 
 from ..config import Config
 from ..core.action_codec import ACTION_ADD, ACTION_MUL, ACTION_SET_OUTPUT, encode_action
 from ..core.poly import Poly, poly_hashkey
+from . import graph_cache
 from .graph_enumeration import build_game_graph, analyze_graph
 from .samplers import _sympy_expr_to_poly
 
@@ -48,6 +49,32 @@ class ExpertDemoGenerator:
         if max_steps <= self._built_up_to:
             return
 
+        key = graph_cache.compute_cache_key(
+            n_vars=self.n_vars,
+            steps=max_steps,
+            gen_max_graph_nodes=self.config.gen_max_graph_nodes,
+            gen_max_successors=self.config.gen_max_successors,
+            gen_max_seconds=self.config.gen_max_seconds,
+        )
+
+        t_load = time.perf_counter()
+        cached = graph_cache.load(key)
+        if cached is not None:
+            self._G = cached["G"]
+            self._dist = cached["dist"]
+            self._roots = cached["roots"]
+            self._poly_to_dag_id = cached["poly_to_dag_id"]
+            self._built_up_to = cached["built_up_to"]
+            log.info(
+                "ExpertDemoGenerator: loaded cached DAG (key=%s, %d nodes, %d mapped to Poly) in %.2fs",
+                key,
+                self._G.number_of_nodes(),
+                len(self._poly_to_dag_id),
+                time.perf_counter() - t_load,
+            )
+            return
+
+        t0 = time.perf_counter()
         self._G = build_game_graph(
             steps=max_steps,
             num_vars=self.n_vars,
@@ -55,6 +82,13 @@ class ExpertDemoGenerator:
             max_successors_per_node=self.config.gen_max_successors,
             max_seconds=self.config.gen_max_seconds,
         )
+        log.info(
+            "ExpertDemoGenerator: build_game_graph finished (%d nodes) in %.2fs",
+            self._G.number_of_nodes(),
+            time.perf_counter() - t0,
+        )
+
+        t0 = time.perf_counter()
         _records, self._dist, self._roots = analyze_graph(
             self._G,
             only_multipath=False,
@@ -63,23 +97,50 @@ class ExpertDemoGenerator:
             max_step=max_steps,
             num_vars=self.n_vars,
         )
-        self._build_poly_map()
-        self._built_up_to = max_steps
         log.info(
-            "ExpertDemoGenerator: built DAG with %d nodes, %d mapped to Poly",
-            self._G.number_of_nodes(),
-            len(self._poly_to_dag_id),
+            "ExpertDemoGenerator: analyze_graph finished in %.2fs",
+            time.perf_counter() - t0,
         )
+
+        t0 = time.perf_counter()
+        self._build_poly_map()
+        log.info(
+            "ExpertDemoGenerator: _build_poly_map finished (%d mapped) in %.2fs",
+            len(self._poly_to_dag_id),
+            time.perf_counter() - t0,
+        )
+
+        self._built_up_to = max_steps
+
+        try:
+            t0 = time.perf_counter()
+            graph_cache.save(key, {
+                "G": self._G,
+                "dist": self._dist,
+                "roots": self._roots,
+                "poly_to_dag_id": self._poly_to_dag_id,
+                "built_up_to": self._built_up_to,
+            })
+            log.info(
+                "ExpertDemoGenerator: saved DAG cache (key=%s) in %.2fs",
+                key,
+                time.perf_counter() - t0,
+            )
+        except Exception as e:
+            log.warning("ExpertDemoGenerator: failed to save DAG cache (key=%s): %s", key, e)
 
     def _build_poly_map(self) -> None:
         """Map every DAG node's SymPy expression to its internal Poly hashkey."""
         self._poly_to_dag_id.clear()
         for node_id, data in self._G.nodes(data=True):
-            expr = data.get("expr")
-            if expr is None:
-                continue
+            expr_str = data.get("expr_str")
+            if expr_str is None:
+                expr = data.get("expr")
+                if expr is None:
+                    continue
+                expr_str = str(expr)
             try:
-                poly = _sympy_expr_to_poly(str(expand(expr)), self.var_names)
+                poly = _sympy_expr_to_poly(expr_str, self.var_names)
                 key = poly_hashkey(poly)
                 self._poly_to_dag_id[key] = node_id
             except Exception:
@@ -300,11 +361,15 @@ class ExpertDemoGenerator:
             ops = int(dist)
             if ops > max_level:
                 continue
-            expr = self._G.nodes[dag_id].get("expr")
-            if expr is None:
-                continue
+            node_data = self._G.nodes[dag_id]
+            expr_str = node_data.get("expr_str")
+            if expr_str is None:
+                expr = node_data.get("expr")
+                if expr is None:
+                    continue
+                expr_str = str(expr)
             try:
-                poly = _sympy_expr_to_poly(str(expand(expr)), self.var_names)
+                poly = _sympy_expr_to_poly(expr_str, self.var_names)
                 targets_by_ops.setdefault(ops, []).append(poly)
             except Exception:
                 continue

@@ -55,7 +55,8 @@ class Config:
     factor_library_max_size: int = 10_000     # LRU cap for cross-episode known factors
 
     # --- Expert Demos ---
-    expert_demo_count: int = 1000             # expert demonstrations to pre-fill buffer
+    expert_demo_count: int = 300              # expert demonstrations to pre-fill buffer
+    demos_per_advance: int = 150              # fresh demos seeded at each curriculum advance
     allow_partial_demos: bool = True          # if False, fail when demo prefill is too small
     eval_norm_scale: float = _DEFAULT_EVAL_NORM_SCALE  # tanh(v/scale) applied to eval vectors in obs
     max_episode_steps: Optional[int] = None  # hard cap; None → max_ops + max_nodes + 5
@@ -79,24 +80,28 @@ class Config:
     buffer_size: int = 100_000
     eps_start: float = 1.0
     eps_end: float = 0.02
-    eps_decay_steps: int = 50_000
+    eps_decay_steps: int = 25_000
+    eps_advance_floor: float = 0.5            # on curriculum advance, eps bumped to max(current, this)
     target_update_tau: float = 0.005
     train_freq: int = 4
     learning_starts: int = 200
+
+    # --- Buffer hygiene on advance ---
+    buffer_keep_recent: int = 5_000           # on-policy transitions retained at advance (demos always kept)
 
     # --- HER ---
     her_k: int = 4
 
     # --- Curriculum ---
     curriculum_levels: Tuple[int, ...] = (1, 2, 3, 4, 5, 6)
-    curriculum_window: int = 100
-    curriculum_train_threshold: float = 0.50
+    curriculum_window: int = 150
+    curriculum_train_threshold: float = 0.25
     curriculum_eval_threshold: float = 0.70
 
     # --- Training ---
     total_steps: int = 500_000
     eval_every: int = 1000
-    eval_episodes: int = 50
+    eval_episodes: int = 100
     seed: int = 42
     log_dir: str = "runs/"
     wandb_artifact_min_interval_steps: int = 50_000
@@ -118,6 +123,7 @@ class Config:
     mcts_simulations: int = 50          # number of MCTS simulations per action
     mcts_c_puct: float = 1.5            # PUCT exploration constant
     mcts_temperature: float = 1.0       # temperature for visit-count action selection
+    mcts_warmup_episodes: int = 500     # episodes at a new level before MCTS activates
 
     def __post_init__(self) -> None:
         assert self.d_model % self.n_heads == 0, "d_model must be divisible by n_heads"
@@ -129,6 +135,10 @@ class Config:
         assert self.m >= 1 and self.eval_norm_scale > 0, "m >= 1 and eval_norm_scale > 0 are required"
         assert 0 < self.gamma < 1, "gamma must satisfy 0 < gamma < 1"
         assert 0 <= self.eps_end <= self.eps_start <= 1, "epsilon bounds must satisfy 0 <= eps_end <= eps_start <= 1"
+        assert 0.0 <= self.eps_advance_floor <= 1.0, "eps_advance_floor must be in [0, 1]"
+        assert self.buffer_keep_recent >= 0, "buffer_keep_recent must be >= 0"
+        assert self.demos_per_advance >= 0, "demos_per_advance must be >= 0"
+        assert self.mcts_warmup_episodes >= 0, "mcts_warmup_episodes must be >= 0"
         assert self.reward_mode in {"sparse", "shaped", "full"}, "reward_mode must be one of: sparse, shaped, full"
         assert self.factor_library_max_size >= 1, "factor_library_max_size must be >= 1"
         assert self.wandb_artifact_min_interval_steps >= 0, "wandb_artifact_min_interval_steps must be >= 0"

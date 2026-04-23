@@ -97,7 +97,8 @@ def build_game_graph(
         key = canon_key(expr)
         if key in G:
             continue
-        G.add_node(key, expr=expr, key=key, step=0, label=str(expr))
+        expr_str = str(expr)
+        G.add_node(key, expr=expr, expr_str=expr_str, key=key, step=0, label=expr_str)
         start_nodes.append(key)
 
     levels: Dict[int, list[str]] = {0: start_nodes}
@@ -138,17 +139,21 @@ def build_game_graph(
                     if cached:
                         expr_key, new_expr = cached
                     else:
+                        # op_fn wraps `expand(...)`, so new_expr is already canonical-expanded;
+                        # downstream readers of `expr` / `expr_str` must not re-expand.
                         new_expr = op_fn(node_expr, operand_expr)
                         expr_key = canon_key(new_expr)
                         op_cache[cache_key] = (expr_key, new_expr)
 
                     if expr_key not in G:
+                        expr_str = str(new_expr)
                         G.add_node(
                             expr_key,
                             expr=new_expr,
+                            expr_str=expr_str,
                             key=expr_key,
                             step=step + 1,
-                            label=str(expand(new_expr)),
+                            label=expr_str,
                         )
                         next_level.append(expr_key)
                     G.add_edge(
@@ -215,7 +220,8 @@ def build_analysis_structures(
         if max_step is not None and data.get("step") is not None and data["step"] > max_step:
             continue
         expr = data.get("expr")
-        expr_str = str(expand(expr)) if expr is not None else data.get("expr_str")
+        # `expr` is already canonical-expanded at construction time (see build_game_graph).
+        expr_str = data.get("expr_str") or (str(expr) if expr is not None else None)
         nodes[node_id] = NodeRecord(
             node_id=node_id,
             expr_str=expr_str,

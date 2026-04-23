@@ -54,6 +54,10 @@ class DQNAgent:
 
         self.total_steps = 0
         self.training_losses: list[float] = []
+        # When non-zero, shifts eps-schedule backwards so epsilon starts higher
+        # and re-decays from that level. Set by bump_epsilon_floor() at curriculum
+        # advance. Decays naturally as total_steps grows — no permanent floor.
+        self._eps_step_offset: int = 0
 
     def predict_q_values(self, obs: np.ndarray) -> np.ndarray:
         """Return Q-values for one observation using eval-mode inference."""
@@ -168,9 +172,39 @@ class DQNAgent:
             tp.data.copy_(tau * op.data + (1.0 - tau) * tp.data)
 
     def _epsilon(self) -> float:
-        """Return the current exploration rate, linearly annealed from eps_start to eps_end."""
-        frac = min(1.0, self.total_steps / max(self.config.eps_decay_steps, 1))
-        return self.config.eps_start + frac * (self.config.eps_end - self.config.eps_start)
+        """Return the current exploration rate, linearly annealed from eps_start to eps_end.
+
+        Respects `_eps_step_offset` so bump_epsilon_floor() effectively rewinds
+        the schedule — eps jumps up and then re-decays naturally.
+        """
+        effective_steps = max(0, self.total_steps - self._eps_step_offset)
+        frac = min(1.0, effective_steps / max(self.config.eps_decay_steps, 1))
+        eps = self.config.eps_start + frac * (self.config.eps_end - self.config.eps_start)
+        return max(eps, self.config.eps_end)
+
+    def bump_epsilon_floor(self, new_floor: float) -> None:
+        """Rewind the epsilon schedule so current eps becomes `new_floor`.
+
+        After this call, epsilon decays from `new_floor` toward eps_end over the
+        normal `eps_decay_steps` budget. If current eps is already >= new_floor,
+        this is a no-op.
+
+        Called at curriculum advance to force re-exploration on a new target
+        distribution.
+        """
+        new_floor = float(max(self.config.eps_end, min(self.config.eps_start, new_floor)))
+        if new_floor <= self._epsilon():
+            return
+        # Solve for effective_steps such that scheduled eps == new_floor:
+        #   eps = eps_start + (effective/decay) * (eps_end - eps_start)
+        #   => effective = decay * (new_floor - eps_start) / (eps_end - eps_start)
+        denom = self.config.eps_end - self.config.eps_start
+        if denom == 0:
+            return
+        frac = (new_floor - self.config.eps_start) / denom
+        frac = max(0.0, min(1.0, frac))
+        effective_steps = int(frac * self.config.eps_decay_steps)
+        self._eps_step_offset = self.total_steps - effective_steps
 
     def save(self, path: str) -> None:
         """Save a full checkpoint (both networks + optimizer + step count) to path."""
