@@ -8,6 +8,7 @@ from src.config import Config
 from src.algorithms.sac import (
     RawStep,
     SACActor,
+    SACTrainer,
     StratifiedReplayBuffer,
     build_n_step_transition,
 )
@@ -98,3 +99,41 @@ class TestStratifiedReplay:
         assert all(item is not None for item in batch)
         assert any(item.complexity == 3 for item in batch)
         assert any(item.episode_success for item in batch)
+
+
+class TestSACCurriculum:
+    def test_no_curriculum_skips_fixed_warmup(self):
+        config = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=5,
+            curriculum_enabled=False,
+            hidden_dim=16,
+            embedding_dim=16,
+            num_gnn_layers=2,
+        )
+        trainer = SACTrainer(config)
+
+        assert trainer.current_complexity == 5
+        assert trainer._get_fixed_phase_complexity(1) is None
+
+    def test_fixed_warmup_still_applies_with_curriculum(self):
+        config = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=5,
+            curriculum_enabled=True,
+            hidden_dim=16,
+            embedding_dim=16,
+            num_gnn_layers=2,
+            sac_fixed_complexity_iters=2,
+        )
+        trainer = SACTrainer(config)
+
+        assert trainer._get_fixed_phase_complexity(1) == 3
+        assert trainer._get_fixed_phase_complexity(2) == 3
+        assert trainer._get_fixed_phase_complexity(3) == 4
+        assert trainer._get_fixed_phase_complexity(5) is None
+
+    def test_sac_does_not_use_bfs_for_c4_targets(self):
+        assert SACTrainer.MAX_BOARD_COMPLEXITY == 3

@@ -6,8 +6,15 @@ import torch
 
 from ..config import Config
 from ..environment.circuit_game import CircuitGame
-from ..game_board.generator import sample_target, build_game_board
+from ..game_board.generator import (
+    sample_target,
+    build_game_board,
+    generate_random_circuit,
+)
 from ..algorithms.mcts import MCTS
+
+
+MAX_EVAL_BOARD_COMPLEXITY = 3
 
 
 def evaluate_model(
@@ -46,12 +53,19 @@ def evaluate_model(
     results = {}
 
     for complexity in complexities:
-        board = build_game_board(config, complexity)
+        board = (
+            build_game_board(config, complexity)
+            if complexity <= MAX_EVAL_BOARD_COMPLEXITY
+            else None
+        )
         successes = 0
         total_steps = 0
 
         for trial in range(num_trials):
-            target_poly, min_steps = sample_target(config, complexity, board)
+            if board is None:
+                target_poly, _ = generate_random_circuit(config, complexity)
+            else:
+                target_poly, _ = sample_target(config, complexity, board)
             obs = env.reset(target_poly)
             success = False
 

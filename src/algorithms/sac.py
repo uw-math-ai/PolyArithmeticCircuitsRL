@@ -512,8 +512,9 @@ class SACTrainer:
             min=self.config.sac_alpha_min, max=self.config.sac_alpha_max
         )
 
-    # BFS boards are only feasible up to this complexity.
-    MAX_BOARD_COMPLEXITY = 4
+    # Exhaustive BFS boards grow very quickly; C4 is large enough to stall/kill
+    # SAC Slurm runs before the next training log line.
+    MAX_BOARD_COMPLEXITY = 3
 
     def _get_board(self, complexity: int):
         if complexity not in self._boards:
@@ -916,6 +917,8 @@ class SACTrainer:
             print(f"[Curriculum] Backed off to complexity {self.current_complexity}")
 
     def _get_fixed_phase_complexity(self, iteration: int) -> Optional[int]:
+        if not self.config.curriculum_enabled:
+            return None
         if self.config.sac_fixed_complexity_iters <= 0:
             return None
 
@@ -989,7 +992,12 @@ class SACTrainer:
                 }, step=iteration)
 
             if iteration % self.config.log_interval == 0:
-                phase = "fixed" if in_fixed_phase else "curriculum"
+                if in_fixed_phase:
+                    phase = "fixed"
+                elif self.config.curriculum_enabled:
+                    phase = "curriculum"
+                else:
+                    phase = "direct"
                 lib_str = (
                     f"lib={rollout_info['library_size']} "
                     f"fhits={rollout_info['factor_hits']} "
