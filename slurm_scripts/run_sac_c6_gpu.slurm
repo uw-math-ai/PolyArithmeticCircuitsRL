@@ -27,10 +27,10 @@ apptainer exec --nv --bind /gscratch:/gscratch \
   python -u -m src.main \
     --algorithm sac \
     --n-variables 2 \
-    --no-curriculum \
     --max-complexity 6 \
     --device cuda \
     --iterations 500 \
+    --sac-fixed-complexity-iters 0 \
     --factor-subgoal-reward 1.0 \
     --factor-library-bonus 0.5 \
     --completion-bonus 3.0 \
