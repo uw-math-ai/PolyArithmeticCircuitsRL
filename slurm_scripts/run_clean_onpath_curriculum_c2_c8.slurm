@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-REPO_DIR=${REPO_DIR:-/gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL}
+REPO_DIR=${REPO_DIR:-/gscratch/stf/kj66/PolyArithmeticCircuitsRL_kj66-hyak}
 CONTAINER=${CONTAINER:-container_jax.sif}
 
 N_VARIABLES=${N_VARIABLES:-3}
