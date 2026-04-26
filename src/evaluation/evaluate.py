@@ -1,5 +1,6 @@
-"""Systematic evaluation harness for trained models."""
+"""Systematic evaluation harness for PyTorch PPO+MCTS models."""
 
+import copy
 from typing import Dict, List, Optional
 
 import torch
@@ -7,7 +8,6 @@ import torch
 from ..config import Config
 from ..environment.circuit_game import CircuitGame
 from ..game_board.generator import sample_target, build_game_board
-from ..algorithms.mcts import MCTS
 
 
 def evaluate_model(
@@ -22,9 +22,9 @@ def evaluate_model(
     """Evaluate a trained model across complexity levels.
 
     Args:
-        model: trained model (PolicyValueNet or SAC actor)
-        config: configuration
-        algorithm: "ppo"/"sac" (greedy policy) or "alphazero" (MCTS)
+        model: trained PyTorch PolicyValueNet.
+        config: configuration.
+        algorithm: retained for checkpoint metadata/reporting.
         complexities: list of complexity levels to test
         num_trials: number of trials per complexity
         device: torch device
@@ -36,50 +36,48 @@ def evaluate_model(
     if complexities is None:
         complexities = list(range(2, config.max_complexity + 1))
 
-    model.eval()
-    env = CircuitGame(config)
+    eval_config = copy.copy(config)
+    if getattr(eval_config, "reward_mode", "legacy") == "clean_onpath":
+        eval_config.reward_mode = "clean_sparse"
+        eval_config.graph_onpath_cache_dir = None
 
-    mcts = None
-    if algorithm == "alphazero":
-        mcts = MCTS(model, config, device)
+    model.eval()
+    env = CircuitGame(eval_config)
 
     results = {}
 
     for complexity in complexities:
-        board = build_game_board(config, complexity)
+        board = build_game_board(eval_config, complexity)
         successes = 0
         total_steps = 0
 
         for trial in range(num_trials):
-            target_poly, min_steps = sample_target(config, complexity, board)
+            target_poly, min_steps = sample_target(eval_config, complexity, board)
             obs = env.reset(target_poly)
             success = False
 
             while not env.done:
-                if algorithm == "alphazero" and mcts is not None:
-                    action, _ = mcts.get_action_probs(env, temperature=0)
-                else:
-                    # Greedy policy evaluation (PPO/SAC).
-                    # Use hasattr(v, 'to') rather than isinstance(v, Tensor) so
-                    # that PyG Data graph objects (which also have .to()) are
-                    # moved to the correct device alongside plain tensors.
-                    obs_device = {}
-                    for k, v in obs.items():
-                        if isinstance(v, torch.Tensor):
-                            obs_device[k] = v.to(device)
-                        elif isinstance(v, dict):
-                            obs_device[k] = {
-                                dk: dv.to(device) if isinstance(dv, torch.Tensor) else dv
-                                for dk, dv in v.items()
-                            }
-                        elif hasattr(v, "to"):
-                            obs_device[k] = v.to(device)
-                        else:
-                            obs_device[k] = v
-                    with torch.no_grad():
-                        output = model(obs_device)
-                        logits = output[0] if isinstance(output, tuple) else output
-                    action = logits.argmax(dim=-1).item()
+                # Greedy policy evaluation for the PPO+MCTS-trained network.
+                # Use hasattr(v, 'to') rather than isinstance(v, Tensor) so
+                # that PyG Data graph objects (which also have .to()) are
+                # moved to the correct device alongside plain tensors.
+                obs_device = {}
+                for k, v in obs.items():
+                    if isinstance(v, torch.Tensor):
+                        obs_device[k] = v.to(device)
+                    elif isinstance(v, dict):
+                        obs_device[k] = {
+                            dk: dv.to(device) if isinstance(dv, torch.Tensor) else dv
+                            for dk, dv in v.items()
+                        }
+                    elif hasattr(v, "to"):
+                        obs_device[k] = v.to(device)
+                    else:
+                        obs_device[k] = v
+                with torch.no_grad():
+                    output = model(obs_device)
+                    logits = output[0] if isinstance(output, tuple) else output
+                action = logits.argmax(dim=-1).item()
 
                 obs, reward, done, info = env.step(action)
 

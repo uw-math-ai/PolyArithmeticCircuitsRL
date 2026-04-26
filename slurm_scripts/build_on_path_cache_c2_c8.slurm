@@ -1,0 +1,52 @@
+#!/bin/bash
+#SBATCH --job-name=onpath_cache_c2_c8
+#SBATCH --account=stf
+#SBATCH --partition=ckpt
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=128G
+#SBATCH --time=12:00:00
+#SBATCH --output=results/slurm/%x_%j.out
+
+set -euo pipefail
+
+REPO_DIR=${REPO_DIR:-/gscratch/stf/rpande/AI_Lab/PolyArithmeticCircuitsRL}
+CONTAINER=${CONTAINER:-container_jax.sif}
+
+N_VARIABLES=${N_VARIABLES:-3}
+MOD=${MOD:-5}
+MAX_DEGREE=${MAX_DEGREE:-6}
+COMPLEXITIES=${COMPLEXITIES:-"2 3 4 5 6 7 8"}
+SPLIT_SEED=${SPLIT_SEED:-42}
+MAX_ON_PATH_SIZE=${MAX_ON_PATH_SIZE:-4096}
+CACHE_DIR=${CACHE_DIR:-on_path_cache/n3_mod5_deg6_C2_C8_seed42}
+
+cd "$REPO_DIR"
+mkdir -p results/slurm "$CACHE_DIR"
+
+read -r -a COMPLEXITY_ARGS <<< "$COMPLEXITIES"
+
+echo "Building cached OnPath target set"
+echo "  repo: $REPO_DIR"
+echo "  cache_dir: $CACHE_DIR"
+echo "  n_variables: $N_VARIABLES"
+echo "  mod: $MOD"
+echo "  max_degree: $MAX_DEGREE"
+echo "  complexities: ${COMPLEXITY_ARGS[*]}"
+echo "  split_seed: $SPLIT_SEED"
+echo "  max_on_path_size: $MAX_ON_PATH_SIZE"
+
+apptainer exec --bind /gscratch:/gscratch \
+  --env PYTHONUNBUFFERED=1 \
+  "$CONTAINER" \
+  python -u -m src.game_board.on_path \
+    --complexities "${COMPLEXITY_ARGS[@]}" \
+    --n-variables "$N_VARIABLES" \
+    --mod "$MOD" \
+    --max-degree "$MAX_DEGREE" \
+    --cache-dir "$CACHE_DIR" \
+    --split-seed "$SPLIT_SEED" \
+    --max-on-path-size "$MAX_ON_PATH_SIZE"
+
+echo "OnPath cache complete: $CACHE_DIR"

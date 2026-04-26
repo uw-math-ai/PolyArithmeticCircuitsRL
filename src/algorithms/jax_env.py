@@ -46,6 +46,15 @@ class EnvState(NamedTuple):
             this episode.
         additive_complete_hit: bool scalar.
         mult_complete_hit: bool scalar.
+        on_path_coeffs: (on_path_max_size, target_size) cached oracle nodes.
+        on_path_hashes: (on_path_max_size,) uint32 hash prefilter values.
+        on_path_steps: (on_path_max_size,) board-step values for oracle nodes.
+        on_path_active: (on_path_max_size,) bool mask for valid oracle slots.
+        on_path_hit: (on_path_max_size,) bool mask for already rewarded nodes.
+        on_path_count: int32 scalar.
+        on_path_total: int32 scalar.
+        on_path_deepest_step: int32 scalar.
+        target_board_step: int32 scalar.
         steps_taken: int32 scalar.
         done: bool scalar.
         is_success: bool scalar.
@@ -63,6 +72,15 @@ class EnvState(NamedTuple):
     subgoal_hit: jnp.ndarray
     additive_complete_hit: jnp.ndarray
     mult_complete_hit: jnp.ndarray
+    on_path_coeffs: jnp.ndarray
+    on_path_hashes: jnp.ndarray
+    on_path_steps: jnp.ndarray
+    on_path_active: jnp.ndarray
+    on_path_hit: jnp.ndarray
+    on_path_count: jnp.ndarray
+    on_path_total: jnp.ndarray
+    on_path_deepest_step: jnp.ndarray
+    target_board_step: jnp.ndarray
     steps_taken: jnp.ndarray
     done: jnp.ndarray
     is_success: jnp.ndarray
@@ -80,16 +98,22 @@ class EnvConfig(NamedTuple):
     target_size: int      # (max_degree + 1) ** n_variables
     node_feature_dim: int
     success_reward: float
+    terminal_success_reward: float
     step_penalty: float
     gamma: float
+    reward_mode: str
     use_reward_shaping: bool
     factor_library_enabled: bool
     factor_subgoal_reward: float
     factor_library_bonus: float
     completion_bonus: float
     max_subgoals: int
+    graph_onpath_shaping_coeff: float
+    on_path_phi_mode: str
+    on_path_max_size: int
     initial_node_coeffs: jnp.ndarray
     base_node_coeffs: jnp.ndarray
+    on_path_hash_weights: jnp.ndarray
     monomial_exponents: jnp.ndarray
     monomial_order_desc: jnp.ndarray
     monomial_strides: jnp.ndarray
@@ -100,6 +124,11 @@ def make_env_config(config) -> EnvConfig:
     """Build an EnvConfig from the main Config dataclass."""
     max_deg = config.effective_max_degree
     max_nodes = config.max_nodes
+    on_path_max_size = (
+        max(1, int(config.on_path_max_size))
+        if config.reward_mode == "clean_onpath"
+        else 1
+    )
     initial_node_coeffs = make_initial_node_coeffs_raw(
         config.n_variables, max_deg, config.mod
     )
@@ -119,16 +148,24 @@ def make_env_config(config) -> EnvConfig:
         target_size=config.target_size,
         node_feature_dim=config.node_feature_dim,
         success_reward=config.success_reward,
+        terminal_success_reward=config.terminal_success_reward,
         step_penalty=config.step_penalty,
         gamma=config.gamma,
+        reward_mode=config.reward_mode,
         use_reward_shaping=config.use_reward_shaping,
-        factor_library_enabled=config.factor_library_enabled,
+        factor_library_enabled=(
+            config.reward_mode == "legacy" and config.factor_library_enabled
+        ),
         factor_subgoal_reward=config.factor_subgoal_reward,
         factor_library_bonus=config.factor_library_bonus,
         completion_bonus=config.completion_bonus,
         max_subgoals=max(16, 4 * max_nodes),
+        graph_onpath_shaping_coeff=config.graph_onpath_shaping_coeff,
+        on_path_phi_mode=config.on_path_phi_mode,
+        on_path_max_size=on_path_max_size,
         initial_node_coeffs=initial_node_coeffs,
         base_node_coeffs=base_node_coeffs,
+        on_path_hash_weights=make_on_path_hash_weights(config.target_size),
         monomial_exponents=monomial_exponents,
         monomial_order_desc=monomial_order_desc,
         monomial_strides=monomial_strides,
@@ -265,6 +302,15 @@ def make_inv_mod_table(mod: int) -> jnp.ndarray:
     return jnp.array(inv, dtype=jnp.int32)
 
 
+def make_on_path_hash_weights(target_size: int) -> jnp.ndarray:
+    """Deterministic uint32 weights matching game_board.on_path.hash_weights_np."""
+    idx = np.arange(target_size, dtype=np.uint32)
+    weights = (
+        idx * np.uint32(2654435761) + np.uint32(2246822519)
+    ).astype(np.uint32)
+    return jnp.array(weights, dtype=jnp.uint32)
+
+
 def make_monomial_metadata(n_variables: int, max_degree: int):
     """Precompute exponent tuples, descending lex order, and flat strides."""
     d = max_degree + 1
@@ -328,6 +374,38 @@ def _poly_equal_any(poly: jnp.ndarray, polys: jnp.ndarray,
 def _poly_match_index(poly: jnp.ndarray, polys: jnp.ndarray,
                       mask: jnp.ndarray) -> tuple:
     matches = jnp.all(polys == poly[None, :], axis=1) & mask
+    idx = jnp.argmax(matches.astype(jnp.int32))
+    return idx, jnp.any(matches)
+
+
+def _poly_hash(poly: jnp.ndarray, env_config: EnvConfig) -> jnp.ndarray:
+    vals = poly.astype(jnp.uint32) + jnp.uint32(1)
+    return jnp.bitwise_xor.reduce(vals * env_config.on_path_hash_weights)
+
+
+def _on_path_phi(state: EnvState, env_config: EnvConfig) -> jnp.ndarray:
+    if env_config.on_path_phi_mode == "count":
+        return state.on_path_count.astype(jnp.float32) / jnp.maximum(
+            state.on_path_total.astype(jnp.float32), 1.0
+        )
+    if env_config.on_path_phi_mode == "max_step":
+        return state.on_path_deepest_step.astype(jnp.float32) / jnp.maximum(
+            state.target_board_step.astype(jnp.float32), 1.0
+        )
+    return jnp.float32(0.0)
+
+
+def _on_path_match_index(poly: jnp.ndarray, state: EnvState,
+                         env_config: EnvConfig) -> tuple:
+    """Hash-prefilter then coefficient-verify a clean_onpath hit."""
+    poly_hash = _poly_hash(poly, env_config)
+    candidate = (
+        state.on_path_active
+        & (~state.on_path_hit)
+        & (state.on_path_hashes == poly_hash)
+    )
+    coeff_match = jnp.all(state.on_path_coeffs == poly[None, :], axis=1)
+    matches = candidate & coeff_match
     idx = jnp.argmax(matches.astype(jnp.int32))
     return idx, jnp.any(matches)
 
@@ -503,10 +581,28 @@ def make_empty_subgoal_arrays(env_config: EnvConfig):
     )
 
 
+def make_empty_on_path_arrays(env_config: EnvConfig):
+    """Zero-valued cached OnPath arrays."""
+    return (
+        jnp.zeros(
+            (env_config.on_path_max_size, env_config.target_size), dtype=jnp.int32
+        ),
+        jnp.zeros((env_config.on_path_max_size,), dtype=jnp.uint32),
+        jnp.zeros((env_config.on_path_max_size,), dtype=jnp.int32),
+        jnp.zeros((env_config.on_path_max_size,), dtype=jnp.bool_),
+        jnp.int32(0),
+    )
+
+
 def reset(env_config: EnvConfig, target_coeffs: jnp.ndarray,
           subgoal_coeffs: jnp.ndarray | None = None,
           subgoal_active: jnp.ndarray | None = None,
-          subgoal_library_known: jnp.ndarray | None = None) -> EnvState:
+          subgoal_library_known: jnp.ndarray | None = None,
+          on_path_coeffs: jnp.ndarray | None = None,
+          on_path_hashes: jnp.ndarray | None = None,
+          on_path_steps: jnp.ndarray | None = None,
+          on_path_active: jnp.ndarray | None = None,
+          target_board_step: jnp.ndarray | None = None) -> EnvState:
     """Reset the environment with a new target.
 
     Args:
@@ -547,6 +643,23 @@ def reset(env_config: EnvConfig, target_coeffs: jnp.ndarray,
             raise ValueError("subgoal_active and subgoal_library_known must be provided")
         subgoal_hit = jnp.zeros_like(subgoal_active, dtype=jnp.bool_)
 
+    if on_path_coeffs is None:
+        (
+            on_path_coeffs,
+            on_path_hashes,
+            on_path_steps,
+            on_path_active,
+            target_board_step,
+        ) = make_empty_on_path_arrays(env_config)
+    else:
+        if (
+            on_path_hashes is None
+            or on_path_steps is None
+            or on_path_active is None
+            or target_board_step is None
+        ):
+            raise ValueError("all on_path arrays must be provided together")
+
     return EnvState(
         node_coeffs=node_coeffs,
         node_features=node_features,
@@ -561,6 +674,15 @@ def reset(env_config: EnvConfig, target_coeffs: jnp.ndarray,
         subgoal_hit=subgoal_hit,
         additive_complete_hit=jnp.bool_(False),
         mult_complete_hit=jnp.bool_(False),
+        on_path_coeffs=on_path_coeffs.astype(jnp.int32),
+        on_path_hashes=on_path_hashes.astype(jnp.uint32),
+        on_path_steps=on_path_steps.astype(jnp.int32),
+        on_path_active=on_path_active,
+        on_path_hit=jnp.zeros_like(on_path_active, dtype=jnp.bool_),
+        on_path_count=jnp.int32(0),
+        on_path_total=jnp.sum(on_path_active.astype(jnp.int32)),
+        on_path_deepest_step=jnp.int32(0),
+        target_board_step=jnp.asarray(target_board_step, dtype=jnp.int32),
         steps_taken=jnp.int32(0),
         done=jnp.bool_(False),
         is_success=jnp.bool_(False),
@@ -590,12 +712,14 @@ def step(env_config: EnvConfig, state: EnvState,
     poly_i = state.node_coeffs[i]
     poly_j = state.node_coeffs[j]
 
-    # Snapshot shaping potential *before* adding new node.
-    if env_config.use_reward_shaping:
+    # Snapshot shaping potential before adding the new node.
+    if env_config.reward_mode == "legacy" and env_config.use_reward_shaping:
         phi_before = _best_similarity(
             state.node_coeffs, state.num_nodes,
             state.target_coeffs, max_nodes,
         )
+    elif env_config.reward_mode == "clean_onpath":
+        phi_before = _on_path_phi(state, env_config)
 
     # Compute new polynomial.
     new_coeffs_add = poly_add(poly_i, poly_j, mod)
@@ -634,8 +758,8 @@ def step(env_config: EnvConfig, state: EnvState,
     at_max_nodes = num_nodes >= max_nodes
     done = is_success | at_max_steps | at_max_nodes
 
-    # Base reward: step_penalty + success_reward if success, else shaping delta.
-    if env_config.use_reward_shaping:
+    # Base reward.
+    if env_config.reward_mode == "legacy" and env_config.use_reward_shaping:
         phi_after = _best_similarity(
             node_coeffs, num_nodes, state.target_coeffs, max_nodes,
         )
@@ -643,15 +767,21 @@ def step(env_config: EnvConfig, state: EnvState,
         reward = env_config.step_penalty + jnp.where(
             is_success, env_config.success_reward, shaping
         )
-    else:
+    elif env_config.reward_mode == "legacy":
         reward = env_config.step_penalty + jnp.where(
             is_success, env_config.success_reward, 0.0
+        )
+    else:
+        reward = env_config.step_penalty + jnp.where(
+            is_success, env_config.terminal_success_reward, 0.0
         )
 
     factor_hit = jnp.bool_(False)
     library_hit = jnp.bool_(False)
     additive_complete = jnp.bool_(False)
     mult_complete = jnp.bool_(False)
+    on_path_hit_flag = jnp.bool_(False)
+    on_path_phi = jnp.float32(0.0)
 
     subgoal_coeffs = state.subgoal_coeffs
     subgoal_active = state.subgoal_active
@@ -659,6 +789,35 @@ def step(env_config: EnvConfig, state: EnvState,
     subgoal_hit = state.subgoal_hit
     additive_complete_hit = state.additive_complete_hit
     mult_complete_hit = state.mult_complete_hit
+
+    on_path_hit = state.on_path_hit
+    on_path_count = state.on_path_count
+    on_path_deepest_step = state.on_path_deepest_step
+
+    if env_config.reward_mode == "clean_onpath":
+        match_idx, has_on_path_match = _on_path_match_index(
+            new_coeffs, state, env_config
+        )
+        hit_step = jnp.where(has_on_path_match, state.on_path_steps[match_idx], 0)
+        on_path_hit = jax.lax.cond(
+            has_on_path_match,
+            lambda arr: arr.at[match_idx].set(True),
+            lambda arr: arr,
+            on_path_hit,
+        )
+        on_path_count = on_path_count + has_on_path_match.astype(jnp.int32)
+        on_path_deepest_step = jnp.maximum(on_path_deepest_step, hit_step)
+        phi_state = state._replace(
+            on_path_hit=on_path_hit,
+            on_path_count=on_path_count,
+            on_path_deepest_step=on_path_deepest_step,
+        )
+        phi_after = _on_path_phi(phi_state, env_config)
+        reward = reward + env_config.graph_onpath_shaping_coeff * (
+            env_config.gamma * phi_after - phi_before
+        )
+        on_path_hit_flag = has_on_path_match
+        on_path_phi = phi_after
 
     if env_config.factor_library_enabled:
         match_idx, has_subgoal_match = _poly_match_index(
@@ -785,6 +944,15 @@ def step(env_config: EnvConfig, state: EnvState,
         subgoal_hit=subgoal_hit,
         additive_complete_hit=additive_complete_hit,
         mult_complete_hit=mult_complete_hit,
+        on_path_coeffs=state.on_path_coeffs,
+        on_path_hashes=state.on_path_hashes,
+        on_path_steps=state.on_path_steps,
+        on_path_active=state.on_path_active,
+        on_path_hit=on_path_hit,
+        on_path_count=on_path_count.astype(jnp.int32),
+        on_path_total=state.on_path_total,
+        on_path_deepest_step=on_path_deepest_step.astype(jnp.int32),
+        target_board_step=state.target_board_step,
         steps_taken=steps_taken.astype(jnp.int32),
         done=done,
         is_success=is_success,
@@ -798,6 +966,8 @@ def step(env_config: EnvConfig, state: EnvState,
         library_hit,
         additive_complete,
         mult_complete,
+        on_path_hit_flag,
+        on_path_phi,
     )
 
 

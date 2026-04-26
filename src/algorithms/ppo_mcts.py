@@ -21,8 +21,7 @@ visit counts).  Using MCTS probabilities as the denominator would make r ≈ 1
 Instead, MCTS improves the quality of collected trajectories while PPO's
 clipped ratio drives the actual policy learning.
 
-Compared to standard AlphaZero (which uses cross-entropy loss on MCTS visit
-counts), the PPO formulation adds:
+The PPO formulation uses:
   - Generalised Advantage Estimation (GAE) for lower-variance advantage targets
   - A clipped surrogate objective for conservative policy steps
   - An entropy bonus to prevent premature convergence
@@ -42,6 +41,7 @@ from ..models.policy_value_net import PolicyValueNet
 from ..environment.circuit_game import CircuitGame
 from ..environment.factor_library import FactorLibrary
 from ..game_board.generator import sample_target, build_game_board, generate_random_circuit
+from ..game_board.on_path import OnPathCache
 from ..environment.fast_polynomial import FastPoly
 from .mcts import MCTS
 
@@ -165,9 +165,15 @@ class PPOMCTSTrainer:
         # the latest network weights.
         self.mcts = MCTS(model, config, device)
 
-        # Factor library (session-level, shared across episodes).
+        if config.reward_mode not in ("legacy", "clean_sparse", "clean_onpath"):
+            raise ValueError(f"Unknown reward_mode: {config.reward_mode}")
+        if config.on_path_phi_mode not in ("count", "max_step"):
+            raise ValueError(f"Unknown on_path_phi_mode: {config.on_path_phi_mode}")
+
+        # Factor library (session-level, shared across episodes) is a legacy
+        # reward baseline only.
         factor_library: Optional[FactorLibrary] = None
-        if config.factor_library_enabled:
+        if config.reward_mode == "legacy" and config.factor_library_enabled:
             factor_library = FactorLibrary(
                 mod=config.mod,
                 n_vars=config.n_variables,
@@ -190,6 +196,19 @@ class PPOMCTSTrainer:
         # Lazily-built BFS game boards keyed by complexity.
         self._boards: dict = {}
 
+        self._rng = np.random.default_rng(config.seed)
+        self.on_path_cache: Optional[OnPathCache] = None
+        if config.reward_mode == "clean_onpath":
+            if not config.graph_onpath_cache_dir:
+                raise ValueError(
+                    "reward_mode='clean_onpath' requires graph_onpath_cache_dir"
+                )
+            self.on_path_cache = OnPathCache.load(
+                config.graph_onpath_cache_dir,
+                config,
+                self._required_on_path_complexities(),
+            )
+
     MAX_BOARD_COMPLEXITY = 4
 
     def _get_board(self, complexity: int) -> dict:
@@ -205,6 +224,18 @@ class PPOMCTSTrainer:
             return poly
         poly, _ = generate_random_circuit(self.config, complexity)
         return poly
+
+    def _required_on_path_complexities(self) -> List[int]:
+        if self.config.curriculum_enabled:
+            return list(range(self.config.starting_complexity, self.config.max_complexity + 1))
+        return [self.config.max_complexity]
+
+    def _sample_target_context(self, complexity: int):
+        if self.config.reward_mode == "clean_onpath":
+            assert self.on_path_cache is not None
+            ctx = self.on_path_cache.sample_train_context(complexity, self._rng)
+            return ctx.target_poly, ctx
+        return self._sample_target(complexity), None
 
     def _log(self, msg: str) -> None:
         """Print *msg* to stdout and append it to the log file (if set)."""
@@ -253,12 +284,18 @@ class PPOMCTSTrainer:
         total_rewards = 0.0
         factor_hits = 0
         library_hits = 0
+        on_path_hits = 0
+        on_path_phi_sum = 0.0
+        target_board_step_sum = 0
+        episode_length_sum = 0
 
         self.model.eval()
 
         while len(buffer) < self.config.steps_per_update:
-            target_poly = self._sample_target(self.current_complexity)
-            obs = self.env.reset(target_poly)
+            target_poly, on_path_context = self._sample_target_context(
+                self.current_complexity
+            )
+            obs = self.env.reset(target_poly, on_path_context=on_path_context)
             episode_reward = 0.0
             step = 0
 
@@ -307,12 +344,17 @@ class PPOMCTSTrainer:
                     factor_hits += 1
                 if info.get("library_hit", False):
                     library_hits += 1
+                if info.get("on_path_hit", False):
+                    on_path_hits += 1
 
             episodes_done += 1
             total_rewards += episode_reward
             if info.get("is_success", False):
                 successes += 1
             self.success_history.append(info.get("is_success", False))
+            on_path_phi_sum += float(info.get("on_path_phi", 0.0))
+            target_board_step_sum += int(info.get("target_board_step", 0))
+            episode_length_sum += int(info.get("steps_taken", 0))
 
         self.model.train()
 
@@ -327,6 +369,10 @@ class PPOMCTSTrainer:
             "factor_hits": factor_hits,
             "library_hits": library_hits,
             "library_size": len(self.factor_library) if self.factor_library else 0,
+            "on_path_hits": on_path_hits,
+            "on_path_phi": on_path_phi_sum / max(episodes_done, 1),
+            "target_board_step": target_board_step_sum / max(episodes_done, 1),
+            "episode_length": episode_length_sum / max(episodes_done, 1),
         }
         return buffer, rollout_info
 
@@ -521,7 +567,7 @@ class PPOMCTSTrainer:
           5. Logging a summary every log_interval iterations.
 
         Note: each collected step requires a full MCTS search (mcts_simulations
-        forward passes), so this is significantly slower than plain PPO.
+        forward passes), so this is significantly slower than non-search rollouts.
         Consider reducing steps_per_update or mcts_simulations for faster
         iteration on CPU.
 
@@ -536,6 +582,7 @@ class PPOMCTSTrainer:
         history = {
             "pg_loss": [], "vf_loss": [], "entropy": [],
             "success_rate": [], "avg_reward": [], "complexity": [],
+            "on_path_phi": [], "on_path_hits": [], "episode_length": [],
         }
 
         for iteration in range(1, num_iterations + 1):
@@ -550,6 +597,9 @@ class PPOMCTSTrainer:
             history["success_rate"].append(rollout_info["success_rate"])
             history["avg_reward"].append(rollout_info["avg_reward"])
             history["complexity"].append(rollout_info["complexity"])
+            history["on_path_phi"].append(rollout_info["on_path_phi"])
+            history["on_path_hits"].append(rollout_info["on_path_hits"])
+            history["episode_length"].append(rollout_info["episode_length"])
 
             if self.config.wandb_enabled:
                 import wandb
@@ -565,6 +615,10 @@ class PPOMCTSTrainer:
                     "factor_hits": rollout_info["factor_hits"],
                     "library_hits": rollout_info["library_hits"],
                     "library_size": rollout_info["library_size"],
+                    "on_path_hits": rollout_info["on_path_hits"],
+                    "on_path_phi": rollout_info["on_path_phi"],
+                    "target_board_step": rollout_info["target_board_step"],
+                    "episode_length": rollout_info["episode_length"],
                 }, step=iteration)
 
             if iteration % self.config.log_interval == 0:
@@ -572,15 +626,23 @@ class PPOMCTSTrainer:
                     f"lib={rollout_info['library_size']} "
                     f"fhits={rollout_info['factor_hits']} "
                     f"lhits={rollout_info['library_hits']} "
-                    if self.config.factor_library_enabled else ""
+                    if self.config.reward_mode == "legacy"
+                    and self.config.factor_library_enabled else ""
+                )
+                on_path_str = (
+                    f"onpath_hits={rollout_info['on_path_hits']} "
+                    f"phi={rollout_info['on_path_phi']:.3f} "
+                    if self.config.reward_mode == "clean_onpath" else ""
                 )
                 self._log(
                     f"[PPO+MCTS iter {iteration}] "
+                    f"reward_mode={self.config.reward_mode} "
                     f"complexity={rollout_info['complexity']} "
                     f"episodes={rollout_info['episodes']} "
                     f"success={rollout_info['success_rate']:.2%} "
                     f"reward={rollout_info['avg_reward']:.3f} "
                     f"{lib_str}"
+                    f"{on_path_str}"
                     f"pg_loss={loss_info['pg_loss']:.4f} "
                     f"vf_loss={loss_info['vf_loss']:.4f} "
                     f"entropy={loss_info['entropy']:.4f}"

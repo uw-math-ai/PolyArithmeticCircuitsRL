@@ -10,6 +10,11 @@ from src.game_board.generator import (
     sample_target,
     generate_random_circuit,
 )
+from src.game_board.on_path import (
+    OnPathCache,
+    build_caches,
+    compute_on_path_ids,
+)
 
 
 class TestBuildGameBoard:
@@ -110,6 +115,70 @@ class TestGenerateRandomCircuit:
         for _ in range(50):
             poly, actions = generate_random_circuit(config, complexity=4)
             assert poly is not None
+
+
+class TestOnPathCache:
+    def test_backward_traversal_filters_suboptimal_parents(self):
+        parents = [
+            [],
+            [],
+            [(0, 1)],
+            [],
+            [(2, 1), (3, 1)],
+        ]
+        steps = [0, 0, 1, 2, 2]
+        assert compute_on_path_ids(4, parents, steps) == {0, 1, 2, 4}
+
+    def test_cache_excludes_base_nodes_and_includes_target(self, tmp_path):
+        config = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=2,
+            max_degree=2,
+            on_path_max_size=64,
+        )
+        build_caches(config, [2], tmp_path, split_seed=11, max_on_path_size=64)
+        cache = OnPathCache.load(tmp_path, config, [2])
+        comp = cache.by_complexity[2]
+        target_id = int(comp.train_target_ids[0])
+        ctx = comp.target_context(target_id)
+
+        assert target_id in set(ctx.on_path_ids.tolist())
+        assert all(int(comp.node_steps[i]) > 0 for i in ctx.on_path_ids)
+        assert len(ctx.on_path_ids) > 0
+        assert comp.train_target_ids.size > 0
+        assert comp.metadata["split_seed"] == 11
+
+    def test_cache_allows_requested_complexity_subset(self, tmp_path):
+        config = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=2,
+            max_degree=2,
+            on_path_max_size=64,
+        )
+        build_caches(config, [1, 2], tmp_path, split_seed=7, max_on_path_size=64)
+        cache = OnPathCache.load(tmp_path, config, [2])
+        assert sorted(cache.by_complexity) == [2]
+
+    def test_cache_metadata_mismatch_fails(self, tmp_path):
+        config = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=1,
+            max_degree=1,
+            on_path_max_size=64,
+        )
+        build_caches(config, [1], tmp_path, split_seed=7, max_on_path_size=64)
+        bad_config = Config(
+            n_variables=2,
+            mod=7,
+            max_complexity=1,
+            max_degree=1,
+            on_path_max_size=64,
+        )
+        with pytest.raises(ValueError, match="metadata mismatch"):
+            OnPathCache.load(tmp_path, bad_config, [1])
 
 
 if __name__ == "__main__":

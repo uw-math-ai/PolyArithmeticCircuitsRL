@@ -128,7 +128,7 @@ def evaluate_checkpoint(
     """
     from src.algorithms.jax_env import (
         reset as env_reset, step as env_step,
-        get_observation, get_valid_actions_mask,
+        get_observation,
     )
 
     env_config = trainer.env_config
@@ -158,18 +158,26 @@ def evaluate_checkpoint(
             rng = jax.random.PRNGKey(np.random.randint(0, 2**31))
 
             # Sample targets.
-            targets = []
+            target_polys = []
             for _ in range(B):
                 poly, _ = generate_random_circuit(config, c)
-                targets.append(
+                target_polys.append(poly)
+            target_arrays = jnp.stack(
+                [
                     jnp.array(poly.coeffs.flatten(), dtype=jnp.int32)
-                )
-            target_arrays = jnp.stack(targets, axis=0)
+                    for poly in target_polys
+                ],
+                axis=0,
+            )
+            subgoal_coeffs, subgoal_active, subgoal_library_known = (
+                trainer._prepare_initial_subgoals(target_polys)
+            )
+            library_coeffs, library_mask = trainer._export_library_cache()
 
             # Reset envs.
             states = jax.vmap(
-                lambda tc: env_reset(env_config, tc)
-            )(target_arrays)
+                lambda tc, sgc, sga, sgl: env_reset(env_config, tc, sgc, sga, sgl)
+            )(target_arrays, subgoal_coeffs, subgoal_active, subgoal_library_known)
 
             episode_rewards = np.zeros(B)
             episode_successes = np.zeros(B, dtype=bool)
@@ -187,6 +195,7 @@ def evaluate_checkpoint(
                 rng, search_rng = jax.random.split(rng)
                 policy_output = trainer._jit_batched_mcts(
                     params, search_rng, obs_batch, states,
+                    library_coeffs, library_mask,
                 )
 
                 # Near-greedy: argmax of MCTS visit counts.
@@ -207,8 +216,15 @@ def evaluate_checkpoint(
                         entropy_count += 1
 
                 # Step envs.
-                next_states, rewards, dones, successes_batch = jax.vmap(
-                    lambda s, a: env_step(env_config, s, a)
+                (
+                    next_states, rewards, dones, successes_batch,
+                    _factor_hits, _library_hits,
+                    _additive_complete, _mult_complete,
+                    _on_path_hit, _on_path_phi,
+                ) = jax.vmap(
+                    lambda s, a: env_step(
+                        env_config, s, a, library_coeffs, library_mask
+                    )
                 )(states, actions)
 
                 rewards_np = np.array(rewards)
@@ -266,6 +282,10 @@ def main() -> None:
         first_state = pickle.load(f)
     config: Config = first_state["config"]
     fixed_c = first_state.get("fixed_complexities")
+    if getattr(config, "reward_mode", "legacy") == "clean_onpath":
+        print("Evaluation is oracle-free: using reward_mode=clean_sparse.")
+        config.reward_mode = "clean_sparse"
+        config.graph_onpath_cache_dir = None
 
     # Build trainer once (network + JIT compilation reused across checkpoints).
     trainer = PPOMCTSJAXTrainer(

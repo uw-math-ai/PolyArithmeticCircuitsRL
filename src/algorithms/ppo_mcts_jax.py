@@ -45,6 +45,7 @@ from ..config import Config
 from ..environment.fast_polynomial import FastPoly
 from ..environment.factor_library import FactorLibrary
 from ..game_board.generator import generate_random_circuit
+from ..game_board.on_path import OnPathCache
 from .jax_env import (
     EnvConfig, EnvState, make_env_config,
     reset as env_reset, step as env_step,
@@ -106,6 +107,10 @@ class PPOMCTSJAXTrainer:
         self.env_config = make_env_config(config)
         self.batch_size = batch_size
         self.library_cache_size = 512
+        if config.reward_mode not in ("legacy", "clean_sparse", "clean_onpath"):
+            raise ValueError(f"Unknown reward_mode: {config.reward_mode}")
+        if config.on_path_phi_mode not in ("count", "max_step"):
+            raise ValueError(f"Unknown on_path_phi_mode: {config.on_path_phi_mode}")
 
         # Network.
         self.network = create_network(config)
@@ -131,13 +136,26 @@ class PPOMCTSJAXTrainer:
         self.success_history: List[bool] = []
 
         factor_library: Optional[FactorLibrary] = None
-        if config.factor_library_enabled:
+        if config.reward_mode == "legacy" and config.factor_library_enabled:
             factor_library = FactorLibrary(
                 mod=config.mod,
                 n_vars=config.n_variables,
                 max_degree=config.effective_max_degree,
             )
         self.factor_library = factor_library
+
+        self._rng = np.random.default_rng(config.seed)
+        self.on_path_cache: Optional[OnPathCache] = None
+        if config.reward_mode == "clean_onpath":
+            if not config.graph_onpath_cache_dir:
+                raise ValueError(
+                    "reward_mode='clean_onpath' requires graph_onpath_cache_dir"
+                )
+            self.on_path_cache = OnPathCache.load(
+                config.graph_onpath_cache_dir,
+                config,
+                self._required_on_path_complexities(),
+            )
 
         # JIT-compile core functions.
         self._jit_apply = jax.jit(self.network.apply)
@@ -205,7 +223,8 @@ class PPOMCTSJAXTrainer:
         # vmap env_step over batch.
         (
             next_states, rewards, dones, successes,
-            _factor_hits, _library_hits, _additive_complete, _mult_complete
+            _factor_hits, _library_hits, _additive_complete, _mult_complete,
+            _on_path_hit, _on_path_phi,
         ) = jax.vmap(
             lambda s, a: env_step(
                 self.env_config, s, a, library_coeffs, library_mask
@@ -351,6 +370,13 @@ class PPOMCTSJAXTrainer:
     # Data collection
     # ------------------------------------------------------------------
 
+    def _required_on_path_complexities(self) -> List[int]:
+        if self.fixed_complexities:
+            return list(self.fixed_complexities)
+        if self.config.curriculum_enabled:
+            return list(range(self.config.starting_complexity, self.config.max_complexity + 1))
+        return [self.config.max_complexity]
+
     def _sample_one_target(self, complexity: int) -> FastPoly:
         """Sample a target polynomial by generating a random circuit.
 
@@ -363,7 +389,7 @@ class PPOMCTSJAXTrainer:
         poly, _ = generate_random_circuit(self.config, complexity)
         return poly
 
-    def _sample_targets_multi(self, n: int) -> Tuple[List[FastPoly], List[int]]:
+    def _sample_targets_multi(self, n: int) -> Tuple[List[FastPoly], List[int], list]:
         """Sample n target polynomials, distributing across complexities.
 
         When ``fixed_complexities`` is set, the batch is split evenly across
@@ -374,28 +400,72 @@ class PPOMCTSJAXTrainer:
             n: Total number of targets to sample.
 
         Returns:
-            (targets, complexity_labels) — lists of length n.
+            (targets, complexity_labels, on_path_contexts) — lists of length n.
         """
         if self.fixed_complexities:
             targets = []
             labels = []
+            contexts = []
             per_c = n // len(self.fixed_complexities)
             remainder = n % len(self.fixed_complexities)
             for idx, c in enumerate(self.fixed_complexities):
                 count = per_c + (1 if idx < remainder else 0)
                 for _ in range(count):
-                    targets.append(self._sample_one_target(c))
+                    if self.config.reward_mode == "clean_onpath":
+                        assert self.on_path_cache is not None
+                        ctx = self.on_path_cache.sample_train_context(c, self._rng)
+                        targets.append(ctx.target_poly)
+                        contexts.append(ctx)
+                    else:
+                        targets.append(self._sample_one_target(c))
+                        contexts.append(None)
                     labels.append(c)
-            return targets, labels
+            return targets, labels, contexts
         else:
             targets = []
+            contexts = []
             for _ in range(n):
-                targets.append(self._sample_one_target(self.current_complexity))
-            return targets, [self.current_complexity] * n
+                if self.config.reward_mode == "clean_onpath":
+                    assert self.on_path_cache is not None
+                    ctx = self.on_path_cache.sample_train_context(
+                        self.current_complexity, self._rng
+                    )
+                    targets.append(ctx.target_poly)
+                    contexts.append(ctx)
+                else:
+                    targets.append(self._sample_one_target(self.current_complexity))
+                    contexts.append(None)
+            return targets, [self.current_complexity] * n, contexts
 
     def _fastpoly_to_jax(self, poly: FastPoly) -> jnp.ndarray:
         """Convert FastPoly to flat JAX int32 coefficient array."""
         return jnp.array(poly.coeffs.flatten(), dtype=jnp.int32)
+
+    def _prepare_on_path_contexts(self, contexts: list):
+        max_size = self.env_config.on_path_max_size
+        target_size = self.env_config.target_size
+        if self.config.reward_mode != "clean_onpath":
+            batch = len(contexts)
+            return (
+                jnp.zeros((batch, max_size, target_size), dtype=jnp.int32),
+                jnp.zeros((batch, max_size), dtype=jnp.uint32),
+                jnp.zeros((batch, max_size), dtype=jnp.int32),
+                jnp.zeros((batch, max_size), dtype=jnp.bool_),
+                jnp.zeros((batch,), dtype=jnp.int32),
+            )
+        assert self.on_path_cache is not None
+        coeffs, hashes, steps, active, target_steps = self.on_path_cache.pack_jax_contexts(
+            contexts,
+            max_size=max_size,
+            target_size=target_size,
+        )
+        return (
+            jnp.array(coeffs, dtype=jnp.int32),
+            jnp.array(hashes, dtype=jnp.uint32),
+            jnp.array(steps, dtype=jnp.int32),
+            jnp.array(active),
+            jnp.array(target_steps, dtype=jnp.int32),
+        )
 
     def collect_rollouts(self) -> Tuple[List[Transition], dict]:
         """Collect rollout data using batched MCTS for action selection.
@@ -417,7 +487,7 @@ class PPOMCTSJAXTrainer:
         )
 
         # Sample targets and reset environments.
-        targets, complexity_labels = self._sample_targets_multi(B)
+        targets, complexity_labels, on_path_contexts = self._sample_targets_multi(B)
         complexity_labels_np = np.array(complexity_labels)
         target_arrays = jnp.stack(
             [self._fastpoly_to_jax(t) for t in targets], axis=0
@@ -425,12 +495,31 @@ class PPOMCTSJAXTrainer:
         subgoal_coeffs, subgoal_active, subgoal_library_known = (
             self._prepare_initial_subgoals(targets)
         )
+        (
+            on_path_coeffs,
+            on_path_hashes,
+            on_path_steps,
+            on_path_active,
+            target_board_steps,
+        ) = self._prepare_on_path_contexts(on_path_contexts)
         library_coeffs, library_mask = self._export_library_cache()
 
         # Batch reset.
         states = jax.vmap(
-            lambda tc, sgc, sga, sgl: env_reset(self.env_config, tc, sgc, sga, sgl)
-        )(target_arrays, subgoal_coeffs, subgoal_active, subgoal_library_known)
+            lambda tc, sgc, sga, sgl, opc, oph, ops, opa, tbs: env_reset(
+                self.env_config, tc, sgc, sga, sgl, opc, oph, ops, opa, tbs
+            )
+        )(
+            target_arrays,
+            subgoal_coeffs,
+            subgoal_active,
+            subgoal_library_known,
+            on_path_coeffs,
+            on_path_hashes,
+            on_path_steps,
+            on_path_active,
+            target_board_steps,
+        )
 
         transitions = []
         episode_rewards = np.zeros(B)
@@ -438,6 +527,8 @@ class PPOMCTSJAXTrainer:
         active = np.ones(B, dtype=bool)  # Track which envs are still running.
         factor_hits = 0
         library_hits = 0
+        on_path_hits = 0
+        on_path_phi_sum = np.zeros(B, dtype=np.float32)
         successful_final_states = []
 
         for step_idx in range(self.config.max_steps):
@@ -477,6 +568,7 @@ class PPOMCTSJAXTrainer:
                 next_states, rewards, dones, successes,
                 factor_hits_step, library_hits_step,
                 _additive_complete, _mult_complete,
+                on_path_hits_step, on_path_phi_step,
             ) = jax.vmap(
                 lambda s, a: env_step(
                     self.env_config, s, a, library_coeffs, library_mask
@@ -490,6 +582,8 @@ class PPOMCTSJAXTrainer:
             successes_np = np.array(successes)
             factor_hits_np = np.array(factor_hits_step)
             library_hits_np = np.array(library_hits_step)
+            on_path_hits_np = np.array(on_path_hits_step)
+            on_path_phi_np = np.array(on_path_phi_step)
             values_np = np.array(values)
             network_lp_np = np.array(network_log_probs)
 
@@ -513,6 +607,9 @@ class PPOMCTSJAXTrainer:
                         factor_hits += 1
                     if library_hits_np[i]:
                         library_hits += 1
+                    if on_path_hits_np[i]:
+                        on_path_hits += 1
+                    on_path_phi_sum[i] = on_path_phi_np[i]
                     if dones_np[i]:
                         if successes_np[i]:
                             successful_final_states.append(
@@ -544,6 +641,10 @@ class PPOMCTSJAXTrainer:
             "factor_hits": factor_hits,
             "library_hits": library_hits,
             "library_size": len(self.factor_library) if self.factor_library else 0,
+            "on_path_hits": on_path_hits,
+            "on_path_phi": float(on_path_phi_sum.mean()),
+            "target_board_step": float(np.array(target_board_steps).mean()),
+            "episode_length": float(np.array(next_states.steps_taken).mean()),
         }
 
         # Per-complexity breakdown.
@@ -786,6 +887,7 @@ class PPOMCTSJAXTrainer:
         history = {
             "pg_loss": [], "vf_loss": [], "entropy": [],
             "success_rate": [], "avg_reward": [], "complexity": [],
+            "on_path_phi": [], "on_path_hits": [], "episode_length": [],
         }
         # Per-complexity history when using fixed_complexities.
         if self.fixed_complexities:
@@ -829,6 +931,9 @@ class PPOMCTSJAXTrainer:
             history["success_rate"].append(rollout_info["success_rate"])
             history["avg_reward"].append(rollout_info["avg_reward"])
             history["complexity"].append(rollout_info["complexity"])
+            history["on_path_phi"].append(rollout_info["on_path_phi"])
+            history["on_path_hits"].append(rollout_info["on_path_hits"])
+            history["episode_length"].append(rollout_info["episode_length"])
 
             if self.fixed_complexities:
                 for c in self.fixed_complexities:
@@ -852,6 +957,10 @@ class PPOMCTSJAXTrainer:
                     "factor_hits": rollout_info["factor_hits"],
                     "library_hits": rollout_info["library_hits"],
                     "library_size": rollout_info["library_size"],
+                    "on_path_hits": rollout_info["on_path_hits"],
+                    "on_path_phi": rollout_info["on_path_phi"],
+                    "target_board_step": rollout_info["target_board_step"],
+                    "episode_length": rollout_info["episode_length"],
                 }
                 if self.fixed_complexities:
                     for c in self.fixed_complexities:
@@ -868,10 +977,13 @@ class PPOMCTSJAXTrainer:
             if iteration % self.config.log_interval == 0:
                 line = (
                     f"[PPO+MCTS-JAX iter {iteration}] "
+                    f"reward_mode={self.config.reward_mode} "
                     f"episodes={rollout_info['episodes']} "
                     f"lib={rollout_info['library_size']} "
                     f"fhits={rollout_info['factor_hits']} "
                     f"lhits={rollout_info['library_hits']} "
+                    f"onpath_hits={rollout_info['on_path_hits']} "
+                    f"phi={rollout_info['on_path_phi']:.3f} "
                     f"success={rollout_info['success_rate']:.2%} "
                     f"reward={rollout_info['avg_reward']:.3f} "
                     f"pg_loss={loss_info['pg_loss']:.4f} "

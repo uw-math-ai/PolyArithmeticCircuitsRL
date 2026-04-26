@@ -109,16 +109,30 @@ class CircuitGame:
         self._additive_complete_hit: bool = False
         self._mult_complete_hit: bool = False
 
-    def reset(self, target_poly: FastPoly) -> Dict[str, torch.Tensor]:
+        # Per-episode cached OnPath state for clean_onpath reward mode.
+        self._on_path_steps: Dict[bytes, int] = {}
+        self._on_path_hit_keys: Set[bytes] = set()
+        self._on_path_count: int = 0
+        self._on_path_total: int = 0
+        self._on_path_deepest_step: int = 0
+        self._on_path_target_step: int = 0
+
+    def reset(
+        self,
+        target_poly: FastPoly,
+        on_path_context=None,
+    ) -> Dict[str, torch.Tensor]:
         """Reset the game with a new target polynomial and return the initial observation.
 
         Reinitialises all circuit nodes to the base set [x0, ..., x_{n-1}, 1],
-        clears all edges and step counters, and — if a FactorLibrary is attached —
-        factorizes the new target to set up subgoal tracking for this episode.
+        clears all edges and step counters, and sets up the reward state for the
+        configured reward mode.
 
         Args:
             target_poly: The FastPoly the agent must construct. Must be compatible
                          with this environment's n_vars, max_degree, and mod.
+            on_path_context: Optional OnPathTargetContext used only by
+                reward_mode="clean_onpath".
 
         Returns:
             Initial observation dict with keys 'graph', 'target', 'mask'.
@@ -146,9 +160,29 @@ class CircuitGame:
         self._additive_complete_hit = False
         self._mult_complete_hit = False
 
+        # --- Cached on-path shaping setup ---
+        self._on_path_steps: Dict[bytes, int] = {}
+        self._on_path_hit_keys: Set[bytes] = set()
+        self._on_path_count: int = 0
+        self._on_path_total: int = 0
+        self._on_path_deepest_step: int = 0
+        self._on_path_target_step: int = 0
+
+        if self.config.reward_mode == "clean_onpath":
+            if on_path_context is None:
+                raise ValueError(
+                    "reward_mode='clean_onpath' requires on_path_context at reset"
+                )
+            self._on_path_steps = dict(on_path_context.on_path_keys)
+            self._on_path_total = len(self._on_path_steps)
+            self._on_path_target_step = int(on_path_context.target_board_step)
+            if self._on_path_total == 0:
+                raise ValueError("clean_onpath target has empty non-base OnPath set")
+
         if (
             self.factor_library is not None
             and self.config.factor_library_enabled
+            and self.config.reward_mode == "legacy"
         ):
             # Factorize the target over Z (done once per episode; SymPy call here).
             # Returns non-trivial polynomial factors reduced mod p.
@@ -172,22 +206,10 @@ class CircuitGame:
         resulting polynomial, appends the new node to the circuit, then checks for
         success and computes the reward.
 
-        Reward components:
-          - step_penalty (-0.1 default): applied every step.
-          - success_reward (+10.0 default): applied when the target is matched.
-          - potential shaping (gamma * phi_after - phi_before): when enabled.
-          - factor_subgoal_reward (+1.0 default): when a factor subgoal is built
-            (at most once per distinct subgoal per episode).
-          - factor_library_bonus (+0.5 default): stacks on subgoal reward when
-            the factor was previously seen in the library.
-          - completion_bonus (+3.0 default): when the circuit now contains both
-            pieces for one final operation to reach T:
-              * Additive: T - v_new already in the circuit (fires at most once).
-              * Multiplicative: T / v_new is exact and the quotient is already in
-                the circuit (fires at most once, separate from additive).
-
-        After a successful episode, all constructed nodes are registered in the
-        FactorLibrary so future episodes can benefit from them.
+        In legacy mode, the existing term/factor/completion shaping is preserved.
+        In clean_sparse mode, the reward is terminal_success_reward plus
+        step_penalty. In clean_onpath mode, cached board-step OnPath potential
+        shaping is added to the clean sparse reward.
 
         Args:
             action_idx: Integer index encoding (op, i, j) — see action_space.py.
@@ -217,9 +239,14 @@ class CircuitGame:
         else:
             new_poly = self.nodes[i] * self.nodes[j]
 
-        # Snapshot best similarity *before* adding the new node (for shaping delta).
-        if self.config.use_reward_shaping:
+        # Snapshot potential before adding the new node.
+        if (
+            self.config.reward_mode == "legacy"
+            and self.config.use_reward_shaping
+        ):
             phi_before = self._best_similarity()
+        elif self.config.reward_mode == "clean_onpath":
+            phi_before = self._on_path_phi()
 
         # Append new node to the circuit.
         new_idx = len(self.nodes)
@@ -246,21 +273,39 @@ class CircuitGame:
         # --- Reward computation ---
         reward = self.config.step_penalty
 
-        if is_success:
-            reward += self.config.success_reward
-        elif self.config.use_reward_shaping:
-            # Potential-based shaping: reward the improvement in term similarity.
-            # By the Ng et al. (1999) theorem this preserves the optimal policy.
-            phi_after = self._best_similarity()
-            reward += self.config.gamma * phi_after - phi_before
+        factor_hit = False
+        library_hit = False
+        additive_complete = False
+        mult_complete = False
+        on_path_hit = False
+
+        if self.config.reward_mode == "legacy":
+            if is_success:
+                reward += self.config.success_reward
+            elif self.config.use_reward_shaping:
+                # Potential-based shaping: reward the improvement in term similarity.
+                # By the Ng et al. (1999) theorem this preserves the optimal policy.
+                phi_after = self._best_similarity()
+                reward += self.config.gamma * phi_after - phi_before
+        else:
+            if is_success:
+                reward += self.config.terminal_success_reward
+
+        if self.config.reward_mode == "clean_onpath":
+            on_path_hit = self._record_on_path_hit(new_poly)
+            phi_after = self._on_path_phi()
+            reward += self.config.graph_onpath_shaping_coeff * (
+                self.config.gamma * phi_after - phi_before
+            )
 
         # --- Factor subgoal reward ---
         # Check whether the newly created node matches any subgoal.
         # This is an O(1) set lookup — no SymPy involved here.
-        factor_hit = False
-        library_hit = False
-
-        if self.factor_library is not None and self.config.factor_library_enabled:
+        if (
+            self.config.reward_mode == "legacy"
+            and self.factor_library is not None
+            and self.config.factor_library_enabled
+        ):
             new_key = new_poly.canonical_key()
             if new_key in self._subgoal_keys and new_key not in self._subgoals_hit:
                 # First time this subgoal has been built this episode.
@@ -276,11 +321,9 @@ class CircuitGame:
         # --- Completion bonus + dynamic subgoal discovery ---
         # Runs when the factor library is active and success has not yet occurred
         # (no point awarding a completion bonus on the success step itself).
-        additive_complete = False
-        mult_complete = False
-
         if (
-            self.factor_library is not None
+            self.config.reward_mode == "legacy"
+            and self.factor_library is not None
             and self.config.factor_library_enabled
             and not is_success
         ):
@@ -318,7 +361,7 @@ class CircuitGame:
                         if self.factor_library.contains(residual):
                             self._library_known_keys.add(r_key)
 
-                # 2b. Factorize T - v_new over Z → discover more additive subgoals.
+                # 2b. Factorize T - v_new over Z -> discover more additive subgoals.
                 if not residual.is_zero():
                     for f in self.factor_library.factorize_poly(
                         residual, self._subgoal_keys
@@ -328,7 +371,7 @@ class CircuitGame:
                         if self.factor_library.contains(f):
                             self._library_known_keys.add(k)
 
-                # 2c. Exact division T / v_new (uses SymPy — gated here).
+                # 2c. Exact division T / v_new (uses SymPy -- gated here).
                 quotient = self.factor_library.exact_quotient(
                     self.target_poly, new_poly
                 )
@@ -354,7 +397,7 @@ class CircuitGame:
                             if self.factor_library.contains(quotient):
                                 self._library_known_keys.add(q_key)
 
-                        # Factorize quotient over Z → discover multiplicative subgoals.
+                        # Factorize quotient over Z -> discover multiplicative subgoals.
                         for f in self.factor_library.factorize_poly(
                             quotient, self._subgoal_keys
                         ):
@@ -365,7 +408,11 @@ class CircuitGame:
 
         # --- Library update on success ---
         # Register all agent-built nodes so future episodes can discover them.
-        if is_success and self.factor_library is not None:
+        if (
+            self.config.reward_mode == "legacy"
+            and is_success
+            and self.factor_library is not None
+        ):
             n_initial = self.n_vars + 1  # x0,...,x_{n-1} plus the constant 1
             self.factor_library.register_episode_nodes(self.nodes, n_initial)
 
@@ -380,6 +427,10 @@ class CircuitGame:
             "library_hit": library_hit,         # Subgoal was also in the library.
             "additive_complete": additive_complete,   # Additive completion bonus fired.
             "mult_complete": mult_complete,           # Multiplicative completion bonus fired.
+            "on_path_hit": on_path_hit,
+            "on_path_phi": self._on_path_phi(),
+            "on_path_hits": self._on_path_count,
+            "target_board_step": self._on_path_target_step,
         }
 
         return self.get_observation(), reward, self.done, info
@@ -486,6 +537,37 @@ class CircuitGame:
                     break  # Perfect match found; no need to check further.
         return best
 
+    def _record_on_path_hit(self, poly: FastPoly) -> bool:
+        """Record a first-time clean_onpath hit for a newly built node."""
+        key = poly.canonical_key()
+        if key not in self._on_path_steps or key in self._on_path_hit_keys:
+            return False
+
+        self._on_path_hit_keys.add(key)
+        self._on_path_count += 1
+        self._on_path_deepest_step = max(
+            self._on_path_deepest_step,
+            int(self._on_path_steps[key]),
+        )
+        return True
+
+    def _on_path_phi(self) -> float:
+        """Potential for cached board-step OnPath shaping."""
+        if self.config.reward_mode != "clean_onpath":
+            return 0.0
+
+        if self.config.on_path_phi_mode == "count":
+            if self._on_path_total <= 0:
+                return 0.0
+            return self._on_path_count / self._on_path_total
+
+        if self.config.on_path_phi_mode == "max_step":
+            if self._on_path_target_step <= 0:
+                return 0.0
+            return self._on_path_deepest_step / self._on_path_target_step
+
+        raise ValueError(f"Unknown on_path_phi_mode: {self.config.on_path_phi_mode}")
+
     def clone(self) -> "CircuitGame":
         """Create a deep copy of this game state for use in MCTS tree search.
 
@@ -532,5 +614,13 @@ class CircuitGame:
         # Completion bonus guards: each branch tracks its own fired state.
         new_game._additive_complete_hit = self._additive_complete_hit
         new_game._mult_complete_hit = self._mult_complete_hit
+
+        # Clean on-path shaping state; hit set must be branch-local for MCTS.
+        new_game._on_path_steps = dict(self._on_path_steps)
+        new_game._on_path_hit_keys = set(self._on_path_hit_keys)
+        new_game._on_path_count = self._on_path_count
+        new_game._on_path_total = self._on_path_total
+        new_game._on_path_deepest_step = self._on_path_deepest_step
+        new_game._on_path_target_step = self._on_path_target_step
 
         return new_game

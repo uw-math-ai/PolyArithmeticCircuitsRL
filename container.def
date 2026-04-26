@@ -3,7 +3,7 @@ From: nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
 %labels
     Author PolyArithmeticCircuitsRL
-    Description RL for minimal arithmetic circuits over polynomial rings
+    Description PyTorch PPO+MCTS for minimal arithmetic circuits over polynomial rings
 
 %post
     ln -s /mmfs1/gscratch /gscratch
@@ -52,14 +52,14 @@ From: nvidia/cuda:12.4.1-runtime-ubuntu22.04
     esac
 
 %help
-    Apptainer container for PolyArithmeticCircuitsRL.
+    Apptainer container for PyTorch PPO+MCTS.
     GPU-enabled (CUDA 12.4).
 
     Build:
         apptainer build polyrl.sif container.def
 
     Run training (bind project directory):
-        apptainer exec --nv --bind /path/to/PolyArithmeticCircuitsRL:/project polyrl.sif --algorithm sac --iterations 200
+        apptainer exec --nv --bind /path/to/PolyArithmeticCircuitsRL:/project polyrl.sif python -m src.main --algorithm ppo-mcts --iterations 200
 
     Interactive shell:
         apptainer shell --nv --bind /path/to/PolyArithmeticCircuitsRL:/project polyrl.sif

@@ -29,7 +29,7 @@ class MCTSNode:
 
 
 class MCTS:
-    """Neural MCTS (AlphaZero-style).
+    """Neural MCTS used by the PyTorch PPO+MCTS trainer.
 
     Uses neural network for both prior probabilities (policy) and
     leaf evaluation (value), replacing random rollouts.

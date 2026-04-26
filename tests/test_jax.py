@@ -23,6 +23,7 @@ from src.algorithms.jax_env import (
 from src.algorithms.jax_net import (
     PolicyValueNet, create_network, init_params, GraphEncoder,
 )
+from src.game_board.on_path import hash_coeff_matrix
 
 
 # ---------------------------------------------------------------------------
@@ -272,7 +273,7 @@ class TestEnvResetStep:
         state = reset(ec, jnp.array(target_nd.flatten(), dtype=jnp.int32))
 
         action = encode_action(jnp.int32(0), jnp.int32(0), jnp.int32(1), ec.max_nodes)
-        next_state, reward, done, is_success, factor_hit, library_hit, add_complete, mult_complete = step(
+        next_state, reward, done, is_success, factor_hit, library_hit, add_complete, mult_complete, *_ = step(
             ec, state, action
         )
 
@@ -311,7 +312,7 @@ class TestEnvResetStep:
         )
 
         action = encode_action(jnp.int32(0), jnp.int32(0), jnp.int32(2), ec.max_nodes)
-        _next_state, reward, _done, _is_success, factor_hit, library_hit, _add_complete, _mult_complete = step(
+        _next_state, reward, _done, _is_success, factor_hit, library_hit, _add_complete, _mult_complete, *_ = step(
             ec, state, action
         )
 
@@ -320,6 +321,60 @@ class TestEnvResetStep:
         assert float(reward) >= (
             ec.step_penalty + ec.factor_subgoal_reward + ec.factor_library_bonus
         )
+
+    def test_clean_onpath_reward_jit(self):
+        """Clean on-path mode counts verified coefficient hits once."""
+        cfg = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=4,
+            max_steps=6,
+            reward_mode="clean_onpath",
+            on_path_max_size=4,
+            on_path_phi_mode="count",
+            graph_onpath_shaping_coeff=1.0,
+        )
+        ec = make_env_config(cfg)
+        d = ec.max_degree + 1
+
+        target_nd = np.zeros((d, d), dtype=np.int32)
+        target_nd[1, 0] = 1
+        target_nd[0, 1] = 2
+        target = target_nd.flatten()
+
+        inter_nd = np.zeros((d, d), dtype=np.int32)
+        inter_nd[1, 0] = 1
+        inter_nd[0, 1] = 1
+
+        on_path = np.zeros((ec.on_path_max_size, ec.target_size), dtype=np.int32)
+        on_path[0] = inter_nd.flatten()
+        on_path[1] = target
+        hashes = np.zeros((ec.on_path_max_size,), dtype=np.uint32)
+        hashes[:2] = hash_coeff_matrix(on_path[:2])
+        steps = np.array([1, 2, 0, 0], dtype=np.int32)
+        active = np.array([True, True, False, False])
+
+        state = reset(
+            ec,
+            jnp.array(target, dtype=jnp.int32),
+            on_path_coeffs=jnp.array(on_path, dtype=jnp.int32),
+            on_path_hashes=jnp.array(hashes, dtype=jnp.uint32),
+            on_path_steps=jnp.array(steps, dtype=jnp.int32),
+            on_path_active=jnp.array(active),
+            target_board_step=jnp.int32(2),
+        )
+        action = encode_action(jnp.int32(0), jnp.int32(0), jnp.int32(1), ec.max_nodes)
+
+        import functools
+        jit_step = jax.jit(functools.partial(step, ec))
+        next_state, reward, _done, _success, *_rest, on_path_hit, on_path_phi = (
+            jit_step(state, action)
+        )
+
+        assert bool(on_path_hit)
+        assert float(on_path_phi) == pytest.approx(0.5)
+        assert int(next_state.on_path_count) == 1
+        assert float(reward) == pytest.approx(ec.step_penalty + ec.gamma * 0.5)
 
     def test_get_observation(self, env_config, initial_state):
         """Observation dict has expected keys and shapes."""

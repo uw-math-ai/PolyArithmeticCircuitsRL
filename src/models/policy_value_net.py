@@ -1,4 +1,4 @@
-"""Policy-value network for both PPO and AlphaZero."""
+"""Policy-value network for PyTorch PPO+MCTS."""
 
 import torch
 import torch.nn as nn
@@ -9,7 +9,7 @@ from .gnn_encoder import CircuitGNN
 
 
 class PolicyValueNet(nn.Module):
-    """Shared network for PPO and AlphaZero.
+    """Shared network for PPO+MCTS.
 
     Components:
     - CircuitGNN: encodes current circuit graph -> embedding

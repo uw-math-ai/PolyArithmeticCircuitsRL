@@ -6,7 +6,7 @@ matplotlib
 pytest
 wandb
 
-# JAX dependencies (for ppo-mcts-jax algorithm)
+# JAX dependencies for ppo-mcts-jax.
 jax[cuda12]
 flax
 optax

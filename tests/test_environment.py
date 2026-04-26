@@ -418,5 +418,101 @@ class TestFactorLibraryRewards:
         assert not info["mult_complete"]
 
 
+class _OnPathContext:
+    def __init__(self, mapping, target_board_step):
+        self.on_path_keys = mapping
+        self.target_board_step = target_board_step
+
+
+class TestRewardModes:
+    def setup_method(self):
+        self.config = Config(n_variables=2, mod=5, max_complexity=4, max_steps=6)
+        self.mod = 5
+        self.n_vars = 2
+        self.max_deg = self.config.effective_max_degree
+        self.x0 = FastPoly.variable(0, self.n_vars, self.max_deg, self.mod)
+        self.x1 = FastPoly.variable(1, self.n_vars, self.max_deg, self.mod)
+
+    def test_clean_sparse_has_only_terminal_and_step_reward(self):
+        self.config.reward_mode = "clean_sparse"
+        self.config.success_reward = 99.0
+        self.config.terminal_success_reward = 7.0
+        self.config.factor_subgoal_reward = 99.0
+        self.config.completion_bonus = 99.0
+        env = CircuitGame(self.config)
+
+        target = self.x0 + self.x1
+        env.reset(target)
+        action = encode_action(0, 0, 1, self.config.max_nodes)
+        _, reward, _, info = env.step(action)
+
+        assert info["is_success"]
+        assert reward == pytest.approx(self.config.step_penalty + 7.0)
+        assert not info["factor_hit"]
+        assert not info["additive_complete"]
+
+    def test_clean_onpath_count_phi_and_duplicate_hits(self):
+        self.config.reward_mode = "clean_onpath"
+        self.config.on_path_phi_mode = "count"
+        self.config.graph_onpath_shaping_coeff = 1.0
+        env = CircuitGame(self.config)
+
+        intermediate = self.x0 + self.x1
+        target = intermediate + self.x1
+        ctx = _OnPathContext(
+            {
+                intermediate.canonical_key(): 1,
+                target.canonical_key(): 2,
+            },
+            target_board_step=2,
+        )
+        env.reset(target, on_path_context=ctx)
+
+        action = encode_action(0, 0, 1, self.config.max_nodes)
+        _, reward, _, info = env.step(action)
+
+        assert info["on_path_hit"]
+        assert info["on_path_hits"] == 1
+        assert info["on_path_phi"] == pytest.approx(0.5)
+        assert reward == pytest.approx(
+            self.config.step_penalty + self.config.gamma * 0.5
+        )
+
+        _, reward2, _, info2 = env.step(action)
+        assert not info2["on_path_hit"]
+        assert info2["on_path_hits"] == 1
+        assert info2["on_path_phi"] == pytest.approx(0.5)
+        assert reward2 == pytest.approx(
+            self.config.step_penalty
+            + self.config.gamma * 0.5
+            - 0.5
+        )
+
+    def test_clean_onpath_clone_copies_hit_state_independently(self):
+        self.config.reward_mode = "clean_onpath"
+        env = CircuitGame(self.config)
+
+        intermediate = self.x0 + self.x1
+        target = intermediate + self.x1
+        ctx = _OnPathContext(
+            {
+                intermediate.canonical_key(): 1,
+                target.canonical_key(): 2,
+            },
+            target_board_step=2,
+        )
+        env.reset(target, on_path_context=ctx)
+        cloned = env.clone()
+
+        action = encode_action(0, 0, 1, self.config.max_nodes)
+        _, _, _, info = env.step(action)
+        _, _, _, clone_info = cloned.step(action)
+
+        assert info["on_path_hit"]
+        assert clone_info["on_path_hit"]
+        assert env._on_path_count == 1
+        assert cloned._on_path_count == 1
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
