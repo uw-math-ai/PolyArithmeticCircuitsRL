@@ -107,6 +107,15 @@ def main() -> None:
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--no-curriculum", action="store_true")
+    parser.add_argument("--starting-complexity", type=int, default=None)
+    parser.add_argument("--advance-threshold", type=float, default=None)
+    parser.add_argument("--backoff-threshold", type=float, default=None)
+    parser.add_argument("--curriculum-window", type=int, default=None)
+    parser.add_argument(
+        "--curriculum-min-dwell-iterations",
+        type=int,
+        default=None,
+    )
     parser.add_argument(
         "--max-degree",
         type=int,
@@ -181,6 +190,18 @@ def main() -> None:
         config.seed = args.seed
     if args.no_curriculum:
         config.curriculum_enabled = False
+    if args.starting_complexity is not None:
+        config.starting_complexity = args.starting_complexity
+    if args.advance_threshold is not None:
+        config.advance_threshold = args.advance_threshold
+    if args.backoff_threshold is not None:
+        config.backoff_threshold = args.backoff_threshold
+    if args.curriculum_window is not None:
+        config.curriculum_window = args.curriculum_window
+    if args.curriculum_min_dwell_iterations is not None:
+        config.curriculum_min_dwell_iterations = (
+            args.curriculum_min_dwell_iterations
+        )
     if args.max_degree is not None:
         config.max_degree = args.max_degree
     if args.ent_coef is not None:

@@ -134,6 +134,8 @@ class PPOMCTSJAXTrainer:
             else config.max_complexity
         )
         self.success_history: List[bool] = []
+        self.dwell_iterations_at_level = 0
+        self.window_success_rate = 0.0
 
         factor_library: Optional[FactorLibrary] = None
         if config.reward_mode == "legacy" and config.factor_library_enabled:
@@ -805,20 +807,31 @@ class PPOMCTSJAXTrainer:
     def _maybe_advance_curriculum(self):
         if not self.config.curriculum_enabled:
             return
-        window = 50
+        window = max(1, int(self.config.curriculum_window))
+        recent = self.success_history[-window:]
+        self.window_success_rate = sum(recent) / len(recent) if recent else 0.0
+
+        min_dwell = max(0, int(self.config.curriculum_min_dwell_iterations))
+        if self.dwell_iterations_at_level < min_dwell:
+            return
+
         if len(self.success_history) < window:
             return
-        recent = self.success_history[-window:]
-        rate = sum(recent) / len(recent)
+
+        rate = self.window_success_rate
         if (rate >= self.config.advance_threshold
                 and self.current_complexity < self.config.max_complexity):
             self.current_complexity += 1
             self.success_history.clear()
+            self.dwell_iterations_at_level = 0
+            self.window_success_rate = 0.0
             print(f"[Curriculum] Advanced to complexity {self.current_complexity}")
         elif (rate <= self.config.backoff_threshold
               and self.current_complexity > self.config.starting_complexity):
             self.current_complexity -= 1
             self.success_history.clear()
+            self.dwell_iterations_at_level = 0
+            self.window_success_rate = 0.0
             print(f"[Curriculum] Backed off to complexity {self.current_complexity}")
 
     # ------------------------------------------------------------------
@@ -838,6 +851,8 @@ class PPOMCTSJAXTrainer:
             "config": self.config,
             "fixed_complexities": self.fixed_complexities,
             "current_complexity": self.current_complexity,
+            "dwell_iterations_at_level": self.dwell_iterations_at_level,
+            "window_success_rate": self.window_success_rate,
             "algorithm": "ppo-mcts-jax",
         }
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -859,6 +874,12 @@ class PPOMCTSJAXTrainer:
         )
         self.current_complexity = state_dict.get(
             "current_complexity", self.current_complexity
+        )
+        self.dwell_iterations_at_level = state_dict.get(
+            "dwell_iterations_at_level", self.dwell_iterations_at_level
+        )
+        self.window_success_rate = state_dict.get(
+            "window_success_rate", self.window_success_rate
         )
 
     # ------------------------------------------------------------------
@@ -888,6 +909,7 @@ class PPOMCTSJAXTrainer:
             "pg_loss": [], "vf_loss": [], "entropy": [],
             "success_rate": [], "avg_reward": [], "complexity": [],
             "on_path_phi": [], "on_path_hits": [], "episode_length": [],
+            "dwell_iterations_at_level": [], "window_success_rate": [],
         }
         # Per-complexity history when using fixed_complexities.
         if self.fixed_complexities:
@@ -910,6 +932,8 @@ class PPOMCTSJAXTrainer:
 
             advantages, returns = self.compute_gae(transitions)
             loss_info = self.update(transitions, advantages, returns)
+            if self.config.curriculum_enabled:
+                self.dwell_iterations_at_level += 1
             self._maybe_advance_curriculum()
 
             iter_time = time.time() - iter_start
@@ -934,6 +958,10 @@ class PPOMCTSJAXTrainer:
             history["on_path_phi"].append(rollout_info["on_path_phi"])
             history["on_path_hits"].append(rollout_info["on_path_hits"])
             history["episode_length"].append(rollout_info["episode_length"])
+            history["dwell_iterations_at_level"].append(
+                self.dwell_iterations_at_level
+            )
+            history["window_success_rate"].append(self.window_success_rate)
 
             if self.fixed_complexities:
                 for c in self.fixed_complexities:
@@ -961,6 +989,9 @@ class PPOMCTSJAXTrainer:
                     "on_path_phi": rollout_info["on_path_phi"],
                     "target_board_step": rollout_info["target_board_step"],
                     "episode_length": rollout_info["episode_length"],
+                    "current_complexity": self.current_complexity,
+                    "dwell_iterations_at_level": self.dwell_iterations_at_level,
+                    "window_success_rate": self.window_success_rate,
                 }
                 if self.fixed_complexities:
                     for c in self.fixed_complexities:
@@ -978,6 +1009,9 @@ class PPOMCTSJAXTrainer:
                 line = (
                     f"[PPO+MCTS-JAX iter {iteration}] "
                     f"reward_mode={self.config.reward_mode} "
+                    f"current_complexity={self.current_complexity} "
+                    f"dwell={self.dwell_iterations_at_level} "
+                    f"window_success={self.window_success_rate:.2%} "
                     f"episodes={rollout_info['episodes']} "
                     f"lib={rollout_info['library_size']} "
                     f"fhits={rollout_info['factor_hits']} "

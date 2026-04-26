@@ -19,6 +19,7 @@ from src.algorithms.jax_env import (
     reset, step, get_observation, get_valid_actions_mask,
     encode_action, decode_action,
     poly_add, poly_mul, make_initial_node_coeffs,
+    _on_path_phi,
 )
 from src.algorithms.jax_net import (
     PolicyValueNet, create_network, init_params, GraphEncoder,
@@ -375,6 +376,100 @@ class TestEnvResetStep:
         assert float(on_path_phi) == pytest.approx(0.5)
         assert int(next_state.on_path_count) == 1
         assert float(reward) == pytest.approx(ec.step_penalty + ec.gamma * 0.5)
+
+    def test_clean_onpath_terminal_zero_reward_jit(self):
+        """Clean on-path logs terminal phi but zeroes reward-side terminal phi."""
+        cfg = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=4,
+            max_steps=6,
+            reward_mode="clean_onpath",
+            on_path_max_size=4,
+            on_path_phi_mode="count",
+            graph_onpath_shaping_coeff=1.0,
+        )
+        ec = make_env_config(cfg)
+        d = ec.max_degree + 1
+
+        target_nd = np.zeros((d, d), dtype=np.int32)
+        target_nd[1, 0] = 1
+        target_nd[0, 1] = 1
+        target = target_nd.flatten()
+
+        on_path = np.zeros((ec.on_path_max_size, ec.target_size), dtype=np.int32)
+        on_path[0] = target
+        hashes = np.zeros((ec.on_path_max_size,), dtype=np.uint32)
+        hashes[:1] = hash_coeff_matrix(on_path[:1])
+        steps = np.array([1, 0, 0, 0], dtype=np.int32)
+        active = np.array([True, False, False, False])
+
+        state = reset(
+            ec,
+            jnp.array(target, dtype=jnp.int32),
+            on_path_coeffs=jnp.array(on_path, dtype=jnp.int32),
+            on_path_hashes=jnp.array(hashes, dtype=jnp.uint32),
+            on_path_steps=jnp.array(steps, dtype=jnp.int32),
+            on_path_active=jnp.array(active),
+            target_board_step=jnp.int32(1),
+        )
+        action = encode_action(jnp.int32(0), jnp.int32(0), jnp.int32(1), ec.max_nodes)
+
+        import functools
+        jit_step = jax.jit(functools.partial(step, ec))
+        next_state, reward, done, success, *_rest, on_path_hit, on_path_phi = (
+            jit_step(state, action)
+        )
+
+        assert bool(done)
+        assert bool(success)
+        assert bool(on_path_hit)
+        assert float(on_path_phi) == pytest.approx(1.0)
+        assert int(next_state.on_path_count) == 1
+        assert float(reward) == pytest.approx(
+            ec.step_penalty + ec.terminal_success_reward
+        )
+
+    def test_clean_onpath_phi_zero_denominator_guards(self):
+        """Degenerate packed contexts should produce zero phi, not divide by one."""
+        cfg = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=4,
+            max_steps=6,
+            reward_mode="clean_onpath",
+            on_path_max_size=4,
+            on_path_phi_mode="count",
+            graph_onpath_shaping_coeff=1.0,
+        )
+        ec = make_env_config(cfg)
+        d = ec.max_degree + 1
+        target_nd = np.zeros((d, d), dtype=np.int32)
+        target_nd[2, 0] = 1
+        target = target_nd.flatten()
+        on_path = np.zeros((ec.on_path_max_size, ec.target_size), dtype=np.int32)
+        hashes = np.zeros((ec.on_path_max_size,), dtype=np.uint32)
+        steps = np.zeros((ec.on_path_max_size,), dtype=np.int32)
+        active = np.zeros((4,), dtype=bool)
+
+        state = reset(
+            ec,
+            jnp.array(target, dtype=jnp.int32),
+            on_path_coeffs=jnp.array(on_path, dtype=jnp.int32),
+            on_path_hashes=jnp.array(hashes, dtype=jnp.uint32),
+            on_path_steps=jnp.array(steps, dtype=jnp.int32),
+            on_path_active=jnp.array(active),
+            target_board_step=jnp.int32(0),
+        )
+        assert float(_on_path_phi(state, ec)) == pytest.approx(0.0)
+
+        max_step_cfg = Config(**{**cfg.__dict__, "on_path_phi_mode": "max_step"})
+        max_step_ec = make_env_config(max_step_cfg)
+        max_step_state = state._replace(
+            on_path_deepest_step=jnp.int32(1),
+            target_board_step=jnp.int32(0),
+        )
+        assert float(_on_path_phi(max_step_state, max_step_ec)) == pytest.approx(0.0)
 
     def test_get_observation(self, env_config, initial_state):
         """Observation dict has expected keys and shapes."""

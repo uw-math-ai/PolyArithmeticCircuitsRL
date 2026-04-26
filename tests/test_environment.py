@@ -451,6 +451,23 @@ class TestRewardModes:
         assert not info["factor_hit"]
         assert not info["additive_complete"]
 
+    def test_legacy_and_clean_sparse_fixed_action_rewards_are_stable(self):
+        target = self.x0 + self.x1
+        action = encode_action(0, 0, 1, self.config.max_nodes)
+
+        self.config.reward_mode = "legacy"
+        legacy_env = CircuitGame(self.config)
+        legacy_env.reset(target)
+        _, legacy_reward, _, _ = legacy_env.step(action)
+        assert [legacy_reward] == pytest.approx([9.9])
+
+        self.config.reward_mode = "clean_sparse"
+        self.config.terminal_success_reward = 7.0
+        clean_env = CircuitGame(self.config)
+        clean_env.reset(target)
+        _, clean_reward, _, _ = clean_env.step(action)
+        assert [clean_reward] == pytest.approx([6.9])
+
     def test_clean_onpath_count_phi_and_duplicate_hits(self):
         self.config.reward_mode = "clean_onpath"
         self.config.on_path_phi_mode = "count"
@@ -487,6 +504,91 @@ class TestRewardModes:
             + self.config.gamma * 0.5
             - 0.5
         )
+
+    def test_clean_onpath_success_logs_raw_phi_but_zeros_terminal_reward_phi(self):
+        self.config.reward_mode = "clean_onpath"
+        self.config.on_path_phi_mode = "count"
+        self.config.graph_onpath_shaping_coeff = 1.0
+        env = CircuitGame(self.config)
+
+        target = self.x0 + self.x1
+        ctx = _OnPathContext({target.canonical_key(): 1}, target_board_step=1)
+        env.reset(target, on_path_context=ctx)
+
+        action = encode_action(0, 0, 1, self.config.max_nodes)
+        _, reward, done, info = env.step(action)
+
+        assert done
+        assert info["is_success"]
+        assert info["on_path_hit"]
+        assert info["on_path_phi"] == pytest.approx(1.0)
+        assert reward == pytest.approx(
+            self.config.step_penalty + self.config.terminal_success_reward
+        )
+
+    def test_clean_onpath_truncation_zeros_terminal_reward_phi(self):
+        self.config.reward_mode = "clean_onpath"
+        self.config.on_path_phi_mode = "count"
+        self.config.graph_onpath_shaping_coeff = 1.0
+        self.config.max_steps = 1
+        env = CircuitGame(self.config)
+
+        intermediate = self.x0 + self.x1
+        target = intermediate + self.x1
+        ctx = _OnPathContext(
+            {
+                intermediate.canonical_key(): 1,
+                target.canonical_key(): 2,
+            },
+            target_board_step=2,
+        )
+        env.reset(target, on_path_context=ctx)
+
+        action = encode_action(0, 0, 1, self.config.max_nodes)
+        _, reward, done, info = env.step(action)
+
+        assert done
+        assert not info["is_success"]
+        assert info["on_path_hit"]
+        assert info["on_path_phi"] == pytest.approx(0.5)
+        assert reward == pytest.approx(self.config.step_penalty)
+
+    def test_clean_onpath_discounted_shaping_telescopes_to_initial_phi(self):
+        self.config.reward_mode = "clean_onpath"
+        self.config.on_path_phi_mode = "count"
+        self.config.graph_onpath_shaping_coeff = 1.0
+        env = CircuitGame(self.config)
+
+        intermediate = self.x0 + self.x1
+        target = intermediate + self.x1
+        ctx = _OnPathContext(
+            {
+                intermediate.canonical_key(): 1,
+                target.canonical_key(): 2,
+            },
+            target_board_step=2,
+        )
+        env.reset(target, on_path_context=ctx)
+        phi0 = env._on_path_phi()
+
+        discounted_shaping_sum = 0.0
+        actions = [
+            encode_action(0, 0, 1, self.config.max_nodes),
+            encode_action(0, 3, 1, self.config.max_nodes),
+        ]
+        for t, action in enumerate(actions):
+            _, reward, done, info = env.step(action)
+            base_reward = self.config.step_penalty
+            if info["is_success"]:
+                base_reward += self.config.terminal_success_reward
+            shaping = reward - base_reward
+            discounted_shaping_sum += (self.config.gamma ** t) * shaping
+            if done:
+                break
+
+        assert done
+        assert info["on_path_phi"] == pytest.approx(1.0)
+        assert discounted_shaping_sum == pytest.approx(-phi0)
 
     def test_clean_onpath_clone_copies_hit_state_independently(self):
         self.config.reward_mode = "clean_onpath"

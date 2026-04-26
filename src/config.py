@@ -38,6 +38,7 @@ class Config:
     use_reward_shaping: bool = True     # Enable potential-based shaping (Ng et al., 1999)
     graph_onpath_shaping_coeff: float = 1.0
     graph_onpath_cache_dir: Optional[str] = None
+    on_path_terminal_zero: bool = True
     on_path_phi_mode: str = "count"     # "count" or "max_step"
     on_path_max_size: int = 4096
     on_path_split_seed: int = 42
@@ -95,6 +96,8 @@ class Config:
     starting_complexity: int = 2
     advance_threshold: float = 0.7
     backoff_threshold: float = 0.4
+    curriculum_window: int = 50
+    curriculum_min_dwell_iterations: int = 1
 
     # Training
     device: str = "cpu"

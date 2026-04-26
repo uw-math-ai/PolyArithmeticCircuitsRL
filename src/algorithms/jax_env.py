@@ -109,6 +109,7 @@ class EnvConfig(NamedTuple):
     completion_bonus: float
     max_subgoals: int
     graph_onpath_shaping_coeff: float
+    on_path_terminal_zero: bool
     on_path_phi_mode: str
     on_path_max_size: int
     initial_node_coeffs: jnp.ndarray
@@ -161,6 +162,7 @@ def make_env_config(config) -> EnvConfig:
         completion_bonus=config.completion_bonus,
         max_subgoals=max(16, 4 * max_nodes),
         graph_onpath_shaping_coeff=config.graph_onpath_shaping_coeff,
+        on_path_terminal_zero=config.on_path_terminal_zero,
         on_path_phi_mode=config.on_path_phi_mode,
         on_path_max_size=on_path_max_size,
         initial_node_coeffs=initial_node_coeffs,
@@ -385,13 +387,17 @@ def _poly_hash(poly: jnp.ndarray, env_config: EnvConfig) -> jnp.ndarray:
 
 def _on_path_phi(state: EnvState, env_config: EnvConfig) -> jnp.ndarray:
     if env_config.on_path_phi_mode == "count":
-        return state.on_path_count.astype(jnp.float32) / jnp.maximum(
-            state.on_path_total.astype(jnp.float32), 1.0
+        total = state.on_path_total.astype(jnp.float32)
+        phi = state.on_path_count.astype(jnp.float32) / jnp.maximum(
+            total, 1.0
         )
+        return jnp.where(state.on_path_total <= 0, 0.0, phi)
     if env_config.on_path_phi_mode == "max_step":
-        return state.on_path_deepest_step.astype(jnp.float32) / jnp.maximum(
-            state.target_board_step.astype(jnp.float32), 1.0
+        target_step = state.target_board_step.astype(jnp.float32)
+        phi = state.on_path_deepest_step.astype(jnp.float32) / jnp.maximum(
+            target_step, 1.0
         )
+        return jnp.where(state.target_board_step <= 0, 0.0, phi)
     return jnp.float32(0.0)
 
 
@@ -813,8 +819,12 @@ def step(env_config: EnvConfig, state: EnvState,
             on_path_deepest_step=on_path_deepest_step,
         )
         phi_after = _on_path_phi(phi_state, env_config)
+        if env_config.on_path_terminal_zero:
+            phi_after_for_reward = jnp.where(done, 0.0, phi_after)
+        else:
+            phi_after_for_reward = phi_after
         reward = reward + env_config.graph_onpath_shaping_coeff * (
-            env_config.gamma * phi_after - phi_before
+            env_config.gamma * phi_after_for_reward - phi_before
         )
         on_path_hit_flag = has_on_path_match
         on_path_phi = phi_after

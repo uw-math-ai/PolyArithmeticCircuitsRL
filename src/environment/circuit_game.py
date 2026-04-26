@@ -294,8 +294,12 @@ class CircuitGame:
         if self.config.reward_mode == "clean_onpath":
             on_path_hit = self._record_on_path_hit(new_poly)
             phi_after = self._on_path_phi()
+            phi_after_for_reward = (
+                0.0 if self.config.on_path_terminal_zero and self.done
+                else phi_after
+            )
             reward += self.config.graph_onpath_shaping_coeff * (
-                self.config.gamma * phi_after - phi_before
+                self.config.gamma * phi_after_for_reward - phi_before
             )
 
         # --- Factor subgoal reward ---

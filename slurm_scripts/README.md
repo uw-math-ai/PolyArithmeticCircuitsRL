@@ -25,7 +25,7 @@ For cached OnPath teacher shaping, first build/cache the target set, then add:
 ```bash
 --reward-mode clean_onpath \
 --graph-onpath-cache-dir on_path_cache \
---on-path-phi-mode count
+--on-path-phi-mode max_step
 ```
 
 The OnPath signal is disabled during normal evaluation.
@@ -77,8 +77,21 @@ sbatch slurm_scripts/build_on_path_cache_c2_c8.slurm
   3-variable C6 targets.
 - `run_jax_c5_c8.slurm`: JAX PPO+MCTS legacy reward baseline over fixed
   complexities 5, 6, 7, and 8.
-- `run_clean_onpath_curriculum_c2_c8.slurm`: large JAX PPO+MCTS curriculum
-  run from C2 through C8 using cached `clean_onpath` teacher shaping.
+- `run_clean_onpath_curriculum_c2_c8.slurm`: large JAX PPO+MCTS adaptive
+  curriculum run from C2 through C8 using cached `clean_onpath` teacher
+  shaping.
+
+The adaptive curriculum samples only the current complexity, then advances or
+backs off using the current-level success window. When complexity changes, the
+success window is cleared and dwell is reset, so the next decision only uses
+episodes from the new level. Min dwell is symmetric: it blocks both advance and
+backoff. The default `CURRICULUM_MIN_DWELL_ITERATIONS=1` means one completed
+outer PPO iteration at the current level before another level-change check.
+
+The large clean run defaults to `ON_PATH_PHI_MODE=max_step` because it rewards
+deep progress on high-complexity targets and is less vulnerable to collecting
+incompatible nodes from the union of optimal routes. Use
+`ON_PATH_PHI_MODE=count` for the denser count-based ablation.
 
 Run the large cached curriculum job after the cache job finishes:
 
@@ -94,6 +107,8 @@ PPO_EPOCHS=8 \
 MCTS_BATCH_SIZE=512 \
 MCTS_SIMULATIONS=32 \
 ON_PATH_PHI_MODE=max_step \
+CURRICULUM_WINDOW=512 \
+CURRICULUM_MIN_DWELL_ITERATIONS=1 \
 sbatch slurm_scripts/run_clean_onpath_curriculum_c2_c8.slurm
 ```
 
