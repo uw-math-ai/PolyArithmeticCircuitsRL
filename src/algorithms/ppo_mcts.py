@@ -169,6 +169,8 @@ class PPOMCTSTrainer:
             raise ValueError(f"Unknown reward_mode: {config.reward_mode}")
         if config.on_path_phi_mode not in ("count", "max_step"):
             raise ValueError(f"Unknown on_path_phi_mode: {config.on_path_phi_mode}")
+        if config.on_path_num_routes < 1 or config.on_path_num_routes > 32:
+            raise ValueError("on_path_num_routes must be between 1 and 32")
 
         # Factor library (session-level, shared across episodes) is a legacy
         # reward baseline only.

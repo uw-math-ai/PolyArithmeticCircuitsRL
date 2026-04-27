@@ -42,6 +42,8 @@ class Config:
     on_path_phi_mode: str = "count"     # "count" or "max_step"
     on_path_max_size: int = 4096
     on_path_split_seed: int = 42
+    on_path_route_consistency: bool = True
+    on_path_num_routes: int = 32
 
     # -------------------------------------------------------------------------
     # Factor library and subgoal rewards

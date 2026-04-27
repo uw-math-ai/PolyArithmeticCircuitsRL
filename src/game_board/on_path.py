@@ -8,6 +8,10 @@ the board step/depth metric:
 
 This is a teacher signal for curriculum experiments. It is not a proof of
 globally minimal arithmetic circuit size.
+
+Each cached node also stores a coherent-route bitmask. Runtime intersects these
+masks after hits so reward credit stays on at least one compatible optimal route
+instead of collecting unrelated nodes from the union of all routes.
 """
 
 from __future__ import annotations
@@ -25,12 +29,13 @@ from ..environment.fast_polynomial import FastPoly
 from .generator import build_game_board
 
 
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 STEP_METRIC = "board_step_depth_max_parent_plus_one"
 CANONICALIZER_VERSION = "FastPoly.coeffs.int64.tobytes.v1"
 OP_SET = ("add", "mul")
 SPLIT_METHOD = "deterministic_shuffle"
 SPLIT_RATIO = (0.8, 0.1, 0.1)
+ROUTE_MASK_MODE = "coherent_optimal_route_masks_v1"
 
 
 def hash_weights_np(target_size: int) -> np.ndarray:
@@ -66,6 +71,7 @@ class OnPathTargetContext:
     on_path_coeffs: np.ndarray
     on_path_hashes: np.ndarray
     on_path_steps: np.ndarray
+    on_path_route_masks: np.ndarray
 
     @property
     def on_path_keys(self) -> Dict[bytes, int]:
@@ -73,6 +79,14 @@ class OnPathTargetContext:
         return {
             self.on_path_coeffs[i].astype(np.int64, copy=False).tobytes(): int(step)
             for i, step in enumerate(self.on_path_steps)
+        }
+
+    @property
+    def on_path_route_keys(self) -> Dict[bytes, int]:
+        """Canonical-key to coherent-route bitmask mapping for PyTorch."""
+        return {
+            self.on_path_coeffs[i].astype(np.int64, copy=False).tobytes(): int(mask)
+            for i, mask in enumerate(self.on_path_route_masks)
         }
 
 
@@ -89,6 +103,7 @@ class OnPathComplexityCache:
     test_target_ids: np.ndarray
     on_path_offsets: np.ndarray
     on_path_flat_ids: np.ndarray
+    on_path_route_masks: np.ndarray
     n_variables: int
     mod: int
     max_degree: int
@@ -103,6 +118,9 @@ class OnPathComplexityCache:
         start = int(self.on_path_offsets[idx])
         end = int(self.on_path_offsets[idx + 1])
         on_path_ids = self.on_path_flat_ids[start:end].astype(np.int32, copy=False)
+        on_path_route_masks = self.on_path_route_masks[start:end].astype(
+            np.uint32, copy=False
+        )
         if on_path_ids.size == 0:
             raise ValueError(f"target_id {target_id} has an empty non-base on-path set")
 
@@ -119,6 +137,7 @@ class OnPathComplexityCache:
             on_path_coeffs=self.node_coeffs[on_path_ids].copy(),
             on_path_hashes=self.node_hashes[on_path_ids].copy(),
             on_path_steps=self.node_steps[on_path_ids].copy(),
+            on_path_route_masks=on_path_route_masks.copy(),
         )
 
     def sample_train_context(self, rng: Optional[np.random.Generator] = None) -> OnPathTargetContext:
@@ -180,12 +199,13 @@ class OnPathCache:
         contexts: Sequence[Optional[OnPathTargetContext]],
         max_size: int,
         target_size: int,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Pack variable-length contexts into fixed arrays for JAX reset."""
         batch = len(contexts)
         coeffs = np.zeros((batch, max_size, target_size), dtype=np.int32)
         hashes = np.zeros((batch, max_size), dtype=np.uint32)
         steps = np.zeros((batch, max_size), dtype=np.int32)
+        route_masks = np.zeros((batch, max_size), dtype=np.uint32)
         active = np.zeros((batch, max_size), dtype=bool)
         target_steps = np.zeros((batch,), dtype=np.int32)
 
@@ -203,10 +223,11 @@ class OnPathCache:
             coeffs[i, :n] = ctx.on_path_coeffs.astype(np.int32, copy=False)
             hashes[i, :n] = ctx.on_path_hashes
             steps[i, :n] = ctx.on_path_steps
+            route_masks[i, :n] = ctx.on_path_route_masks
             active[i, :n] = True
             target_steps[i] = ctx.target_board_step
 
-        return coeffs, hashes, steps, active, target_steps
+        return coeffs, hashes, steps, route_masks, active, target_steps
 
 
 def cache_file_path(cache_dir: str | Path, complexity: int) -> Path:
@@ -236,11 +257,71 @@ def compute_on_path_ids(
     return on_path
 
 
+def compute_on_path_route_masks(
+    target_id: int,
+    parents_by_id: Sequence[Sequence[tuple[int, int]]],
+    node_steps: np.ndarray,
+    base_ids: set[int],
+    max_routes: int,
+) -> Dict[int, np.uint32]:
+    """Map nodes to coherent optimal-route bitmasks.
+
+    Each bit represents one sampled/enumerated coherent optimal derivation tree
+    for the target. Runtime intersects these masks after each hit, so once the
+    agent takes credit for a node from one optimal branch it cannot also collect
+    reward from nodes that only appear in disjoint optimal branches.
+    """
+    if max_routes <= 0:
+        raise ValueError("max_routes must be positive")
+    if max_routes > 32:
+        raise ValueError("route masks use uint32, so max_routes must be <= 32")
+
+    memo: Dict[int, tuple[frozenset[int], ...]] = {}
+
+    def routes_for(node_id: int) -> tuple[frozenset[int], ...]:
+        node_id = int(node_id)
+        if node_id in memo:
+            return memo[node_id]
+        if node_id in base_ids:
+            memo[node_id] = (frozenset(),)
+            return memo[node_id]
+
+        child_step = int(node_steps[node_id])
+        routes: List[frozenset[int]] = []
+        seen: set[frozenset[int]] = set()
+        for left, right in parents_by_id[node_id]:
+            if max(int(node_steps[left]), int(node_steps[right])) + 1 != child_step:
+                continue
+            for left_route in routes_for(left):
+                for right_route in routes_for(right):
+                    route = frozenset({node_id}) | left_route | right_route
+                    if route in seen:
+                        continue
+                    seen.add(route)
+                    routes.append(route)
+                    if len(routes) >= max_routes:
+                        memo[node_id] = tuple(routes)
+                        return memo[node_id]
+
+        if not routes:
+            routes = [frozenset({node_id})]
+        memo[node_id] = tuple(routes)
+        return memo[node_id]
+
+    masks: Dict[int, np.uint32] = {}
+    for route_idx, route in enumerate(routes_for(target_id)[:max_routes]):
+        bit = np.uint32(1 << route_idx)
+        for node_id in route:
+            masks[int(node_id)] = np.uint32(masks.get(int(node_id), np.uint32(0)) | bit)
+    return masks
+
+
 def build_complexity_cache(
     config: Config,
     complexity: int,
     split_seed: int,
     max_on_path_size: int,
+    max_routes: int = 32,
 ) -> dict:
     """Build raw cache arrays for one complexity."""
     board = build_game_board(config, complexity)
@@ -272,10 +353,21 @@ def build_complexity_cache(
 
     offsets = [0]
     flat_ids: List[int] = []
+    flat_route_masks: List[np.uint32] = []
     kept_target_ids: List[int] = []
     for target_id in target_ids:
         on_path = compute_on_path_ids(int(target_id), parents_by_id, node_steps)
-        nonbase = sorted(on_path - base_ids, key=lambda idx: (node_steps[idx], idx))
+        route_masks = compute_on_path_route_masks(
+            int(target_id),
+            parents_by_id,
+            node_steps,
+            base_ids,
+            max_routes=max_routes,
+        )
+        nonbase = sorted(
+            (idx for idx in on_path - base_ids if int(route_masks.get(int(idx), 0)) != 0),
+            key=lambda idx: (node_steps[idx], idx),
+        )
         if not nonbase:
             raise ValueError(f"C{complexity} target {target_id} has empty non-base OnPath")
         if max_on_path_size > 0 and len(nonbase) > max_on_path_size:
@@ -285,6 +377,7 @@ def build_complexity_cache(
             )
         kept_target_ids.append(int(target_id))
         flat_ids.extend(nonbase)
+        flat_route_masks.extend(route_masks[int(idx)] for idx in nonbase)
         offsets.append(len(flat_ids))
 
     target_ids = np.array(kept_target_ids, dtype=np.int32)
@@ -305,6 +398,8 @@ def build_complexity_cache(
         "split_seed": int(split_seed),
         "split_method": SPLIT_METHOD,
         "split_ratio": list(SPLIT_RATIO),
+        "route_mask_mode": ROUTE_MASK_MODE,
+        "route_count_cap": int(max_routes),
     }
 
     return {
@@ -318,6 +413,7 @@ def build_complexity_cache(
         "test_target_ids": test_ids,
         "on_path_offsets": np.array(offsets, dtype=np.int64),
         "on_path_flat_ids": np.array(flat_ids, dtype=np.int32),
+        "on_path_route_masks": np.array(flat_route_masks, dtype=np.uint32),
     }
 
 
@@ -350,6 +446,11 @@ def save_complexity_cache(cache_dir: str | Path, arrays: dict, complexity: int) 
 def load_complexity_cache(path: str | Path) -> OnPathComplexityCache:
     with np.load(path, allow_pickle=False) as data:
         metadata = json.loads(str(data["metadata_json"].item()))
+        if "on_path_route_masks" not in data.files:
+            raise ValueError(
+                f"{path} was built without coherent-route masks; rebuild the "
+                "OnPath cache with the current cache builder"
+            )
         return OnPathComplexityCache(
             complexity=int(metadata["complexity"]),
             metadata=metadata,
@@ -362,6 +463,7 @@ def load_complexity_cache(path: str | Path) -> OnPathComplexityCache:
             test_target_ids=data["test_target_ids"].copy(),
             on_path_offsets=data["on_path_offsets"].copy(),
             on_path_flat_ids=data["on_path_flat_ids"].copy(),
+            on_path_route_masks=data["on_path_route_masks"].copy(),
             n_variables=int(metadata["n_variables"]),
             mod=int(metadata["mod"]),
             max_degree=int(metadata["max_degree"]),
@@ -380,6 +482,8 @@ def validate_cache_metadata(metadata: dict, config: Config, requested_complexity
         "include_constant": True,
         "base_node_count": int(config.n_variables + 1),
         "step_metric": STEP_METRIC,
+        "route_mask_mode": ROUTE_MASK_MODE,
+        "route_count_cap": int(config.on_path_num_routes),
     }
     for key, expected_value in expected.items():
         actual = metadata.get(key)
@@ -401,6 +505,7 @@ def build_caches(
     cache_dir: str | Path,
     split_seed: int,
     max_on_path_size: int,
+    max_routes: int = 32,
 ) -> List[Path]:
     paths = []
     for complexity in sorted(set(int(c) for c in complexities)):
@@ -409,6 +514,7 @@ def build_caches(
             complexity=complexity,
             split_seed=split_seed,
             max_on_path_size=max_on_path_size,
+            max_routes=max_routes,
         )
         paths.append(save_complexity_cache(cache_dir, arrays, complexity))
     return paths
@@ -423,6 +529,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cache-dir", type=str, required=True)
     parser.add_argument("--split-seed", type=int, default=42)
     parser.add_argument("--max-on-path-size", type=int, default=4096)
+    parser.add_argument("--num-routes", type=int, default=32)
     return parser.parse_args()
 
 
@@ -435,6 +542,7 @@ def main() -> None:
         max_degree=args.max_degree,
         on_path_split_seed=args.split_seed,
         on_path_max_size=args.max_on_path_size,
+        on_path_num_routes=args.num_routes,
     )
     paths = build_caches(
         config=config,
@@ -442,6 +550,7 @@ def main() -> None:
         cache_dir=args.cache_dir,
         split_seed=args.split_seed,
         max_on_path_size=args.max_on_path_size,
+        max_routes=args.num_routes,
     )
     for path in paths:
         print(f"Wrote {path}")

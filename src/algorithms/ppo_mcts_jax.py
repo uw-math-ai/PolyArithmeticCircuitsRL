@@ -111,6 +111,8 @@ class PPOMCTSJAXTrainer:
             raise ValueError(f"Unknown reward_mode: {config.reward_mode}")
         if config.on_path_phi_mode not in ("count", "max_step"):
             raise ValueError(f"Unknown on_path_phi_mode: {config.on_path_phi_mode}")
+        if config.on_path_num_routes < 1 or config.on_path_num_routes > 32:
+            raise ValueError("on_path_num_routes must be between 1 and 32")
 
         # Network.
         self.network = create_network(config)
@@ -452,11 +454,19 @@ class PPOMCTSJAXTrainer:
                 jnp.zeros((batch, max_size, target_size), dtype=jnp.int32),
                 jnp.zeros((batch, max_size), dtype=jnp.uint32),
                 jnp.zeros((batch, max_size), dtype=jnp.int32),
+                jnp.zeros((batch, max_size), dtype=jnp.uint32),
                 jnp.zeros((batch, max_size), dtype=jnp.bool_),
                 jnp.zeros((batch,), dtype=jnp.int32),
             )
         assert self.on_path_cache is not None
-        coeffs, hashes, steps, active, target_steps = self.on_path_cache.pack_jax_contexts(
+        (
+            coeffs,
+            hashes,
+            steps,
+            route_masks,
+            active,
+            target_steps,
+        ) = self.on_path_cache.pack_jax_contexts(
             contexts,
             max_size=max_size,
             target_size=target_size,
@@ -465,6 +475,7 @@ class PPOMCTSJAXTrainer:
             jnp.array(coeffs, dtype=jnp.int32),
             jnp.array(hashes, dtype=jnp.uint32),
             jnp.array(steps, dtype=jnp.int32),
+            jnp.array(route_masks, dtype=jnp.uint32),
             jnp.array(active),
             jnp.array(target_steps, dtype=jnp.int32),
         )
@@ -501,6 +512,7 @@ class PPOMCTSJAXTrainer:
             on_path_coeffs,
             on_path_hashes,
             on_path_steps,
+            on_path_route_masks,
             on_path_active,
             target_board_steps,
         ) = self._prepare_on_path_contexts(on_path_contexts)
@@ -508,8 +520,8 @@ class PPOMCTSJAXTrainer:
 
         # Batch reset.
         states = jax.vmap(
-            lambda tc, sgc, sga, sgl, opc, oph, ops, opa, tbs: env_reset(
-                self.env_config, tc, sgc, sga, sgl, opc, oph, ops, opa, tbs
+            lambda tc, sgc, sga, sgl, opc, oph, ops, opr, opa, tbs: env_reset(
+                self.env_config, tc, sgc, sga, sgl, opc, oph, ops, opr, opa, tbs
             )
         )(
             target_arrays,
@@ -519,6 +531,7 @@ class PPOMCTSJAXTrainer:
             on_path_coeffs,
             on_path_hashes,
             on_path_steps,
+            on_path_route_masks,
             on_path_active,
             target_board_steps,
         )

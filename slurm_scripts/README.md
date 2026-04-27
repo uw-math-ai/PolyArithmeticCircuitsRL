@@ -42,12 +42,13 @@ sbatch slurm_scripts/build_on_path_cache_c1_c6.slurm
 By default this writes:
 
 ```text
-on_path_cache/n2_mod5_deg6_C1_C6_seed42
+on_path_cache/n2_mod5_deg6_C1_C6_routes32_seed42
 ```
 
 for 2-variable, mod-5 targets with `max_degree=6` and curriculum
 complexities `1 2 3 4 5 6`. The cache stores the actual train/val/test
-target ID splits, and training loads those splits directly.
+target ID splits, coherent optimal-route masks, and training loads those
+splits directly.
 
 The cache geometry must match the training run:
 
@@ -59,8 +60,9 @@ The requested curriculum complexities may be a subset of the cached
 complexities. To override defaults at submission time:
 
 ```bash
-CACHE_DIR=on_path_cache/n2_mod5_deg6_C1_C6_seed42 \
+CACHE_DIR=on_path_cache/n2_mod5_deg6_C1_C6_routes32_seed42 \
 COMPLEXITIES="1 2 3 4 5 6" \
+ON_PATH_NUM_ROUTES=32 \
 MAX_ON_PATH_SIZE=8192 \
 sbatch slurm_scripts/build_on_path_cache_c1_c6.slurm
 ```
@@ -70,7 +72,7 @@ geometry and output names:
 
 ```bash
 N_VARIABLES=3 \
-CACHE_DIR=on_path_cache/n3_mod5_deg6_C1_C6_seed42 \
+CACHE_DIR=on_path_cache/n3_mod5_deg6_C1_C6_routes32_seed42 \
 RESULTS_DIR=results/ppo-mcts-jax_clean_onpath_curriculum_3var_C1_C6 \
 WANDB_RUN_NAME=ppo-mcts-jax_clean_onpath_curriculum_3var_C1_C6 \
 sbatch slurm_scripts/run_clean_onpath_curriculum_c1_c6.slurm
@@ -106,6 +108,11 @@ deep progress on high-complexity targets and is less vulnerable to collecting
 incompatible nodes from the union of optimal routes. Use
 `ON_PATH_PHI_MODE=count` for the denser count-based ablation.
 
+Clean OnPath caches now store `ON_PATH_NUM_ROUTES=32` coherent optimal-route
+masks per target. Once an episode gets reward for a node from one route mask,
+later hits are only rewarded if they overlap the still-compatible route mask;
+this prevents collecting reward from mutually incompatible optimal circuits.
+
 The clean OnPath Slurm defaults are intentionally conservative for one GPU:
 `MCTS_BATCH_SIZE=128`, `MCTS_SIMULATIONS=16`, `MAX_COMPLEXITY=6`, and
 `MAX_STEPS=12`. After confirming memory on your allocated GPU, you can increase
@@ -134,7 +141,7 @@ To run only a smaller cached range, keep the cache path and complexity range
 aligned:
 
 ```bash
-CACHE_DIR=on_path_cache/n2_mod5_deg6_C1_C3_seed42 \
+CACHE_DIR=on_path_cache/n2_mod5_deg6_C1_C3_routes32_seed42 \
 MAX_COMPLEXITY=3 \
 RESULTS_DIR=results/ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C3 \
 WANDB_RUN_NAME=ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C3 \

@@ -419,8 +419,13 @@ class TestFactorLibraryRewards:
 
 
 class _OnPathContext:
-    def __init__(self, mapping, target_board_step):
+    def __init__(self, mapping, target_board_step, route_mapping=None):
         self.on_path_keys = mapping
+        self.on_path_route_keys = (
+            route_mapping
+            if route_mapping is not None
+            else {key: (1 << 32) - 1 for key in mapping}
+        )
         self.target_board_step = target_board_step
 
 
@@ -503,6 +508,51 @@ class TestRewardModes:
             self.config.step_penalty
             + self.config.gamma * 0.5
             - 0.5
+        )
+
+    def test_clean_onpath_route_consistency_blocks_incompatible_hits(self):
+        self.config.reward_mode = "clean_onpath"
+        self.config.on_path_phi_mode = "count"
+        self.config.graph_onpath_shaping_coeff = 1.0
+        env = CircuitGame(self.config)
+
+        route_a = self.x0 + self.x1
+        route_b = self.x0 * self.x1
+        target = route_a + route_b
+        ctx = _OnPathContext(
+            {
+                route_a.canonical_key(): 1,
+                route_b.canonical_key(): 1,
+                target.canonical_key(): 2,
+            },
+            target_board_step=2,
+            route_mapping={
+                route_a.canonical_key(): 0b01,
+                route_b.canonical_key(): 0b10,
+                target.canonical_key(): 0b11,
+            },
+        )
+        env.reset(target, on_path_context=ctx)
+
+        add_action = encode_action(0, 0, 1, self.config.max_nodes)
+        mul_action = encode_action(1, 0, 1, self.config.max_nodes)
+
+        _, reward, _, info = env.step(add_action)
+        assert info["on_path_hit"]
+        assert info["on_path_hits"] == 1
+        assert info["on_path_phi"] == pytest.approx(1 / 3)
+        assert reward == pytest.approx(
+            self.config.step_penalty + self.config.gamma * (1 / 3)
+        )
+
+        _, reward2, _, info2 = env.step(mul_action)
+        assert not info2["on_path_hit"]
+        assert info2["on_path_hits"] == 1
+        assert info2["on_path_phi"] == pytest.approx(1 / 3)
+        assert reward2 == pytest.approx(
+            self.config.step_penalty
+            + self.config.gamma * (1 / 3)
+            - (1 / 3)
         )
 
     def test_clean_onpath_success_logs_raw_phi_but_zeros_terminal_reward_phi(self):

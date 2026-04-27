@@ -20,7 +20,8 @@ MAX_DEGREE=${MAX_DEGREE:-6}
 COMPLEXITIES=${COMPLEXITIES:-"1 2 3 4 5 6"}
 SPLIT_SEED=${SPLIT_SEED:-42}
 MAX_ON_PATH_SIZE=${MAX_ON_PATH_SIZE:-4096}
-CACHE_DIR=${CACHE_DIR:-on_path_cache/n2_mod5_deg6_C1_C6_seed42}
+ON_PATH_NUM_ROUTES=${ON_PATH_NUM_ROUTES:-32}
+CACHE_DIR=${CACHE_DIR:-on_path_cache/n2_mod5_deg6_C1_C6_routes32_seed42}
 
 cd "$REPO_DIR"
 mkdir -p results/slurm "$CACHE_DIR"
@@ -36,6 +37,7 @@ echo "  max_degree: $MAX_DEGREE"
 echo "  complexities: ${COMPLEXITY_ARGS[*]}"
 echo "  split_seed: $SPLIT_SEED"
 echo "  max_on_path_size: $MAX_ON_PATH_SIZE"
+echo "  on_path_num_routes: $ON_PATH_NUM_ROUTES"
 
 apptainer exec --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
@@ -47,6 +49,7 @@ apptainer exec --bind /gscratch:/gscratch \
     --max-degree "$MAX_DEGREE" \
     --cache-dir "$CACHE_DIR" \
     --split-seed "$SPLIT_SEED" \
-    --max-on-path-size "$MAX_ON_PATH_SIZE"
+    --max-on-path-size "$MAX_ON_PATH_SIZE" \
+    --num-routes "$ON_PATH_NUM_ROUTES"
 
 echo "OnPath cache complete: $CACHE_DIR"

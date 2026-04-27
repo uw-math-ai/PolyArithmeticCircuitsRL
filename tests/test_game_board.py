@@ -14,6 +14,7 @@ from src.game_board.on_path import (
     OnPathCache,
     build_caches,
     compute_on_path_ids,
+    compute_on_path_route_masks,
 )
 
 
@@ -128,6 +129,26 @@ class TestOnPathCache:
         ]
         steps = [0, 0, 1, 2, 2]
         assert compute_on_path_ids(4, parents, steps) == {0, 1, 2, 4}
+
+    def test_route_masks_separate_incompatible_optimal_branches(self):
+        parents = [
+            [],
+            [],
+            [(0, 1)],
+            [(0, 1)],
+            [(2, 1), (3, 1)],
+        ]
+        steps = [0, 0, 1, 1, 2]
+        masks = compute_on_path_route_masks(
+            4,
+            parents,
+            steps,
+            base_ids={0, 1},
+            max_routes=2,
+        )
+
+        assert masks[4] == 0b11
+        assert masks[2] & masks[3] == 0
 
     def test_cache_excludes_base_nodes_and_includes_target(self, tmp_path):
         config = Config(

@@ -147,6 +147,12 @@ def main() -> None:
     )
     parser.add_argument("--on-path-max-size", type=int, default=None)
     parser.add_argument("--on-path-split-seed", type=int, default=None)
+    parser.add_argument("--on-path-num-routes", type=int, default=None)
+    parser.add_argument(
+        "--no-on-path-route-consistency",
+        action="store_true",
+        help="Disable coherent-route masking for clean_onpath rewards.",
+    )
     parser.add_argument(
         "--mcts-batch-size",
         type=int,
@@ -226,6 +232,10 @@ def main() -> None:
         config.on_path_max_size = args.on_path_max_size
     if args.on_path_split_seed is not None:
         config.on_path_split_seed = args.on_path_split_seed
+    if args.on_path_num_routes is not None:
+        config.on_path_num_routes = args.on_path_num_routes
+    if args.no_on_path_route_consistency:
+        config.on_path_route_consistency = False
     if args.no_factor_library:
         config.factor_library_enabled = False
     if args.factor_subgoal_reward is not None:

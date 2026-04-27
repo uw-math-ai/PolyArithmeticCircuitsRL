@@ -49,11 +49,13 @@ class EnvState(NamedTuple):
         on_path_coeffs: (on_path_max_size, target_size) cached oracle nodes.
         on_path_hashes: (on_path_max_size,) uint32 hash prefilter values.
         on_path_steps: (on_path_max_size,) board-step values for oracle nodes.
+        on_path_route_masks: (on_path_max_size,) uint32 coherent-route masks.
         on_path_active: (on_path_max_size,) bool mask for valid oracle slots.
         on_path_hit: (on_path_max_size,) bool mask for already rewarded nodes.
         on_path_count: int32 scalar.
         on_path_total: int32 scalar.
         on_path_deepest_step: int32 scalar.
+        on_path_active_route_mask: uint32 scalar for currently compatible routes.
         target_board_step: int32 scalar.
         steps_taken: int32 scalar.
         done: bool scalar.
@@ -75,11 +77,13 @@ class EnvState(NamedTuple):
     on_path_coeffs: jnp.ndarray
     on_path_hashes: jnp.ndarray
     on_path_steps: jnp.ndarray
+    on_path_route_masks: jnp.ndarray
     on_path_active: jnp.ndarray
     on_path_hit: jnp.ndarray
     on_path_count: jnp.ndarray
     on_path_total: jnp.ndarray
     on_path_deepest_step: jnp.ndarray
+    on_path_active_route_mask: jnp.ndarray
     target_board_step: jnp.ndarray
     steps_taken: jnp.ndarray
     done: jnp.ndarray
@@ -111,6 +115,7 @@ class EnvConfig(NamedTuple):
     graph_onpath_shaping_coeff: float
     on_path_terminal_zero: bool
     on_path_phi_mode: str
+    on_path_route_consistency: bool
     on_path_max_size: int
     initial_node_coeffs: jnp.ndarray
     base_node_coeffs: jnp.ndarray
@@ -164,6 +169,7 @@ def make_env_config(config) -> EnvConfig:
         graph_onpath_shaping_coeff=config.graph_onpath_shaping_coeff,
         on_path_terminal_zero=config.on_path_terminal_zero,
         on_path_phi_mode=config.on_path_phi_mode,
+        on_path_route_consistency=config.on_path_route_consistency,
         on_path_max_size=on_path_max_size,
         initial_node_coeffs=initial_node_coeffs,
         base_node_coeffs=base_node_coeffs,
@@ -405,10 +411,14 @@ def _on_path_match_index(poly: jnp.ndarray, state: EnvState,
                          env_config: EnvConfig) -> tuple:
     """Hash-prefilter then coefficient-verify a clean_onpath hit."""
     poly_hash = _poly_hash(poly, env_config)
+    route_ok = jnp.ones_like(state.on_path_active, dtype=jnp.bool_)
+    if env_config.on_path_route_consistency:
+        route_ok = (state.on_path_route_masks & state.on_path_active_route_mask) != 0
     candidate = (
         state.on_path_active
         & (~state.on_path_hit)
         & (state.on_path_hashes == poly_hash)
+        & route_ok
     )
     coeff_match = jnp.all(state.on_path_coeffs == poly[None, :], axis=1)
     matches = candidate & coeff_match
@@ -595,6 +605,7 @@ def make_empty_on_path_arrays(env_config: EnvConfig):
         ),
         jnp.zeros((env_config.on_path_max_size,), dtype=jnp.uint32),
         jnp.zeros((env_config.on_path_max_size,), dtype=jnp.int32),
+        jnp.zeros((env_config.on_path_max_size,), dtype=jnp.uint32),
         jnp.zeros((env_config.on_path_max_size,), dtype=jnp.bool_),
         jnp.int32(0),
     )
@@ -607,6 +618,7 @@ def reset(env_config: EnvConfig, target_coeffs: jnp.ndarray,
           on_path_coeffs: jnp.ndarray | None = None,
           on_path_hashes: jnp.ndarray | None = None,
           on_path_steps: jnp.ndarray | None = None,
+          on_path_route_masks: jnp.ndarray | None = None,
           on_path_active: jnp.ndarray | None = None,
           target_board_step: jnp.ndarray | None = None) -> EnvState:
     """Reset the environment with a new target.
@@ -654,6 +666,7 @@ def reset(env_config: EnvConfig, target_coeffs: jnp.ndarray,
             on_path_coeffs,
             on_path_hashes,
             on_path_steps,
+            on_path_route_masks,
             on_path_active,
             target_board_step,
         ) = make_empty_on_path_arrays(env_config)
@@ -665,6 +678,20 @@ def reset(env_config: EnvConfig, target_coeffs: jnp.ndarray,
             or target_board_step is None
         ):
             raise ValueError("all on_path arrays must be provided together")
+        if on_path_route_masks is None:
+            on_path_route_masks = jnp.where(
+                on_path_active,
+                jnp.full_like(on_path_hashes, jnp.uint32(0xFFFFFFFF)),
+                jnp.zeros_like(on_path_hashes, dtype=jnp.uint32),
+            )
+    on_path_active_route_mask = jnp.bitwise_or.reduce(
+        on_path_route_masks.astype(jnp.uint32)
+    )
+    on_path_active_route_mask = jnp.where(
+        on_path_active_route_mask == jnp.uint32(0),
+        jnp.uint32(0xFFFFFFFF),
+        on_path_active_route_mask,
+    )
 
     return EnvState(
         node_coeffs=node_coeffs,
@@ -683,11 +710,13 @@ def reset(env_config: EnvConfig, target_coeffs: jnp.ndarray,
         on_path_coeffs=on_path_coeffs.astype(jnp.int32),
         on_path_hashes=on_path_hashes.astype(jnp.uint32),
         on_path_steps=on_path_steps.astype(jnp.int32),
+        on_path_route_masks=on_path_route_masks.astype(jnp.uint32),
         on_path_active=on_path_active,
         on_path_hit=jnp.zeros_like(on_path_active, dtype=jnp.bool_),
         on_path_count=jnp.int32(0),
         on_path_total=jnp.sum(on_path_active.astype(jnp.int32)),
         on_path_deepest_step=jnp.int32(0),
+        on_path_active_route_mask=on_path_active_route_mask,
         target_board_step=jnp.asarray(target_board_step, dtype=jnp.int32),
         steps_taken=jnp.int32(0),
         done=jnp.bool_(False),
@@ -799,18 +828,26 @@ def step(env_config: EnvConfig, state: EnvState,
     on_path_hit = state.on_path_hit
     on_path_count = state.on_path_count
     on_path_deepest_step = state.on_path_deepest_step
+    on_path_active_route_mask = state.on_path_active_route_mask
 
     if env_config.reward_mode == "clean_onpath":
         match_idx, has_on_path_match = _on_path_match_index(
             new_coeffs, state, env_config
         )
         hit_step = jnp.where(has_on_path_match, state.on_path_steps[match_idx], 0)
+        hit_route_mask = jnp.where(
+            has_on_path_match,
+            state.on_path_route_masks[match_idx],
+            state.on_path_active_route_mask,
+        )
         on_path_hit = jax.lax.cond(
             has_on_path_match,
             lambda arr: arr.at[match_idx].set(True),
             lambda arr: arr,
             on_path_hit,
         )
+        if env_config.on_path_route_consistency:
+            on_path_active_route_mask = on_path_active_route_mask & hit_route_mask
         on_path_count = on_path_count + has_on_path_match.astype(jnp.int32)
         on_path_deepest_step = jnp.maximum(on_path_deepest_step, hit_step)
         phi_state = state._replace(
@@ -957,11 +994,13 @@ def step(env_config: EnvConfig, state: EnvState,
         on_path_coeffs=state.on_path_coeffs,
         on_path_hashes=state.on_path_hashes,
         on_path_steps=state.on_path_steps,
+        on_path_route_masks=state.on_path_route_masks,
         on_path_active=state.on_path_active,
         on_path_hit=on_path_hit,
         on_path_count=on_path_count.astype(jnp.int32),
         on_path_total=state.on_path_total,
         on_path_deepest_step=on_path_deepest_step.astype(jnp.int32),
+        on_path_active_route_mask=on_path_active_route_mask.astype(jnp.uint32),
         target_board_step=state.target_board_step,
         steps_taken=steps_taken.astype(jnp.int32),
         done=done,

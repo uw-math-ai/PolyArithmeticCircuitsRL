@@ -111,11 +111,13 @@ class CircuitGame:
 
         # Per-episode cached OnPath state for clean_onpath reward mode.
         self._on_path_steps: Dict[bytes, int] = {}
+        self._on_path_route_masks: Dict[bytes, int] = {}
         self._on_path_hit_keys: Set[bytes] = set()
         self._on_path_count: int = 0
         self._on_path_total: int = 0
         self._on_path_deepest_step: int = 0
         self._on_path_target_step: int = 0
+        self._on_path_active_route_mask: int = (1 << 32) - 1
 
     def reset(
         self,
@@ -162,11 +164,13 @@ class CircuitGame:
 
         # --- Cached on-path shaping setup ---
         self._on_path_steps: Dict[bytes, int] = {}
+        self._on_path_route_masks: Dict[bytes, int] = {}
         self._on_path_hit_keys: Set[bytes] = set()
         self._on_path_count: int = 0
         self._on_path_total: int = 0
         self._on_path_deepest_step: int = 0
         self._on_path_target_step: int = 0
+        self._on_path_active_route_mask: int = (1 << 32) - 1
 
         if self.config.reward_mode == "clean_onpath":
             if on_path_context is None:
@@ -174,6 +178,18 @@ class CircuitGame:
                     "reward_mode='clean_onpath' requires on_path_context at reset"
                 )
             self._on_path_steps = dict(on_path_context.on_path_keys)
+            route_keys = getattr(on_path_context, "on_path_route_keys", None)
+            if route_keys is None:
+                self._on_path_route_masks = {
+                    key: (1 << 32) - 1 for key in self._on_path_steps
+                }
+            else:
+                self._on_path_route_masks = dict(route_keys)
+            self._on_path_active_route_mask = 0
+            for mask in self._on_path_route_masks.values():
+                self._on_path_active_route_mask |= int(mask)
+            if self._on_path_active_route_mask == 0:
+                self._on_path_active_route_mask = (1 << 32) - 1
             self._on_path_total = len(self._on_path_steps)
             self._on_path_target_step = int(on_path_context.target_board_step)
             if self._on_path_total == 0:
@@ -546,8 +562,16 @@ class CircuitGame:
         key = poly.canonical_key()
         if key not in self._on_path_steps or key in self._on_path_hit_keys:
             return False
+        route_mask = int(self._on_path_route_masks.get(key, (1 << 32) - 1))
+        if (
+            self.config.on_path_route_consistency
+            and (route_mask & self._on_path_active_route_mask) == 0
+        ):
+            return False
 
         self._on_path_hit_keys.add(key)
+        if self.config.on_path_route_consistency:
+            self._on_path_active_route_mask &= route_mask
         self._on_path_count += 1
         self._on_path_deepest_step = max(
             self._on_path_deepest_step,
@@ -621,10 +645,12 @@ class CircuitGame:
 
         # Clean on-path shaping state; hit set must be branch-local for MCTS.
         new_game._on_path_steps = dict(self._on_path_steps)
+        new_game._on_path_route_masks = dict(self._on_path_route_masks)
         new_game._on_path_hit_keys = set(self._on_path_hit_keys)
         new_game._on_path_count = self._on_path_count
         new_game._on_path_total = self._on_path_total
         new_game._on_path_deepest_step = self._on_path_deepest_step
         new_game._on_path_target_step = self._on_path_target_step
+        new_game._on_path_active_route_mask = self._on_path_active_route_mask
 
         return new_game

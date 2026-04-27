@@ -21,9 +21,10 @@ MAX_COMPLEXITY=${MAX_COMPLEXITY:-6}
 MAX_DEGREE=${MAX_DEGREE:-6}
 MAX_STEPS=${MAX_STEPS:-12}
 
-CACHE_DIR=${CACHE_DIR:-on_path_cache/n2_mod5_deg6_C1_C6_seed42}
+CACHE_DIR=${CACHE_DIR:-on_path_cache/n2_mod5_deg6_C1_C6_routes32_seed42}
 SPLIT_SEED=${SPLIT_SEED:-42}
 MAX_ON_PATH_SIZE=${MAX_ON_PATH_SIZE:-4096}
+ON_PATH_NUM_ROUTES=${ON_PATH_NUM_ROUTES:-32}
 ON_PATH_PHI_MODE=${ON_PATH_PHI_MODE:-max_step}
 GRAPH_ONPATH_SHAPING_COEFF=${GRAPH_ONPATH_SHAPING_COEFF:-1.0}
 
@@ -74,6 +75,7 @@ echo "  advance_threshold: $ADVANCE_THRESHOLD"
 echo "  backoff_threshold: $BACKOFF_THRESHOLD"
 echo "  curriculum_window: $CURRICULUM_WINDOW"
 echo "  curriculum_min_dwell_iterations: $CURRICULUM_MIN_DWELL_ITERATIONS"
+echo "  on_path_num_routes: $ON_PATH_NUM_ROUTES"
 
 apptainer exec --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
@@ -113,5 +115,6 @@ apptainer exec --nv --bind /gscratch:/gscratch \
     --on-path-phi-mode "$ON_PATH_PHI_MODE" \
     --on-path-max-size "$MAX_ON_PATH_SIZE" \
     --on-path-split-seed "$SPLIT_SEED" \
+    --on-path-num-routes "$ON_PATH_NUM_ROUTES" \
     --results-dir "$RESULTS_DIR" \
     "${WANDB_ARGS[@]}"
