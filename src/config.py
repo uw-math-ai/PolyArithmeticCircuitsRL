@@ -30,7 +30,7 @@ class Config:
     # Reward modes:
     #   legacy: current term/factor/completion shaping baseline.
     #   clean_sparse: terminal_success_reward + step_penalty only.
-    #   clean_onpath: clean_sparse + cached board-step on-path potential shaping.
+    #   clean_onpath: clean_sparse + cached sequential-route on-path potential shaping.
     reward_mode: str = "legacy"
     success_reward: float = 10.0        # Reward given when the target is matched exactly
     terminal_success_reward: float = 10.0  # Clean-mode terminal reward.

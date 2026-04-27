@@ -32,7 +32,7 @@ The OnPath signal is disabled during normal evaluation.
 
 ## Cached OnPath Target Sets
 
-Build the cached board-step OnPath target set before running
+Build the cached sequential-route OnPath target set before running
 `clean_onpath` training:
 
 ```bash
@@ -42,7 +42,7 @@ sbatch slurm_scripts/build_on_path_cache_c1_c6.slurm
 By default this writes:
 
 ```text
-on_path_cache/n2_mod5_deg6_C1_C6_routes32_seed42
+on_path_cache/n2_mod5_deg6_SEQ_C1_C6_routes32_seed42
 ```
 
 for 2-variable, mod-5 targets with `max_degree=6` and curriculum
@@ -63,7 +63,7 @@ The requested curriculum complexities may be a subset of the cached
 complexities. To override defaults at submission time:
 
 ```bash
-CACHE_DIR=on_path_cache/n2_mod5_deg6_C1_C6_routes32_seed42 \
+CACHE_DIR=on_path_cache/n2_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
 COMPLEXITIES="1 2 3 4 5 6" \
 ON_PATH_NUM_ROUTES=32 \
 MAX_ON_PATH_SIZE=8192 \
@@ -76,7 +76,7 @@ geometry and output names:
 
 ```bash
 N_VARIABLES=3 \
-CACHE_DIR=on_path_cache/n3_mod5_deg6_C1_C6_routes32_seed42 \
+CACHE_DIR=on_path_cache/n3_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
 RESULTS_DIR=results/ppo-mcts-jax_clean_onpath_curriculum_3var_C1_C6 \
 WANDB_RUN_NAME=ppo-mcts-jax_clean_onpath_curriculum_3var_C1_C6 \
 sbatch slurm_scripts/run_clean_onpath_curriculum_c1_c6.slurm
@@ -114,16 +114,19 @@ potential while staying bounded and monotonic. Use `ON_PATH_PHI_MODE=count` for
 the denser uniform-count ablation, or `ON_PATH_PHI_MODE=max_step` for deepest-hit
 only progress.
 
-Clean OnPath caches now store `ON_PATH_NUM_ROUTES=32` coherent optimal-route
-masks per target. The default `ON_PATH_ROUTE_CONSISTENCY_MODE=best_route_phi`
-records every unique OnPath hit but computes potential as the best progress
-within one coherent route. Use `lock_on_first_hit` to reproduce the older
-irreversible route-mask narrowing, or `off` for union-style reward.
+Clean OnPath caches use sequential route size: a Ck target is one whose minimal
+coherent route contains exactly k constructed non-base nodes. Shared
+subcomputations count once, so `(x+y)^2` is C2 while `(x+y)*(x+1)` is C3.
+Caches store `ON_PATH_NUM_ROUTES=32` coherent optimal-route masks per target.
+The default `ON_PATH_ROUTE_CONSISTENCY_MODE=best_route_phi` records every unique
+OnPath hit but computes potential as the best progress within one coherent
+route. Use `lock_on_first_hit` to reproduce the older irreversible route-mask
+narrowing, or `off` for union-style reward.
 Inspect route-mask structure before a run with:
 
 ```bash
 python scripts/inspect_on_path_cache.py \
-  --cache-dir on_path_cache/n2_mod5_deg6_C1_C6_routes32_seed42 \
+  --cache-dir on_path_cache/n2_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
   --complexity 2
 ```
 
@@ -164,7 +167,7 @@ For a C1→C3 stable debug run against the C1→C6 cache you already built, keep
 the cache path as C1→C6 and only lower `MAX_COMPLEXITY`:
 
 ```bash
-CACHE_DIR=on_path_cache/n2_mod5_deg6_C1_C6_routes32_seed42 \
+CACHE_DIR=on_path_cache/n2_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
 MAX_COMPLEXITY=3 \
 RESULTS_DIR=results/ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C3 \
 WANDB_RUN_NAME=ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C3 \

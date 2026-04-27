@@ -224,8 +224,8 @@ class CircuitGame:
 
         In legacy mode, the existing term/factor/completion shaping is preserved.
         In clean_sparse mode, the reward is terminal_success_reward plus
-        step_penalty. In clean_onpath mode, cached board-step OnPath potential
-        shaping is added to the clean sparse reward.
+        step_penalty. In clean_onpath mode, cached sequential-route OnPath
+        potential shaping is added to the clean sparse reward.
 
         Args:
             action_idx: Integer index encoding (op, i, j) — see action_space.py.
@@ -581,7 +581,7 @@ class CircuitGame:
         return True
 
     def _on_path_phi(self) -> float:
-        """Potential for cached board-step OnPath shaping."""
+        """Potential for cached sequential-route OnPath shaping."""
         if self.config.reward_mode != "clean_onpath":
             return 0.0
 

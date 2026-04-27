@@ -94,7 +94,7 @@ def inspect(cache_dir: Path, complexity: int, limit: int) -> None:
         print()
         print(
             f"target_id={int(target_id)} "
-            f"target_board_step={int(comp.node_steps[int(target_id)])} "
+            f"target_seq_step={int(comp.node_steps[int(target_id)])} "
             f"on_path_total={len(ids)} "
             f"target_mask=0x{target_mask:08x}"
         )

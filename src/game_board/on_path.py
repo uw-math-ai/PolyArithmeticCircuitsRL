@@ -1,13 +1,10 @@
-"""Cached board-step on-path oracle sets.
+"""Cached sequential-route OnPath oracle sets.
 
-The cache stores, for each target sampled from a BFS game board, the set of
-non-base board nodes that lie on any optimal backward route to that target under
-the board step/depth metric:
-
-    max(step[left], step[right]) + 1 == step[child]
-
-This is a teacher signal for curriculum experiments. It is not a proof of
-globally minimal arithmetic circuit size.
+The board generator is used as an overcomplete polynomial source, but clean
+OnPath cache complexity is the episode action count: the number of non-base
+nodes that must be constructed along one coherent route. Shared subcomputations
+count once, so ``(x + y)^2`` has route cost 2 while
+``(x + y) * (x + 1)`` has route cost 3.
 
 Each cached node also stores a coherent-route bitmask. Runtime intersects these
 masks after hits so reward credit stays on at least one compatible optimal route
@@ -29,13 +26,15 @@ from ..environment.fast_polynomial import FastPoly
 from .generator import build_game_board
 
 
-CACHE_VERSION = 3
-STEP_METRIC = "board_step_depth_max_parent_plus_one"
+CACHE_VERSION = 4
+STEP_METRIC = "sequential_route_size_nonbase_nodes"
 CANONICALIZER_VERSION = "FastPoly.coeffs.int64.tobytes.v1"
 OP_SET = ("add", "mul")
 SPLIT_METHOD = "deterministic_shuffle"
 SPLIT_RATIO = (0.8, 0.1, 0.1)
 ROUTE_MASK_MODE = "coherent_optimal_route_masks_v1"
+ROUTE_WORKING_CAP_MULTIPLIER = 4
+ROUTE_WORKING_CAP_MIN = 128
 
 
 def hash_weights_np(target_size: int) -> np.ndarray:
@@ -66,6 +65,8 @@ class OnPathTargetContext:
 
     target_id: int
     target_poly: FastPoly
+    # Kept as target_board_step for wire compatibility. In v4 caches this is
+    # the minimal sequential route size, not board depth.
     target_board_step: int
     on_path_ids: np.ndarray
     on_path_coeffs: np.ndarray
@@ -75,7 +76,7 @@ class OnPathTargetContext:
 
     @property
     def on_path_keys(self) -> Dict[bytes, int]:
-        """Canonical-key to board-step mapping for PyTorch O(1) lookups."""
+        """Canonical-key to sequential-step mapping for PyTorch O(1) lookups."""
         return {
             self.on_path_coeffs[i].astype(np.int64, copy=False).tobytes(): int(step)
             for i, step in enumerate(self.on_path_steps)
@@ -235,26 +236,145 @@ def cache_file_path(cache_dir: str | Path, complexity: int) -> Path:
     return Path(cache_dir) / f"on_path_C{int(complexity)}.npz"
 
 
+def _route_sort_key(route: frozenset[int]) -> tuple[int, tuple[int, ...]]:
+    return (len(route), tuple(sorted(int(node_id) for node_id in route)))
+
+
+def compute_sequential_route_sets(
+    parents_by_id: Sequence[Sequence[tuple[int, int]]],
+    base_ids: set[int],
+    max_cost: int,
+    working_route_cap: Optional[int] = None,
+) -> tuple[tuple[tuple[frozenset[int], ...], ...], set[int]]:
+    """Enumerate route frozensets with at most ``max_cost`` non-base nodes.
+
+    A route is a coherent set of non-base board nodes that can be constructed in
+    a sequential episode. Combining two parents unions their route sets and adds
+    the child. This naturally counts shared subcomputations once.
+    """
+    if max_cost < 0:
+        raise ValueError("max_cost must be non-negative")
+
+    n_nodes = len(parents_by_id)
+    if working_route_cap is None:
+        working_route_cap = max(ROUTE_WORKING_CAP_MIN, ROUTE_WORKING_CAP_MULTIPLIER)
+
+    routes_by_id: List[set[frozenset[int]]] = [set() for _ in range(n_nodes)]
+    for base_id in base_ids:
+        if 0 <= int(base_id) < n_nodes:
+            routes_by_id[int(base_id)].add(frozenset())
+
+    capped_nodes: set[int] = set()
+    for _ in range(max_cost):
+        changed = False
+        for child in range(n_nodes):
+            if child in base_ids:
+                continue
+            before = len(routes_by_id[child])
+            for left, right in parents_by_id[child]:
+                left_routes = tuple(routes_by_id[int(left)])
+                right_routes = tuple(routes_by_id[int(right)])
+                if not left_routes or not right_routes:
+                    continue
+                for left_route in left_routes:
+                    if child in left_route:
+                        continue
+                    for right_route in right_routes:
+                        if child in right_route:
+                            continue
+                        route = frozenset({child}) | left_route | right_route
+                        if len(route) <= max_cost:
+                            routes_by_id[child].add(route)
+
+            if len(routes_by_id[child]) > working_route_cap:
+                capped_nodes.add(child)
+                kept = sorted(routes_by_id[child], key=_route_sort_key)[:working_route_cap]
+                routes_by_id[child] = set(kept)
+
+            if len(routes_by_id[child]) != before:
+                changed = True
+        if not changed:
+            break
+
+    return (
+        tuple(tuple(sorted(routes, key=_route_sort_key)) for routes in routes_by_id),
+        capped_nodes,
+    )
+
+
+def _minimal_routes(routes: Sequence[frozenset[int]]) -> tuple[frozenset[int], ...]:
+    if not routes:
+        return tuple()
+    min_cost = min(len(route) for route in routes)
+    return tuple(route for route in routes if len(route) == min_cost)
+
+
+def _route_masks_from_minimal_routes(
+    minimal_routes: Sequence[frozenset[int]],
+    max_routes: int,
+    capped_nodes: Optional[set[int]] = None,
+    target_id: Optional[int] = None,
+) -> tuple[Dict[int, np.uint32], bool]:
+    """Build per-node route bitmasks from a list of minimal coherent routes.
+
+    Returns ``(masks, route_cap_hit)``. ``route_cap_hit`` is conservative — it
+    fires if any of the following hold:
+
+      (a) more minimal routes existed than ``max_routes`` (overflow at selection),
+      (b) the target's own route enumeration was working-cap truncated,
+      (c) any node appearing in a selected route was working-cap truncated
+          during enumeration. Ancestor truncation can silently drop minimal
+          routes from the target, so we surface it as a cap hit too.
+    """
+    selected = tuple(minimal_routes[:max_routes])
+    masks: Dict[int, np.uint32] = {}
+    for route_idx, route in enumerate(selected):
+        bit = np.uint32(1 << route_idx)
+        for node_id in route:
+            masks[int(node_id)] = np.uint32(masks.get(int(node_id), np.uint32(0)) | bit)
+
+    cap_overflow = len(minimal_routes) > max_routes
+    target_capped = (
+        capped_nodes is not None
+        and target_id is not None
+        and int(target_id) in capped_nodes
+    )
+    ancestor_capped = (
+        capped_nodes is not None
+        and any(
+            int(node_id) in capped_nodes
+            for route in selected
+            for node_id in route
+        )
+    )
+    return masks, bool(cap_overflow or target_capped or ancestor_capped)
+
+
 def compute_on_path_ids(
     target_id: int,
     parents_by_id: Sequence[Sequence[tuple[int, int]]],
     node_steps: np.ndarray,
 ) -> set[int]:
-    """Backward traverse optimal parent records for a target ID."""
-    on_path = {int(target_id)}
-    stack = [int(target_id)]
+    """Return non-base nodes on minimal sequential routes for a target ID.
 
-    while stack:
-        child = stack.pop()
-        child_step = int(node_steps[child])
-        for left, right in parents_by_id[child]:
-            if max(int(node_steps[left]), int(node_steps[right])) + 1 != child_step:
-                continue
-            for parent_id in (left, right):
-                if parent_id not in on_path:
-                    on_path.add(parent_id)
-                    stack.append(parent_id)
-
+    NOTE: this re-enumerates routes for ALL nodes (cost O(global)) rather than
+    walking only the target's subtree. Cheap for one-off inspection; do NOT
+    call in tight loops. The cache builder inlines route enumeration once via
+    ``compute_sequential_route_sets`` and reuses results across all targets.
+    """
+    node_steps_arr = np.asarray(node_steps)
+    base_ids = set(np.nonzero(node_steps_arr == 0)[0].tolist())
+    positive_steps = node_steps_arr[node_steps_arr > 0]
+    max_cost = int(positive_steps.max()) if positive_steps.size else 0
+    routes_by_id, _ = compute_sequential_route_sets(
+        parents_by_id,
+        base_ids,
+        max_cost=max_cost,
+    )
+    routes = _minimal_routes(routes_by_id[int(target_id)])
+    on_path: set[int] = set()
+    for route in routes:
+        on_path.update(int(node_id) for node_id in route)
     return on_path
 
 
@@ -265,7 +385,7 @@ def compute_on_path_route_masks(
     base_ids: set[int],
     max_routes: int,
 ) -> tuple[Dict[int, np.uint32], bool]:
-    """Map nodes to coherent optimal-route bitmasks.
+    """Map nodes to coherent minimal sequential-route bitmasks.
 
     Each bit represents one sampled/enumerated coherent optimal derivation tree
     for the target. Runtime intersects these masks after each hit, so once the
@@ -277,47 +397,21 @@ def compute_on_path_route_masks(
     if max_routes > 32:
         raise ValueError("route masks use uint32, so max_routes must be <= 32")
 
-    memo: Dict[int, tuple[frozenset[int], ...]] = {}
-    route_cap_hit = False
-
-    def routes_for(node_id: int) -> tuple[frozenset[int], ...]:
-        nonlocal route_cap_hit
-        node_id = int(node_id)
-        if node_id in memo:
-            return memo[node_id]
-        if node_id in base_ids:
-            memo[node_id] = (frozenset(),)
-            return memo[node_id]
-
-        child_step = int(node_steps[node_id])
-        routes: List[frozenset[int]] = []
-        seen: set[frozenset[int]] = set()
-        for left, right in parents_by_id[node_id]:
-            if max(int(node_steps[left]), int(node_steps[right])) + 1 != child_step:
-                continue
-            for left_route in routes_for(left):
-                for right_route in routes_for(right):
-                    route = frozenset({node_id}) | left_route | right_route
-                    if route in seen:
-                        continue
-                    seen.add(route)
-                    routes.append(route)
-                    if len(routes) > max_routes:
-                        route_cap_hit = True
-                        memo[node_id] = tuple(routes[:max_routes])
-                        return memo[node_id]
-
-        if not routes:
-            routes = [frozenset({node_id})]
-        memo[node_id] = tuple(routes)
-        return memo[node_id]
-
-    masks: Dict[int, np.uint32] = {}
-    for route_idx, route in enumerate(routes_for(target_id)[:max_routes]):
-        bit = np.uint32(1 << route_idx)
-        for node_id in route:
-            masks[int(node_id)] = np.uint32(masks.get(int(node_id), np.uint32(0)) | bit)
-    return masks, route_cap_hit
+    node_steps_arr = np.asarray(node_steps)
+    positive_steps = node_steps_arr[node_steps_arr > 0]
+    max_cost = int(positive_steps.max()) if positive_steps.size else 0
+    routes_by_id, capped_nodes = compute_sequential_route_sets(
+        parents_by_id,
+        base_ids,
+        max_cost=max_cost,
+    )
+    minimal_routes = _minimal_routes(routes_by_id[int(target_id)])
+    return _route_masks_from_minimal_routes(
+        minimal_routes,
+        max_routes=max_routes,
+        capped_nodes=capped_nodes,
+        target_id=int(target_id),
+    )
 
 
 def build_complexity_cache(
@@ -332,7 +426,7 @@ def build_complexity_cache(
     ordered_keys = sorted(board.keys(), key=lambda k: (board[k]["step"], k))
     key_to_id = {key: idx for idx, key in enumerate(ordered_keys)}
 
-    node_steps = np.array([board[key]["step"] for key in ordered_keys], dtype=np.int32)
+    board_steps = np.array([board[key]["step"] for key in ordered_keys], dtype=np.int32)
     node_coeffs = np.stack(
         [board[key]["poly"].coeffs.flatten().astype(np.int64) for key in ordered_keys],
         axis=0,
@@ -347,13 +441,32 @@ def build_complexity_cache(
             right = key_to_id[parent["right"]]
             parents_by_id[child_id].append((left, right))
 
-    base_ids = set(np.nonzero(node_steps == 0)[0].tolist())
+    base_ids = set(np.nonzero(board_steps == 0)[0].tolist())
+    working_cap = max(ROUTE_WORKING_CAP_MIN, max_routes * ROUTE_WORKING_CAP_MULTIPLIER)
+    routes_by_id, capped_nodes = compute_sequential_route_sets(
+        parents_by_id,
+        base_ids,
+        max_cost=int(complexity),
+        working_route_cap=working_cap,
+    )
+
+    node_steps = np.full(len(ordered_keys), -1, dtype=np.int32)
+    for base_id in base_ids:
+        node_steps[int(base_id)] = 0
+    for idx, routes in enumerate(routes_by_id):
+        if routes:
+            node_steps[idx] = min(len(route) for route in routes)
+
     target_ids = np.array(
-        [idx for idx, step in enumerate(node_steps) if int(step) == int(complexity)],
+        [
+            idx
+            for idx, step in enumerate(node_steps)
+            if int(step) == int(complexity) and idx not in base_ids
+        ],
         dtype=np.int32,
     )
     if target_ids.size == 0:
-        raise ValueError(f"No exact C{complexity} targets found in game board")
+        raise ValueError(f"No exact sequential C{complexity} targets found in game board")
 
     offsets = [0]
     flat_ids: List[int] = []
@@ -361,14 +474,19 @@ def build_complexity_cache(
     kept_target_ids: List[int] = []
     route_cap_hits: List[bool] = []
     for target_id in target_ids:
-        on_path = compute_on_path_ids(int(target_id), parents_by_id, node_steps)
-        route_masks, route_cap_hit = compute_on_path_route_masks(
-            int(target_id),
-            parents_by_id,
-            node_steps,
-            base_ids,
-            max_routes=max_routes,
+        minimal_routes = tuple(
+            route for route in routes_by_id[int(target_id)]
+            if len(route) == int(complexity)
         )
+        if not minimal_routes:
+            continue
+        route_masks, route_cap_hit = _route_masks_from_minimal_routes(
+            minimal_routes,
+            max_routes=max_routes,
+            capped_nodes=capped_nodes,
+            target_id=int(target_id),
+        )
+        on_path = set(route_masks)
         nonbase = sorted(
             (idx for idx in on_path - base_ids if int(route_masks.get(int(idx), 0)) != 0),
             key=lambda idx: (node_steps[idx], idx),
@@ -410,6 +528,8 @@ def build_complexity_cache(
         "split_ratio": list(SPLIT_RATIO),
         "route_mask_mode": ROUTE_MASK_MODE,
         "route_count_cap": int(max_routes),
+        "route_working_cap": int(working_cap),
+        "route_working_cap_hit_node_count": int(len(capped_nodes)),
         "route_cap_hit_count": int(route_cap_hit_array.sum()),
         "route_cap_hit_rate": route_cap_hit_rate,
     }
@@ -588,7 +708,9 @@ def main() -> None:
         print(
             f"Wrote {path} "
             f"(route_cap_hit_rate={metadata.get('route_cap_hit_rate', 0.0):.2%}, "
-            f"route_cap_hit_count={metadata.get('route_cap_hit_count', 0)})"
+            f"route_cap_hit_count={metadata.get('route_cap_hit_count', 0)}, "
+            f"route_working_cap_hit_node_count="
+            f"{metadata.get('route_working_cap_hit_node_count', 0)})"
         )
 
 

@@ -48,7 +48,7 @@ class EnvState(NamedTuple):
         mult_complete_hit: bool scalar.
         on_path_coeffs: (on_path_max_size, target_size) cached oracle nodes.
         on_path_hashes: (on_path_max_size,) uint32 hash prefilter values.
-        on_path_steps: (on_path_max_size,) board-step values for oracle nodes.
+        on_path_steps: (on_path_max_size,) sequential route-size values for oracle nodes.
         on_path_route_masks: (on_path_max_size,) uint32 coherent-route masks.
         on_path_active: (on_path_max_size,) bool mask for valid oracle slots.
         on_path_hit: (on_path_max_size,) bool mask for already rewarded nodes.
@@ -56,7 +56,7 @@ class EnvState(NamedTuple):
         on_path_total: int32 scalar.
         on_path_deepest_step: int32 scalar.
         on_path_active_route_mask: uint32 scalar for currently compatible routes.
-        target_board_step: int32 scalar.
+        target_board_step: int32 scalar; v4 caches use sequential target route size.
         steps_taken: int32 scalar.
         done: bool scalar.
         is_success: bool scalar.
