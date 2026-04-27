@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=clean_onpath_curr_c2_c8
+#SBATCH --job-name=clean_onpath_2var_c2_c8
 #SBATCH --account=stf
 #SBATCH --partition=ckpt
 #SBATCH --nodes=1
@@ -15,13 +15,13 @@ set -euo pipefail
 REPO_DIR=${REPO_DIR:-/gscratch/stf/kj66/PolyArithmeticCircuitsRL_kj66-hyak}
 CONTAINER=${CONTAINER:-container_jax.sif}
 
-N_VARIABLES=${N_VARIABLES:-3}
+N_VARIABLES=${N_VARIABLES:-2}
 MOD=${MOD:-5}
 MAX_COMPLEXITY=${MAX_COMPLEXITY:-8}
 MAX_DEGREE=${MAX_DEGREE:-6}
 MAX_STEPS=${MAX_STEPS:-16}
 
-CACHE_DIR=${CACHE_DIR:-on_path_cache/n3_mod5_deg6_C2_C8_seed42}
+CACHE_DIR=${CACHE_DIR:-on_path_cache/n2_mod5_deg6_C2_C8_seed42}
 SPLIT_SEED=${SPLIT_SEED:-42}
 MAX_ON_PATH_SIZE=${MAX_ON_PATH_SIZE:-4096}
 ON_PATH_PHI_MODE=${ON_PATH_PHI_MODE:-max_step}
@@ -41,9 +41,9 @@ CURRICULUM_WINDOW=${CURRICULUM_WINDOW:-512}
 # before another advance/backoff check; the 512-episode window is the main debounce.
 CURRICULUM_MIN_DWELL_ITERATIONS=${CURRICULUM_MIN_DWELL_ITERATIONS:-1}
 
-RESULTS_DIR=${RESULTS_DIR:-results/ppo-mcts-jax_clean_onpath_curriculum_C2_C8}
+RESULTS_DIR=${RESULTS_DIR:-results/ppo-mcts-jax_clean_onpath_curriculum_2var_C2_C8}
 WANDB=${WANDB:-1}
-WANDB_RUN_NAME=${WANDB_RUN_NAME:-ppo-mcts-jax_clean_onpath_curriculum_C2_C8}
+WANDB_RUN_NAME=${WANDB_RUN_NAME:-ppo-mcts-jax_clean_onpath_curriculum_2var_C2_C8}
 
 cd "$REPO_DIR"
 module load cuda

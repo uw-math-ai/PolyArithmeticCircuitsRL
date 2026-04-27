@@ -42,10 +42,10 @@ sbatch slurm_scripts/build_on_path_cache_c2_c8.slurm
 By default this writes:
 
 ```text
-on_path_cache/n3_mod5_deg6_C2_C8_seed42
+on_path_cache/n2_mod5_deg6_C2_C8_seed42
 ```
 
-for 3-variable, mod-5 targets with `max_degree=6` and curriculum
+for 2-variable, mod-5 targets with `max_degree=6` and curriculum
 complexities `2 3 4 5 6 7 8`. The cache stores the actual train/val/test
 target ID splits, and training loads those splits directly.
 
@@ -59,10 +59,21 @@ The requested curriculum complexities may be a subset of the cached
 complexities. To override defaults at submission time:
 
 ```bash
-CACHE_DIR=on_path_cache/n3_mod5_deg6_C2_C6_seed42 \
+CACHE_DIR=on_path_cache/n2_mod5_deg6_C2_C6_seed42 \
 COMPLEXITIES="2 3 4 5 6" \
 MAX_ON_PATH_SIZE=8192 \
 sbatch slurm_scripts/build_on_path_cache_c2_c8.slurm
+```
+
+To run the same clean OnPath flow on 3-variable targets later, override the
+geometry and output names:
+
+```bash
+N_VARIABLES=3 \
+CACHE_DIR=on_path_cache/n3_mod5_deg6_C2_C8_seed42 \
+RESULTS_DIR=results/ppo-mcts-jax_clean_onpath_curriculum_3var_C2_C8 \
+WANDB_RUN_NAME=ppo-mcts-jax_clean_onpath_curriculum_3var_C2_C8 \
+sbatch slurm_scripts/run_clean_onpath_curriculum_c2_c8.slurm
 ```
 
 ## Training Scripts
@@ -78,8 +89,8 @@ sbatch slurm_scripts/build_on_path_cache_c2_c8.slurm
 - `run_jax_c5_c8.slurm`: JAX PPO+MCTS legacy reward baseline over fixed
   complexities 5, 6, 7, and 8.
 - `run_clean_onpath_curriculum_c2_c8.slurm`: large JAX PPO+MCTS adaptive
-  curriculum run from C2 through C8 using cached `clean_onpath` teacher
-  shaping.
+  curriculum run from C2 through C8 on 2-variable targets using cached
+  `clean_onpath` teacher shaping.
 
 The adaptive curriculum samples only the current complexity, then advances or
 backs off using the current-level success window. When complexity changes, the
@@ -126,4 +137,4 @@ sbatch slurm_scripts/run_clean_onpath_curriculum_c2_c8.slurm
 - `results/ppo-mcts-jax_fl_C5`
 - `results/ppo-mcts-jax_fl_C6`
 - `results/ppo-mcts-jax_fl_C5_C8`
-- `results/ppo-mcts-jax_clean_onpath_curriculum_C2_C8`
+- `results/ppo-mcts-jax_clean_onpath_curriculum_2var_C2_C8`
