@@ -29,7 +29,7 @@ from ..environment.fast_polynomial import FastPoly
 from .generator import build_game_board
 
 
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 STEP_METRIC = "board_step_depth_max_parent_plus_one"
 CANONICALIZER_VERSION = "FastPoly.coeffs.int64.tobytes.v1"
 OP_SET = ("add", "mul")
@@ -104,6 +104,7 @@ class OnPathComplexityCache:
     on_path_offsets: np.ndarray
     on_path_flat_ids: np.ndarray
     on_path_route_masks: np.ndarray
+    route_cap_hit: np.ndarray
     n_variables: int
     mod: int
     max_degree: int
@@ -263,7 +264,7 @@ def compute_on_path_route_masks(
     node_steps: np.ndarray,
     base_ids: set[int],
     max_routes: int,
-) -> Dict[int, np.uint32]:
+) -> tuple[Dict[int, np.uint32], bool]:
     """Map nodes to coherent optimal-route bitmasks.
 
     Each bit represents one sampled/enumerated coherent optimal derivation tree
@@ -277,8 +278,10 @@ def compute_on_path_route_masks(
         raise ValueError("route masks use uint32, so max_routes must be <= 32")
 
     memo: Dict[int, tuple[frozenset[int], ...]] = {}
+    route_cap_hit = False
 
     def routes_for(node_id: int) -> tuple[frozenset[int], ...]:
+        nonlocal route_cap_hit
         node_id = int(node_id)
         if node_id in memo:
             return memo[node_id]
@@ -299,8 +302,9 @@ def compute_on_path_route_masks(
                         continue
                     seen.add(route)
                     routes.append(route)
-                    if len(routes) >= max_routes:
-                        memo[node_id] = tuple(routes)
+                    if len(routes) > max_routes:
+                        route_cap_hit = True
+                        memo[node_id] = tuple(routes[:max_routes])
                         return memo[node_id]
 
         if not routes:
@@ -313,7 +317,7 @@ def compute_on_path_route_masks(
         bit = np.uint32(1 << route_idx)
         for node_id in route:
             masks[int(node_id)] = np.uint32(masks.get(int(node_id), np.uint32(0)) | bit)
-    return masks
+    return masks, route_cap_hit
 
 
 def build_complexity_cache(
@@ -355,9 +359,10 @@ def build_complexity_cache(
     flat_ids: List[int] = []
     flat_route_masks: List[np.uint32] = []
     kept_target_ids: List[int] = []
+    route_cap_hits: List[bool] = []
     for target_id in target_ids:
         on_path = compute_on_path_ids(int(target_id), parents_by_id, node_steps)
-        route_masks = compute_on_path_route_masks(
+        route_masks, route_cap_hit = compute_on_path_route_masks(
             int(target_id),
             parents_by_id,
             node_steps,
@@ -376,11 +381,16 @@ def build_complexity_cache(
                 f"exceeds max_on_path_size={max_on_path_size}"
             )
         kept_target_ids.append(int(target_id))
+        route_cap_hits.append(bool(route_cap_hit))
         flat_ids.extend(nonbase)
         flat_route_masks.extend(route_masks[int(idx)] for idx in nonbase)
         offsets.append(len(flat_ids))
 
     target_ids = np.array(kept_target_ids, dtype=np.int32)
+    route_cap_hit_array = np.array(route_cap_hits, dtype=bool)
+    route_cap_hit_rate = (
+        float(route_cap_hit_array.mean()) if route_cap_hit_array.size else 0.0
+    )
     train_ids, val_ids, test_ids = split_target_ids(target_ids, split_seed + complexity)
 
     metadata = {
@@ -400,6 +410,8 @@ def build_complexity_cache(
         "split_ratio": list(SPLIT_RATIO),
         "route_mask_mode": ROUTE_MASK_MODE,
         "route_count_cap": int(max_routes),
+        "route_cap_hit_count": int(route_cap_hit_array.sum()),
+        "route_cap_hit_rate": route_cap_hit_rate,
     }
 
     return {
@@ -414,6 +426,7 @@ def build_complexity_cache(
         "on_path_offsets": np.array(offsets, dtype=np.int64),
         "on_path_flat_ids": np.array(flat_ids, dtype=np.int32),
         "on_path_route_masks": np.array(flat_route_masks, dtype=np.uint32),
+        "route_cap_hit": route_cap_hit_array,
     }
 
 
@@ -451,6 +464,11 @@ def load_complexity_cache(path: str | Path) -> OnPathComplexityCache:
                 f"{path} was built without coherent-route masks; rebuild the "
                 "OnPath cache with the current cache builder"
             )
+        if "route_cap_hit" not in data.files:
+            raise ValueError(
+                f"{path} was built without route-cap diagnostics; rebuild the "
+                "OnPath cache with the current cache builder"
+            )
         return OnPathComplexityCache(
             complexity=int(metadata["complexity"]),
             metadata=metadata,
@@ -464,6 +482,7 @@ def load_complexity_cache(path: str | Path) -> OnPathComplexityCache:
             on_path_offsets=data["on_path_offsets"].copy(),
             on_path_flat_ids=data["on_path_flat_ids"].copy(),
             on_path_route_masks=data["on_path_route_masks"].copy(),
+            route_cap_hit=data["route_cap_hit"].copy(),
             n_variables=int(metadata["n_variables"]),
             mod=int(metadata["mod"]),
             max_degree=int(metadata["max_degree"]),
@@ -506,6 +525,7 @@ def build_caches(
     split_seed: int,
     max_on_path_size: int,
     max_routes: int = 32,
+    max_route_truncation_rate: float = 0.25,
 ) -> List[Path]:
     paths = []
     for complexity in sorted(set(int(c) for c in complexities)):
@@ -516,6 +536,14 @@ def build_caches(
             max_on_path_size=max_on_path_size,
             max_routes=max_routes,
         )
+        metadata = json.loads(str(arrays["metadata_json"].item()))
+        truncation_rate = float(metadata.get("route_cap_hit_rate", 0.0))
+        if truncation_rate > max_route_truncation_rate:
+            raise ValueError(
+                f"C{complexity} route cap hit rate {truncation_rate:.2%} "
+                f"exceeds max_route_truncation_rate={max_route_truncation_rate:.2%}; "
+                "increase --num-routes or narrow the target set"
+            )
         paths.append(save_complexity_cache(cache_dir, arrays, complexity))
     return paths
 
@@ -530,6 +558,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--split-seed", type=int, default=42)
     parser.add_argument("--max-on-path-size", type=int, default=4096)
     parser.add_argument("--num-routes", type=int, default=32)
+    parser.add_argument("--max-route-truncation-rate", type=float, default=0.25)
     return parser.parse_args()
 
 
@@ -551,9 +580,16 @@ def main() -> None:
         split_seed=args.split_seed,
         max_on_path_size=args.max_on_path_size,
         max_routes=args.num_routes,
+        max_route_truncation_rate=args.max_route_truncation_rate,
     )
     for path in paths:
-        print(f"Wrote {path}")
+        with np.load(path, allow_pickle=False) as data:
+            metadata = json.loads(str(data["metadata_json"].item()))
+        print(
+            f"Wrote {path} "
+            f"(route_cap_hit_rate={metadata.get('route_cap_hit_rate', 0.0):.2%}, "
+            f"route_cap_hit_count={metadata.get('route_cap_hit_count', 0)})"
+        )
 
 
 if __name__ == "__main__":

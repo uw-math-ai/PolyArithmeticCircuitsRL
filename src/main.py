@@ -117,20 +117,34 @@ def main() -> None:
         default=None,
     )
     parser.add_argument(
+        "--curriculum-backoff-patience-iterations",
+        type=int,
+        default=None,
+    )
+    parser.add_argument(
         "--max-degree",
         type=int,
         default=None,
         help="Max degree per variable (default: auto = max_complexity)",
     )
     parser.add_argument("--ent-coef", type=float, default=None)
+    parser.add_argument("--ppo-lr", type=float, default=None)
     parser.add_argument(
         "--ppo-epochs",
         type=int,
         default=None,
         help="PPO optimization epochs per rollout batch",
     )
+    parser.add_argument("--max-grad-norm", type=float, default=None)
+    parser.add_argument("--ppo-log-ratio-clip", type=float, default=None)
     parser.add_argument("--mcts-simulations", type=int, default=None)
     parser.add_argument("--steps-per-update", type=int, default=None)
+    parser.add_argument("--log-interval", type=int, default=None)
+    parser.add_argument(
+        "--no-progress-bar",
+        action="store_true",
+        help="Disable tqdm progress bar for cleaner Slurm logs.",
+    )
     parser.add_argument(
         "--reward-mode",
         choices=["legacy", "clean_sparse", "clean_onpath"],
@@ -208,16 +222,30 @@ def main() -> None:
         config.curriculum_min_dwell_iterations = (
             args.curriculum_min_dwell_iterations
         )
+    if args.curriculum_backoff_patience_iterations is not None:
+        config.curriculum_backoff_patience_iterations = (
+            args.curriculum_backoff_patience_iterations
+        )
     if args.max_degree is not None:
         config.max_degree = args.max_degree
     if args.ent_coef is not None:
         config.ent_coef = args.ent_coef
+    if args.ppo_lr is not None:
+        config.ppo_lr = args.ppo_lr
     if args.ppo_epochs is not None:
         config.ppo_epochs = args.ppo_epochs
+    if args.max_grad_norm is not None:
+        config.max_grad_norm = args.max_grad_norm
+    if args.ppo_log_ratio_clip is not None:
+        config.ppo_log_ratio_clip = args.ppo_log_ratio_clip
     if args.mcts_simulations is not None:
         config.mcts_simulations = args.mcts_simulations
     if args.steps_per_update is not None:
         config.steps_per_update = args.steps_per_update
+    if args.log_interval is not None:
+        config.log_interval = args.log_interval
+    if args.no_progress_bar:
+        config.disable_progress_bar = True
     if args.reward_mode is not None:
         config.reward_mode = args.reward_mode
     if args.terminal_success_reward is not None:

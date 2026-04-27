@@ -77,6 +77,7 @@ class Config:
     # PPO
     ppo_lr: float = 3e-4
     ppo_clip: float = 0.2
+    ppo_log_ratio_clip: float = 10.0
     ppo_epochs: int = 4
     gamma: float = 0.99
     gae_lambda: float = 0.95
@@ -85,6 +86,7 @@ class Config:
     batch_size: int = 256
     steps_per_update: int = 4096
     max_grad_norm: float = 0.5
+    nonfinite_update_limit: int = 3
 
     # MCTS
     mcts_simulations: int = 100
@@ -100,11 +102,13 @@ class Config:
     backoff_threshold: float = 0.4
     curriculum_window: int = 50
     curriculum_min_dwell_iterations: int = 1
+    curriculum_backoff_patience_iterations: int = 0
 
     # Training
     device: str = "cpu"
     seed: int = 42
     log_interval: int = 10
+    disable_progress_bar: bool = False
 
     # Weights & Biases logging
     wandb_enabled: bool = False

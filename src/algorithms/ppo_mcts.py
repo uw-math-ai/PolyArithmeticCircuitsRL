@@ -193,6 +193,7 @@ class PPOMCTSTrainer:
         self.success_history: List[bool] = []
         self.dwell_iterations_at_level = 0
         self.window_success_rate = 0.0
+        self.backoff_patience_counter = 0
 
         # Logging.
         self.log_path = log_path
@@ -558,16 +559,30 @@ class PPOMCTSTrainer:
             self.success_history.clear()
             self.dwell_iterations_at_level = 0
             self.window_success_rate = 0.0
+            self.backoff_patience_counter = 0
             self._log(f"[Curriculum] Advanced to complexity {self.current_complexity}")
-        elif (
+            return
+
+        if self.config.backoff_threshold < 0:
+            self.backoff_patience_counter = 0
+            return
+
+        if (
             rate <= self.config.backoff_threshold
             and self.current_complexity > self.config.starting_complexity
         ):
+            patience = max(0, int(self.config.curriculum_backoff_patience_iterations))
+            self.backoff_patience_counter += 1
+            if self.backoff_patience_counter < patience:
+                return
             self.current_complexity -= 1
             self.success_history.clear()
             self.dwell_iterations_at_level = 0
             self.window_success_rate = 0.0
+            self.backoff_patience_counter = 0
             self._log(f"[Curriculum] Backed off to complexity {self.current_complexity}")
+        else:
+            self.backoff_patience_counter = 0
 
     def train(self, num_iterations: int) -> dict:
         """Run the full PPO+MCTS training loop.
@@ -639,7 +654,8 @@ class PPOMCTSTrainer:
                     "on_path_phi": rollout_info["on_path_phi"],
                     "target_board_step": rollout_info["target_board_step"],
                     "episode_length": rollout_info["episode_length"],
-                    "current_complexity": self.current_complexity,
+                    "rollout_complexity": rollout_info["complexity"],
+                    "current_complexity_after_curriculum": self.current_complexity,
                     "dwell_iterations_at_level": self.dwell_iterations_at_level,
                     "window_success_rate": self.window_success_rate,
                 }, step=iteration)
@@ -660,10 +676,10 @@ class PPOMCTSTrainer:
                 self._log(
                     f"[PPO+MCTS iter {iteration}] "
                     f"reward_mode={self.config.reward_mode} "
-                    f"complexity={rollout_info['complexity']} "
-                    f"current_complexity={self.current_complexity} "
-                    f"dwell={self.dwell_iterations_at_level} "
-                    f"window_success={self.window_success_rate:.2%} "
+                    f"rollout_complexity={rollout_info['complexity']} "
+                    f"current_complexity_after_curriculum={self.current_complexity} "
+                    f"dwell_iterations_at_level={self.dwell_iterations_at_level} "
+                    f"window_success_rate={self.window_success_rate:.2%} "
                     f"episodes={rollout_info['episodes']} "
                     f"success={rollout_info['success_rate']:.2%} "
                     f"reward={rollout_info['avg_reward']:.3f} "

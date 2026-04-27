@@ -49,6 +49,9 @@ for 2-variable, mod-5 targets with `max_degree=6` and curriculum
 complexities `1 2 3 4 5 6`. The cache stores the actual train/val/test
 target ID splits, coherent optimal-route masks, and training loads those
 splits directly.
+The route-mask cache records how many targets hit the configured route cap and
+fails by default if more than `MAX_ROUTE_TRUNCATION_RATE=0.25` of a complexity
+hits `ON_PATH_NUM_ROUTES`.
 
 The cache geometry must match the training run:
 
@@ -64,6 +67,7 @@ CACHE_DIR=on_path_cache/n2_mod5_deg6_C1_C6_routes32_seed42 \
 COMPLEXITIES="1 2 3 4 5 6" \
 ON_PATH_NUM_ROUTES=32 \
 MAX_ON_PATH_SIZE=8192 \
+MAX_ROUTE_TRUNCATION_RATE=0.25 \
 sbatch slurm_scripts/build_on_path_cache_c1_c6.slurm
 ```
 
@@ -98,7 +102,8 @@ The adaptive curriculum samples only the current complexity, then advances or
 backs off using the current-level success window. When complexity changes, the
 success window is cleared and dwell is reset, so the next decision only uses
 episodes from the new level. Min dwell is symmetric: it blocks both advance and
-backoff. The default `CURRICULUM_MIN_DWELL_ITERATIONS=4` means four completed
+backoff. `BACKOFF_THRESHOLD < 0` disables backoff. The default
+`CURRICULUM_MIN_DWELL_ITERATIONS=64` means 64 completed
 outer PPO iterations at the current level before another level-change check;
 setting it to `1` allows level changes on consecutive iterations while still
 preventing same-iteration churn.
@@ -113,10 +118,11 @@ masks per target. Once an episode gets reward for a node from one route mask,
 later hits are only rewarded if they overlap the still-compatible route mask;
 this prevents collecting reward from mutually incompatible optimal circuits.
 
-The clean OnPath Slurm defaults are intentionally conservative for one GPU:
-`MCTS_BATCH_SIZE=128`, `MCTS_SIMULATIONS=16`, `MAX_COMPLEXITY=6`, and
-`MAX_STEPS=12`. After confirming memory on your allocated GPU, you can increase
-them at submit time, for example `MCTS_BATCH_SIZE=256 MCTS_SIMULATIONS=32`.
+The clean OnPath Slurm defaults are intended to be stable for one GPU:
+`MCTS_BATCH_SIZE=128`, `MCTS_SIMULATIONS=32`, `PPO_LR=1e-4`,
+`MAX_GRAD_NORM=0.25`, `PPO_LOG_RATIO_CLIP=10.0`, `PPO_EPOCHS=2`,
+`ENT_COEF=0.05`, `MAX_COMPLEXITY=6`, and `MAX_STEPS=12`. Progress bars are
+disabled by default for cleaner Slurm logs; set `PROGRESS_BAR=1` to re-enable.
 
 Run the large cached curriculum job after the cache job finishes:
 
@@ -128,23 +134,31 @@ Useful overrides:
 
 ```bash
 ITERATIONS=4000 \
-PPO_EPOCHS=8 \
+PPO_EPOCHS=2 \
+PPO_LR=1e-4 \
+MAX_GRAD_NORM=0.25 \
 MCTS_BATCH_SIZE=128 \
-MCTS_SIMULATIONS=16 \
+MCTS_SIMULATIONS=32 \
 ON_PATH_PHI_MODE=max_step \
-CURRICULUM_WINDOW=512 \
-CURRICULUM_MIN_DWELL_ITERATIONS=4 \
+ADVANCE_THRESHOLD=0.97 \
+BACKOFF_THRESHOLD=-1.0 \
+CURRICULUM_WINDOW=2048 \
+CURRICULUM_MIN_DWELL_ITERATIONS=64 \
 sbatch slurm_scripts/run_clean_onpath_curriculum_c1_c6.slurm
 ```
 
-To run only a smaller cached range, keep the cache path and complexity range
-aligned:
+For a C1→C3 stable debug run against the C1→C6 cache you already built, keep
+the cache path as C1→C6 and only lower `MAX_COMPLEXITY`:
 
 ```bash
-CACHE_DIR=on_path_cache/n2_mod5_deg6_C1_C3_routes32_seed42 \
+CACHE_DIR=on_path_cache/n2_mod5_deg6_C1_C6_routes32_seed42 \
 MAX_COMPLEXITY=3 \
 RESULTS_DIR=results/ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C3 \
 WANDB_RUN_NAME=ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C3 \
+ADVANCE_THRESHOLD=0.97 \
+BACKOFF_THRESHOLD=-1.0 \
+CURRICULUM_WINDOW=2048 \
+CURRICULUM_MIN_DWELL_ITERATIONS=64 \
 sbatch slurm_scripts/run_clean_onpath_curriculum_c1_c6.slurm
 ```
 

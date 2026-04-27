@@ -31,17 +31,23 @@ GRAPH_ONPATH_SHAPING_COEFF=${GRAPH_ONPATH_SHAPING_COEFF:-1.0}
 ITERATIONS=${ITERATIONS:-2000}
 # Conservative GPU defaults. Increase to 256/32 only after confirming memory.
 MCTS_BATCH_SIZE=${MCTS_BATCH_SIZE:-128}
-MCTS_SIMULATIONS=${MCTS_SIMULATIONS:-16}
-PPO_EPOCHS=${PPO_EPOCHS:-8}
+MCTS_SIMULATIONS=${MCTS_SIMULATIONS:-32}
+PPO_LR=${PPO_LR:-1e-4}
+MAX_GRAD_NORM=${MAX_GRAD_NORM:-0.25}
+PPO_LOG_RATIO_CLIP=${PPO_LOG_RATIO_CLIP:-10.0}
+PPO_EPOCHS=${PPO_EPOCHS:-2}
 ENT_COEF=${ENT_COEF:-0.05}
+LOG_INTERVAL=${LOG_INTERVAL:-10}
+PROGRESS_BAR=${PROGRESS_BAR:-0}
 
 STARTING_COMPLEXITY=${STARTING_COMPLEXITY:-1}
-ADVANCE_THRESHOLD=${ADVANCE_THRESHOLD:-0.7}
-BACKOFF_THRESHOLD=${BACKOFF_THRESHOLD:-0.05}
-CURRICULUM_WINDOW=${CURRICULUM_WINDOW:-512}
-# MIN_DWELL=1 means one completed outer PPO iteration at the current level
-# before another advance/backoff check; the success window is the main debounce.
-CURRICULUM_MIN_DWELL_ITERATIONS=${CURRICULUM_MIN_DWELL_ITERATIONS:-4}
+ADVANCE_THRESHOLD=${ADVANCE_THRESHOLD:-0.97}
+# Negative backoff disables curriculum backoff for stable C1->C3/C1->C6 debugging.
+BACKOFF_THRESHOLD=${BACKOFF_THRESHOLD:--1.0}
+CURRICULUM_WINDOW=${CURRICULUM_WINDOW:-2048}
+# MIN_DWELL is counted in completed outer PPO iterations at the current level.
+CURRICULUM_MIN_DWELL_ITERATIONS=${CURRICULUM_MIN_DWELL_ITERATIONS:-64}
+CURRICULUM_BACKOFF_PATIENCE_ITERATIONS=${CURRICULUM_BACKOFF_PATIENCE_ITERATIONS:-0}
 
 RESULTS_DIR=${RESULTS_DIR:-results/ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C6}
 WANDB=${WANDB:-1}
@@ -68,13 +74,18 @@ echo "  max_complexity: $MAX_COMPLEXITY"
 echo "  iterations: $ITERATIONS"
 echo "  mcts_batch_size: $MCTS_BATCH_SIZE"
 echo "  mcts_simulations: $MCTS_SIMULATIONS"
+echo "  ppo_lr: $PPO_LR"
+echo "  max_grad_norm: $MAX_GRAD_NORM"
+echo "  ppo_log_ratio_clip: $PPO_LOG_RATIO_CLIP"
 echo "  ppo_epochs: $PPO_EPOCHS"
+echo "  ent_coef: $ENT_COEF"
 echo "  on_path_phi_mode: $ON_PATH_PHI_MODE"
 echo "  starting_complexity: $STARTING_COMPLEXITY"
 echo "  advance_threshold: $ADVANCE_THRESHOLD"
 echo "  backoff_threshold: $BACKOFF_THRESHOLD"
 echo "  curriculum_window: $CURRICULUM_WINDOW"
 echo "  curriculum_min_dwell_iterations: $CURRICULUM_MIN_DWELL_ITERATIONS"
+echo "  curriculum_backoff_patience_iterations: $CURRICULUM_BACKOFF_PATIENCE_ITERATIONS"
 echo "  on_path_num_routes: $ON_PATH_NUM_ROUTES"
 
 apptainer exec --nv --bind /gscratch:/gscratch \
@@ -86,6 +97,10 @@ apptainer exec --nv --bind /gscratch:/gscratch \
 WANDB_ARGS=()
 if [[ "$WANDB" == "1" ]]; then
   WANDB_ARGS+=(--wandb --wandb-run-name "$WANDB_RUN_NAME")
+fi
+PROGRESS_ARGS=()
+if [[ "$PROGRESS_BAR" != "1" ]]; then
+  PROGRESS_ARGS+=(--no-progress-bar)
 fi
 
 apptainer exec --nv --bind /gscratch:/gscratch \
@@ -102,13 +117,18 @@ apptainer exec --nv --bind /gscratch:/gscratch \
     --backoff-threshold "$BACKOFF_THRESHOLD" \
     --curriculum-window "$CURRICULUM_WINDOW" \
     --curriculum-min-dwell-iterations "$CURRICULUM_MIN_DWELL_ITERATIONS" \
+    --curriculum-backoff-patience-iterations "$CURRICULUM_BACKOFF_PATIENCE_ITERATIONS" \
     --max-degree "$MAX_DEGREE" \
     --max-steps "$MAX_STEPS" \
     --iterations "$ITERATIONS" \
     --mcts-batch-size "$MCTS_BATCH_SIZE" \
     --mcts-simulations "$MCTS_SIMULATIONS" \
+    --ppo-lr "$PPO_LR" \
     --ppo-epochs "$PPO_EPOCHS" \
+    --max-grad-norm "$MAX_GRAD_NORM" \
+    --ppo-log-ratio-clip "$PPO_LOG_RATIO_CLIP" \
     --ent-coef "$ENT_COEF" \
+    --log-interval "$LOG_INTERVAL" \
     --reward-mode clean_onpath \
     --graph-onpath-cache-dir "$CACHE_DIR" \
     --graph-onpath-shaping-coeff "$GRAPH_ONPATH_SHAPING_COEFF" \
@@ -117,4 +137,5 @@ apptainer exec --nv --bind /gscratch:/gscratch \
     --on-path-split-seed "$SPLIT_SEED" \
     --on-path-num-routes "$ON_PATH_NUM_ROUTES" \
     --results-dir "$RESULTS_DIR" \
+    "${PROGRESS_ARGS[@]}" \
     "${WANDB_ARGS[@]}"

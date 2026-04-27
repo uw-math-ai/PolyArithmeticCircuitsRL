@@ -16,6 +16,8 @@ def _harness(
     current_complexity: int = 2,
     window: int = 2,
     min_dwell: int = 1,
+    backoff_threshold: float = 0.4,
+    backoff_patience: int = 0,
     successes=None,
 ) -> _CurriculumHarness:
     config = Config(
@@ -23,9 +25,10 @@ def _harness(
         starting_complexity=2,
         max_complexity=4,
         advance_threshold=0.7,
-        backoff_threshold=0.4,
+        backoff_threshold=backoff_threshold,
         curriculum_window=window,
         curriculum_min_dwell_iterations=min_dwell,
+        curriculum_backoff_patience_iterations=backoff_patience,
     )
     return _CurriculumHarness(
         config=config,
@@ -33,6 +36,7 @@ def _harness(
         success_history=list(successes or []),
         dwell_iterations_at_level=0,
         window_success_rate=0.0,
+        backoff_patience_counter=0,
     )
 
 
@@ -76,3 +80,35 @@ def test_curriculum_window_controls_decision_and_logged_rate():
     PPOMCTSTrainer._maybe_advance_curriculum(trainer)
     assert trainer.current_complexity == 3
     assert trainer.window_success_rate == 0.0
+
+
+def test_negative_backoff_threshold_disables_backoff():
+    trainer = _harness(
+        current_complexity=3,
+        backoff_threshold=-1.0,
+        successes=[False, False],
+    )
+    trainer.dwell_iterations_at_level = 10
+
+    PPOMCTSTrainer._maybe_advance_curriculum(trainer)
+
+    assert trainer.current_complexity == 3
+    assert trainer.window_success_rate == 0.0
+
+
+def test_backoff_patience_requires_consecutive_bad_windows():
+    trainer = _harness(
+        current_complexity=3,
+        backoff_threshold=0.4,
+        backoff_patience=2,
+        successes=[False, False],
+    )
+    trainer.dwell_iterations_at_level = 10
+
+    PPOMCTSTrainer._maybe_advance_curriculum(trainer)
+    assert trainer.current_complexity == 3
+    assert trainer.backoff_patience_counter == 1
+
+    PPOMCTSTrainer._maybe_advance_curriculum(trainer)
+    assert trainer.current_complexity == 2
+    assert trainer.backoff_patience_counter == 0

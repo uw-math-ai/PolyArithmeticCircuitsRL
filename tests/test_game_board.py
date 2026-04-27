@@ -139,7 +139,7 @@ class TestOnPathCache:
             [(2, 1), (3, 1)],
         ]
         steps = [0, 0, 1, 1, 2]
-        masks = compute_on_path_route_masks(
+        masks, route_cap_hit = compute_on_path_route_masks(
             4,
             parents,
             steps,
@@ -149,6 +149,7 @@ class TestOnPathCache:
 
         assert masks[4] == 0b11
         assert masks[2] & masks[3] == 0
+        assert not route_cap_hit
 
     def test_cache_excludes_base_nodes_and_includes_target(self, tmp_path):
         config = Config(
@@ -200,6 +201,26 @@ class TestOnPathCache:
         )
         with pytest.raises(ValueError, match="metadata mismatch"):
             OnPathCache.load(tmp_path, bad_config, [1])
+
+    def test_cache_route_truncation_threshold_fails(self, tmp_path):
+        config = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=2,
+            max_degree=2,
+            on_path_max_size=64,
+            on_path_num_routes=1,
+        )
+        with pytest.raises(ValueError, match="route cap hit rate"):
+            build_caches(
+                config,
+                [2],
+                tmp_path,
+                split_seed=7,
+                max_on_path_size=64,
+                max_routes=1,
+                max_route_truncation_rate=0.0,
+            )
 
 
 if __name__ == "__main__":

@@ -138,6 +138,10 @@ class PPOMCTSJAXTrainer:
         self.success_history: List[bool] = []
         self.dwell_iterations_at_level = 0
         self.window_success_rate = 0.0
+        self.backoff_patience_counter = 0
+        self.consecutive_nonfinite_minibatches = 0
+        self.skipped_minibatch_updates_total = 0
+        self.skipped_outer_iterations = 0
 
         factor_library: Optional[FactorLibrary] = None
         if config.reward_mode == "legacy" and config.factor_library_enabled:
@@ -708,6 +712,41 @@ class PPOMCTSJAXTrainer:
 
         return advantages, returns
 
+    def _rollout_data_is_finite(
+        self,
+        transitions: List[Transition],
+        advantages: np.ndarray,
+        returns: np.ndarray,
+    ) -> bool:
+        """Validate rollout scalars before applying any PPO update."""
+        if not transitions:
+            return False
+
+        rewards = np.array([t.reward for t in transitions], dtype=np.float32)
+        values = np.array([t.value for t in transitions], dtype=np.float32)
+        log_probs = np.array(
+            [t.network_log_prob for t in transitions],
+            dtype=np.float32,
+        )
+        arrays = (rewards, values, log_probs, advantages, returns)
+        return all(np.all(np.isfinite(arr)) for arr in arrays)
+
+    @staticmethod
+    def _empty_loss_info(skipped_outer: bool = False) -> dict:
+        return {
+            "pg_loss": 0.0,
+            "vf_loss": 0.0,
+            "entropy": 0.0,
+            "max_abs_logit": 0.0,
+            "max_log_ratio": 0.0,
+            "max_return": 0.0,
+            "max_abs_advantage": 0.0,
+            "grad_global_norm": 0.0,
+            "skipped_minibatch_updates": 0,
+            "applied_minibatch_updates": 0,
+            "skipped_outer_iteration": int(skipped_outer),
+        }
+
     def update(self, transitions: List[Transition],
                advantages: np.ndarray, returns: np.ndarray) -> dict:
         """Run PPO clipped surrogate update.
@@ -721,7 +760,15 @@ class PPOMCTSJAXTrainer:
             Dict with mean pg_loss, vf_loss, entropy.
         """
         n = len(transitions)
+        if n == 0:
+            return self._empty_loss_info(skipped_outer=True)
+
+        if not self._rollout_data_is_finite(transitions, advantages, returns):
+            return self._empty_loss_info(skipped_outer=True)
+
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        if not np.all(np.isfinite(advantages)):
+            return self._empty_loss_info(skipped_outer=True)
 
         adv_jax = jnp.array(advantages)
         ret_jax = jnp.array(returns)
@@ -739,7 +786,13 @@ class PPOMCTSJAXTrainer:
         total_pg_loss = 0.0
         total_vf_loss = 0.0
         total_entropy = 0.0
+        max_abs_logit = 0.0
+        max_log_ratio = 0.0
+        max_return = 0.0
+        max_abs_advantage = 0.0
+        max_grad_global_norm = 0.0
         num_updates = 0
+        skipped_updates = 0
 
         bs = self.config.batch_size
 
@@ -761,16 +814,52 @@ class PPOMCTSJAXTrainer:
                     self.train_state, batch_obs, batch_actions,
                     batch_adv, batch_ret, batch_old_lp,
                 )
+                applied = bool(np.array(loss_info["applied"]))
 
-                total_pg_loss += float(loss_info['pg_loss'])
-                total_vf_loss += float(loss_info['vf_loss'])
-                total_entropy += float(loss_info['entropy'])
-                num_updates += 1
+                max_abs_logit = max(max_abs_logit, float(loss_info["max_abs_logit"]))
+                max_log_ratio = max(max_log_ratio, float(loss_info["max_log_ratio"]))
+                max_return = max(max_return, float(loss_info["max_return"]))
+                max_abs_advantage = max(
+                    max_abs_advantage,
+                    float(loss_info["max_abs_advantage"]),
+                )
+                max_grad_global_norm = max(
+                    max_grad_global_norm,
+                    float(loss_info["grad_global_norm"]),
+                )
+
+                if applied:
+                    self.consecutive_nonfinite_minibatches = 0
+                    total_pg_loss += float(loss_info["pg_loss"])
+                    total_vf_loss += float(loss_info["vf_loss"])
+                    total_entropy += float(loss_info["entropy"])
+                    num_updates += 1
+                else:
+                    skipped_updates += 1
+                    self.skipped_minibatch_updates_total += 1
+                    self.consecutive_nonfinite_minibatches += 1
+                    if (
+                        self.consecutive_nonfinite_minibatches
+                        >= self.config.nonfinite_update_limit
+                    ):
+                        raise RuntimeError(
+                            "Aborting after "
+                            f"{self.consecutive_nonfinite_minibatches} consecutive "
+                            "non-finite PPO minibatch updates"
+                        )
 
         return {
             "pg_loss": total_pg_loss / max(num_updates, 1),
             "vf_loss": total_vf_loss / max(num_updates, 1),
             "entropy": total_entropy / max(num_updates, 1),
+            "max_abs_logit": max_abs_logit,
+            "max_log_ratio": max_log_ratio,
+            "max_return": max_return,
+            "max_abs_advantage": max_abs_advantage,
+            "grad_global_norm": max_grad_global_norm,
+            "skipped_minibatch_updates": skipped_updates,
+            "applied_minibatch_updates": num_updates,
+            "skipped_outer_iteration": 0,
         }
 
     @functools.partial(jax.jit, static_argnums=(0,))
@@ -792,7 +881,13 @@ class PPOMCTSJAXTrainer:
             entropy = -(probs * log_probs).sum(axis=-1).mean()
 
             # PPO clipped ratio.
-            ratio = jnp.exp(new_lp - old_log_probs)
+            raw_log_ratio = new_lp - old_log_probs
+            log_ratio = jnp.clip(
+                raw_log_ratio,
+                -self.config.ppo_log_ratio_clip,
+                self.config.ppo_log_ratio_clip,
+            )
+            ratio = jnp.exp(log_ratio)
             surr1 = ratio * advantages
             surr2 = jnp.clip(
                 ratio, 1 - self.config.ppo_clip, 1 + self.config.ppo_clip
@@ -806,11 +901,47 @@ class PPOMCTSJAXTrainer:
                      + self.config.vf_coef * vf_loss
                      - self.config.ent_coef * entropy)
 
-            return total, {'pg_loss': pg_loss, 'vf_loss': vf_loss, 'entropy': entropy}
+            aux = {
+                "pg_loss": pg_loss,
+                "vf_loss": vf_loss,
+                "entropy": entropy,
+                "max_abs_logit": jnp.max(jnp.abs(logits)),
+                "max_log_ratio": jnp.max(jnp.abs(log_ratio)),
+                "max_return": jnp.max(jnp.abs(returns)),
+                "max_abs_advantage": jnp.max(jnp.abs(advantages)),
+            }
+            return total, aux
 
         grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
-        (_, loss_info), grads = grad_fn(state.params)
-        state = state.apply_gradients(grads=grads)
+        (total_loss, loss_info), grads = grad_fn(state.params)
+        grad_global_norm = optax.global_norm(grads)
+        finite_grads = jnp.all(
+            jnp.array([
+                jnp.all(jnp.isfinite(x))
+                for x in jax.tree_util.tree_leaves(grads)
+            ])
+        )
+        finite_loss = jnp.all(
+            jnp.array([jnp.all(jnp.isfinite(x)) for x in loss_info.values()])
+        )
+        should_apply = (
+            finite_grads
+            & finite_loss
+            & jnp.isfinite(total_loss)
+            & jnp.isfinite(grad_global_norm)
+        )
+
+        state = jax.lax.cond(
+            should_apply,
+            lambda s: s.apply_gradients(grads=grads),
+            lambda s: s,
+            state,
+        )
+        loss_info = {
+            **loss_info,
+            "grad_global_norm": grad_global_norm,
+            "applied": should_apply,
+        }
         return state, loss_info
 
     # ------------------------------------------------------------------
@@ -838,14 +969,28 @@ class PPOMCTSJAXTrainer:
             self.success_history.clear()
             self.dwell_iterations_at_level = 0
             self.window_success_rate = 0.0
+            self.backoff_patience_counter = 0
             print(f"[Curriculum] Advanced to complexity {self.current_complexity}")
-        elif (rate <= self.config.backoff_threshold
-              and self.current_complexity > self.config.starting_complexity):
+            return
+
+        if self.config.backoff_threshold < 0:
+            self.backoff_patience_counter = 0
+            return
+
+        if (rate <= self.config.backoff_threshold
+                and self.current_complexity > self.config.starting_complexity):
+            patience = max(0, int(self.config.curriculum_backoff_patience_iterations))
+            self.backoff_patience_counter += 1
+            if self.backoff_patience_counter < patience:
+                return
             self.current_complexity -= 1
             self.success_history.clear()
             self.dwell_iterations_at_level = 0
             self.window_success_rate = 0.0
+            self.backoff_patience_counter = 0
             print(f"[Curriculum] Backed off to complexity {self.current_complexity}")
+        else:
+            self.backoff_patience_counter = 0
 
     # ------------------------------------------------------------------
     # Checkpoint save / load
@@ -866,6 +1011,9 @@ class PPOMCTSJAXTrainer:
             "current_complexity": self.current_complexity,
             "dwell_iterations_at_level": self.dwell_iterations_at_level,
             "window_success_rate": self.window_success_rate,
+            "backoff_patience_counter": self.backoff_patience_counter,
+            "skipped_minibatch_updates_total": self.skipped_minibatch_updates_total,
+            "skipped_outer_iterations": self.skipped_outer_iterations,
             "algorithm": "ppo-mcts-jax",
         }
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -893,6 +1041,16 @@ class PPOMCTSJAXTrainer:
         )
         self.window_success_rate = state_dict.get(
             "window_success_rate", self.window_success_rate
+        )
+        self.backoff_patience_counter = state_dict.get(
+            "backoff_patience_counter", self.backoff_patience_counter
+        )
+        self.skipped_minibatch_updates_total = state_dict.get(
+            "skipped_minibatch_updates_total",
+            self.skipped_minibatch_updates_total,
+        )
+        self.skipped_outer_iterations = state_dict.get(
+            "skipped_outer_iterations", self.skipped_outer_iterations
         )
 
     # ------------------------------------------------------------------
@@ -923,6 +1081,9 @@ class PPOMCTSJAXTrainer:
             "success_rate": [], "avg_reward": [], "complexity": [],
             "on_path_phi": [], "on_path_hits": [], "episode_length": [],
             "dwell_iterations_at_level": [], "window_success_rate": [],
+            "max_abs_logit": [], "max_log_ratio": [], "max_return": [],
+            "max_abs_advantage": [], "grad_global_norm": [],
+            "skipped_minibatch_updates": [], "skipped_outer_iterations": [],
         }
         # Per-complexity history when using fixed_complexities.
         if self.fixed_complexities:
@@ -933,10 +1094,22 @@ class PPOMCTSJAXTrainer:
         print("Iteration 1: JIT-compiling MCTS + env (this may take a few minutes)...",
               flush=True)
 
-        pbar = tqdm(range(1, num_iterations + 1), desc="Training", unit="iter")
+        def log_line(msg: str) -> None:
+            if self.config.disable_progress_bar:
+                print(msg, flush=True)
+            else:
+                tqdm.write(msg)
+
+        pbar = tqdm(
+            range(1, num_iterations + 1),
+            desc="Training",
+            unit="iter",
+            disable=self.config.disable_progress_bar,
+        )
         for iteration in pbar:
             iter_start = time.time()
 
+            success_len_before = len(self.success_history)
             transitions, rollout_info = self.collect_rollouts()
 
             if iteration == 1:
@@ -944,10 +1117,19 @@ class PPOMCTSJAXTrainer:
                       "Running PPO update...", flush=True)
 
             advantages, returns = self.compute_gae(transitions)
-            loss_info = self.update(transitions, advantages, returns)
-            if self.config.curriculum_enabled:
+            if self._rollout_data_is_finite(transitions, advantages, returns):
+                loss_info = self.update(transitions, advantages, returns)
+                if loss_info["skipped_outer_iteration"]:
+                    self.skipped_outer_iterations += 1
+                    del self.success_history[success_len_before:]
+            else:
+                self.skipped_outer_iterations += 1
+                del self.success_history[success_len_before:]
+                loss_info = self._empty_loss_info(skipped_outer=True)
+
+            if self.config.curriculum_enabled and not loss_info["skipped_outer_iteration"]:
                 self.dwell_iterations_at_level += 1
-            self._maybe_advance_curriculum()
+                self._maybe_advance_curriculum()
 
             iter_time = time.time() - iter_start
             if iteration == 1:
@@ -955,12 +1137,13 @@ class PPOMCTSJAXTrainer:
                       "Subsequent iterations should be much faster.", flush=True)
 
             # Update tqdm postfix with key metrics.
-            pbar.set_postfix({
-                "success": f"{rollout_info['success_rate']:.1%}",
-                "reward": f"{rollout_info['avg_reward']:.2f}",
-                "entropy": f"{loss_info['entropy']:.2f}",
-                "s/iter": f"{iter_time:.1f}",
-            })
+            if not self.config.disable_progress_bar:
+                pbar.set_postfix({
+                    "success": f"{rollout_info['success_rate']:.1%}",
+                    "reward": f"{rollout_info['avg_reward']:.2f}",
+                    "entropy": f"{loss_info['entropy']:.2f}",
+                    "s/iter": f"{iter_time:.1f}",
+                })
 
             history["pg_loss"].append(loss_info["pg_loss"])
             history["vf_loss"].append(loss_info["vf_loss"])
@@ -975,6 +1158,15 @@ class PPOMCTSJAXTrainer:
                 self.dwell_iterations_at_level
             )
             history["window_success_rate"].append(self.window_success_rate)
+            history["max_abs_logit"].append(loss_info["max_abs_logit"])
+            history["max_log_ratio"].append(loss_info["max_log_ratio"])
+            history["max_return"].append(loss_info["max_return"])
+            history["max_abs_advantage"].append(loss_info["max_abs_advantage"])
+            history["grad_global_norm"].append(loss_info["grad_global_norm"])
+            history["skipped_minibatch_updates"].append(
+                loss_info["skipped_minibatch_updates"]
+            )
+            history["skipped_outer_iterations"].append(self.skipped_outer_iterations)
 
             if self.fixed_complexities:
                 for c in self.fixed_complexities:
@@ -1002,9 +1194,19 @@ class PPOMCTSJAXTrainer:
                     "on_path_phi": rollout_info["on_path_phi"],
                     "target_board_step": rollout_info["target_board_step"],
                     "episode_length": rollout_info["episode_length"],
-                    "current_complexity": self.current_complexity,
+                    "rollout_complexity": rollout_info["complexity"],
+                    "current_complexity_after_curriculum": self.current_complexity,
                     "dwell_iterations_at_level": self.dwell_iterations_at_level,
                     "window_success_rate": self.window_success_rate,
+                    "max_abs_logit": loss_info["max_abs_logit"],
+                    "max_log_ratio": loss_info["max_log_ratio"],
+                    "max_return": loss_info["max_return"],
+                    "max_abs_advantage": loss_info["max_abs_advantage"],
+                    "grad_global_norm": loss_info["grad_global_norm"],
+                    "skipped_minibatch_updates": (
+                        loss_info["skipped_minibatch_updates"]
+                    ),
+                    "skipped_outer_iterations": self.skipped_outer_iterations,
                 }
                 if self.fixed_complexities:
                     for c in self.fixed_complexities:
@@ -1014,17 +1216,16 @@ class PPOMCTSJAXTrainer:
                         log_dict[f"avg_reward_C{c}"] = rollout_info.get(
                             f"avg_reward_C{c}", 0.0
                         )
-                else:
-                    log_dict["complexity"] = rollout_info["complexity"]
                 wandb.log(log_dict, step=iteration)
 
             if iteration % self.config.log_interval == 0:
                 line = (
                     f"[PPO+MCTS-JAX iter {iteration}] "
                     f"reward_mode={self.config.reward_mode} "
-                    f"current_complexity={self.current_complexity} "
-                    f"dwell={self.dwell_iterations_at_level} "
-                    f"window_success={self.window_success_rate:.2%} "
+                    f"rollout_complexity={rollout_info['complexity']} "
+                    f"current_complexity_after_curriculum={self.current_complexity} "
+                    f"dwell_iterations_at_level={self.dwell_iterations_at_level} "
+                    f"window_success_rate={self.window_success_rate:.2%} "
                     f"episodes={rollout_info['episodes']} "
                     f"lib={rollout_info['library_size']} "
                     f"fhits={rollout_info['factor_hits']} "
@@ -1036,6 +1237,10 @@ class PPOMCTSJAXTrainer:
                     f"pg_loss={loss_info['pg_loss']:.4f} "
                     f"vf_loss={loss_info['vf_loss']:.4f} "
                     f"entropy={loss_info['entropy']:.4f} "
+                    f"max_log_ratio={loss_info['max_log_ratio']:.2f} "
+                    f"grad_norm={loss_info['grad_global_norm']:.3f} "
+                    f"skip_mb={loss_info['skipped_minibatch_updates']} "
+                    f"skip_outer={self.skipped_outer_iterations} "
                     f"({iter_time:.1f}s/iter)"
                 )
                 if self.fixed_complexities:
@@ -1044,12 +1249,7 @@ class PPOMCTSJAXTrainer:
                         sr = rollout_info.get(f"success_rate_C{c}", 0.0)
                         parts.append(f"C{c}={sr:.1%}")
                     line += " | " + " ".join(parts)
-                else:
-                    line = line.replace(
-                        f"episodes=",
-                        f"complexity={rollout_info['complexity']} episodes=",
-                    )
-                tqdm.write(line)
+                log_line(line)
 
             # Save periodic checkpoints.
             if iteration % checkpoint_interval == 0 or iteration == num_iterations:
@@ -1057,6 +1257,6 @@ class PPOMCTSJAXTrainer:
                     results_dir, f"checkpoint_{iteration:05d}.pkl"
                 )
                 self.save_checkpoint(ckpt_path)
-                tqdm.write(f"  Saved checkpoint: {ckpt_path}")
+                log_line(f"  Saved checkpoint: {ckpt_path}")
 
         return history
