@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=onpath_cache_2var_c2_c8
+#SBATCH --job-name=onpath_cache_2var_c1_c6
 #SBATCH --account=stf
 #SBATCH --partition=ckpt
 #SBATCH --nodes=1
@@ -17,10 +17,10 @@ CONTAINER=${CONTAINER:-container_jax.sif}
 N_VARIABLES=${N_VARIABLES:-2}
 MOD=${MOD:-5}
 MAX_DEGREE=${MAX_DEGREE:-6}
-COMPLEXITIES=${COMPLEXITIES:-"2 3 4 5 6 7 8"}
+COMPLEXITIES=${COMPLEXITIES:-"1 2 3 4 5 6"}
 SPLIT_SEED=${SPLIT_SEED:-42}
 MAX_ON_PATH_SIZE=${MAX_ON_PATH_SIZE:-4096}
-CACHE_DIR=${CACHE_DIR:-on_path_cache/n2_mod5_deg6_C2_C8_seed42}
+CACHE_DIR=${CACHE_DIR:-on_path_cache/n2_mod5_deg6_C1_C6_seed42}
 
 cd "$REPO_DIR"
 mkdir -p results/slurm "$CACHE_DIR"
