@@ -167,8 +167,10 @@ class PPOMCTSTrainer:
 
         if config.reward_mode not in ("legacy", "clean_sparse", "clean_onpath"):
             raise ValueError(f"Unknown reward_mode: {config.reward_mode}")
-        if config.on_path_phi_mode not in ("count", "max_step"):
+        if config.on_path_phi_mode not in ("count", "max_step", "depth_weighted"):
             raise ValueError(f"Unknown on_path_phi_mode: {config.on_path_phi_mode}")
+        if config.on_path_depth_weight_power < 0:
+            raise ValueError("on_path_depth_weight_power must be non-negative")
         if config.on_path_route_consistency_mode not in (
             "best_route_phi",
             "lock_on_first_hit",

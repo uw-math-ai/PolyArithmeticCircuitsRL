@@ -137,6 +137,7 @@ def main() -> None:
     )
     parser.add_argument("--max-grad-norm", type=float, default=None)
     parser.add_argument("--ppo-log-ratio-clip", type=float, default=None)
+    parser.add_argument("--target-kl", type=float, default=None)
     parser.add_argument("--mcts-simulations", type=int, default=None)
     parser.add_argument("--steps-per-update", type=int, default=None)
     parser.add_argument("--log-interval", type=int, default=None)
@@ -156,9 +157,10 @@ def main() -> None:
     parser.add_argument("--graph-onpath-shaping-coeff", type=float, default=None)
     parser.add_argument(
         "--on-path-phi-mode",
-        choices=["count", "max_step"],
+        choices=["count", "max_step", "depth_weighted"],
         default=None,
     )
+    parser.add_argument("--on-path-depth-weight-power", type=float, default=None)
     parser.add_argument("--on-path-max-size", type=int, default=None)
     parser.add_argument("--on-path-split-seed", type=int, default=None)
     parser.add_argument("--on-path-num-routes", type=int, default=None)
@@ -244,6 +246,8 @@ def main() -> None:
         config.max_grad_norm = args.max_grad_norm
     if args.ppo_log_ratio_clip is not None:
         config.ppo_log_ratio_clip = args.ppo_log_ratio_clip
+    if args.target_kl is not None:
+        config.target_kl = args.target_kl
     if args.mcts_simulations is not None:
         config.mcts_simulations = args.mcts_simulations
     if args.steps_per_update is not None:
@@ -262,6 +266,8 @@ def main() -> None:
         config.graph_onpath_shaping_coeff = args.graph_onpath_shaping_coeff
     if args.on_path_phi_mode is not None:
         config.on_path_phi_mode = args.on_path_phi_mode
+    if args.on_path_depth_weight_power is not None:
+        config.on_path_depth_weight_power = args.on_path_depth_weight_power
     if args.on_path_max_size is not None:
         config.on_path_max_size = args.on_path_max_size
     if args.on_path_split_seed is not None:

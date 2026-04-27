@@ -39,7 +39,8 @@ class Config:
     graph_onpath_shaping_coeff: float = 1.0
     graph_onpath_cache_dir: Optional[str] = None
     on_path_terminal_zero: bool = True
-    on_path_phi_mode: str = "count"     # "count" or "max_step"
+    on_path_phi_mode: str = "count"     # "count", "max_step", or "depth_weighted"
+    on_path_depth_weight_power: float = 1.0
     on_path_max_size: int = 4096
     on_path_split_seed: int = 42
     on_path_route_consistency: bool = True
@@ -88,6 +89,7 @@ class Config:
     steps_per_update: int = 4096
     max_grad_norm: float = 0.5
     nonfinite_update_limit: int = 3
+    target_kl: float = 0.0
 
     # MCTS
     mcts_simulations: int = 100

@@ -617,6 +617,88 @@ class TestRewardModes:
             - (1 / 2)
         )
 
+    def test_clean_onpath_depth_weighted_phi_rewards_deeper_hits_more(self):
+        self.config.reward_mode = "clean_onpath"
+        self.config.on_path_phi_mode = "depth_weighted"
+        self.config.on_path_depth_weight_power = 2.0
+        self.config.on_path_route_consistency_mode = "best_route_phi"
+        env = CircuitGame(self.config)
+
+        shallow = self.x0 + self.x1
+        deep = self.x0 + self.x0
+        target = self.x0 * self.x1
+        ctx = _OnPathContext(
+            {
+                shallow.canonical_key(): 1,
+                deep.canonical_key(): 2,
+            },
+            target_board_step=2,
+            route_mapping={
+                shallow.canonical_key(): 0b01,
+                deep.canonical_key(): 0b01,
+            },
+        )
+
+        shallow_action = encode_action(0, 0, 1, self.config.max_nodes)
+        deep_action = encode_action(0, 0, 0, self.config.max_nodes)
+
+        env.reset(target, on_path_context=ctx)
+        _, _, _, shallow_info = env.step(shallow_action)
+        assert shallow_info["on_path_hit"]
+        assert shallow_info["on_path_phi"] == pytest.approx(1 / 5)
+
+        env.reset(target, on_path_context=ctx)
+        _, _, _, deep_info = env.step(deep_action)
+        assert deep_info["on_path_hit"]
+        assert deep_info["on_path_phi"] == pytest.approx(4 / 5)
+
+        env.reset(target, on_path_context=ctx)
+        env.step(shallow_action)
+        _, _, _, both_info = env.step(deep_action)
+        assert both_info["on_path_phi"] == pytest.approx(1.0)
+
+    def test_clean_onpath_depth_weighted_prevents_frankenstein_credit(self):
+        self.config.reward_mode = "clean_onpath"
+        self.config.on_path_phi_mode = "depth_weighted"
+        self.config.on_path_depth_weight_power = 1.0
+        self.config.on_path_route_consistency_mode = "best_route_phi"
+        env = CircuitGame(self.config)
+
+        a1 = self.x0 + self.x1
+        b1 = self.x0 * self.x1
+        b2 = b1 + self.x1
+        target = b2 + self.x1
+        ctx = _OnPathContext(
+            {
+                a1.canonical_key(): 1,
+                b1.canonical_key(): 1,
+                b2.canonical_key(): 2,
+                target.canonical_key(): 3,
+            },
+            target_board_step=3,
+            route_mapping={
+                a1.canonical_key(): 0b01,
+                b1.canonical_key(): 0b10,
+                b2.canonical_key(): 0b10,
+                target.canonical_key(): 0b11,
+            },
+        )
+        env.reset(target, on_path_context=ctx)
+
+        a1_action = encode_action(0, 0, 1, self.config.max_nodes)
+        b1_action = encode_action(1, 0, 1, self.config.max_nodes)
+        b2_action = encode_action(0, 4, 1, self.config.max_nodes)
+
+        _, _, _, info1 = env.step(a1_action)
+        assert info1["on_path_phi"] == pytest.approx(1 / 4)
+
+        _, _, _, info2 = env.step(b1_action)
+        # Route A: 1/(1+3). Route B: 1/(1+2+3). No union mixing.
+        assert info2["on_path_phi"] == pytest.approx(1 / 4)
+
+        _, _, _, info3 = env.step(b2_action)
+        assert info3["on_path_phi"] == pytest.approx(3 / 6)
+
     def test_clean_onpath_union_off_gives_frankenstein_credit(self):
         self.config.reward_mode = "clean_onpath"
         self.config.on_path_phi_mode = "count"
@@ -701,7 +783,8 @@ class TestRewardModes:
 
     def test_clean_onpath_discounted_shaping_telescopes_to_initial_phi(self):
         self.config.reward_mode = "clean_onpath"
-        self.config.on_path_phi_mode = "count"
+        self.config.on_path_phi_mode = "depth_weighted"
+        self.config.on_path_depth_weight_power = 2.0
         self.config.graph_onpath_shaping_coeff = 1.0
         env = CircuitGame(self.config)
 

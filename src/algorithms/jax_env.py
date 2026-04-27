@@ -115,6 +115,7 @@ class EnvConfig(NamedTuple):
     graph_onpath_shaping_coeff: float
     on_path_terminal_zero: bool
     on_path_phi_mode: str
+    on_path_depth_weight_power: float
     on_path_route_consistency: bool
     on_path_route_consistency_mode: str
     on_path_max_size: int
@@ -170,6 +171,7 @@ def make_env_config(config) -> EnvConfig:
         graph_onpath_shaping_coeff=config.graph_onpath_shaping_coeff,
         on_path_terminal_zero=config.on_path_terminal_zero,
         on_path_phi_mode=config.on_path_phi_mode,
+        on_path_depth_weight_power=config.on_path_depth_weight_power,
         on_path_route_consistency=config.on_path_route_consistency,
         on_path_route_consistency_mode=(
             "off"
@@ -436,12 +438,53 @@ def _best_route_max_step_phi(state: EnvState) -> jnp.ndarray:
     return jnp.max(route_phi)
 
 
+def _step_weights(state: EnvState, env_config: EnvConfig) -> jnp.ndarray:
+    steps = state.on_path_steps.astype(jnp.float32)
+    weights = jnp.power(steps, env_config.on_path_depth_weight_power)
+    return jnp.where(state.on_path_steps > 0, weights, 0.0)
+
+
+def _best_route_depth_weighted_phi(
+    state: EnvState, env_config: EnvConfig
+) -> jnp.ndarray:
+    bits = _route_bits()
+    in_route = (
+        (state.on_path_route_masks[None, :] & bits[:, None]) != 0
+    ) & state.on_path_active[None, :]
+    weights = _step_weights(state, env_config)[None, :]
+    route_totals = jnp.sum(jnp.where(in_route, weights, 0.0), axis=1)
+    route_hits = jnp.sum(
+        jnp.where(in_route & state.on_path_hit[None, :], weights, 0.0),
+        axis=1,
+    )
+    route_phi = jnp.where(route_totals > 0.0, route_hits / route_totals, 0.0)
+    return jnp.max(route_phi)
+
+
+def _union_depth_weighted_phi(
+    state: EnvState, env_config: EnvConfig
+) -> jnp.ndarray:
+    if env_config.on_path_route_consistency_mode == "lock_on_first_hit":
+        route_ok = (
+            state.on_path_route_masks & state.on_path_active_route_mask
+        ) != jnp.uint32(0)
+    else:
+        route_ok = jnp.ones_like(state.on_path_active, dtype=jnp.bool_)
+    active = state.on_path_active & route_ok
+    weights = _step_weights(state, env_config)
+    total = jnp.sum(jnp.where(active, weights, 0.0))
+    hits = jnp.sum(jnp.where(active & state.on_path_hit, weights, 0.0))
+    return jnp.where(total > 0.0, hits / total, 0.0)
+
+
 def _on_path_phi(state: EnvState, env_config: EnvConfig) -> jnp.ndarray:
     if env_config.on_path_route_consistency_mode == "best_route_phi":
         if env_config.on_path_phi_mode == "count":
             return _best_route_count_phi(state)
         if env_config.on_path_phi_mode == "max_step":
             return _best_route_max_step_phi(state)
+        if env_config.on_path_phi_mode == "depth_weighted":
+            return _best_route_depth_weighted_phi(state, env_config)
         return jnp.float32(0.0)
 
     if env_config.on_path_phi_mode == "count":
@@ -456,6 +499,8 @@ def _on_path_phi(state: EnvState, env_config: EnvConfig) -> jnp.ndarray:
             target_step, 1.0
         )
         return jnp.where(state.target_board_step <= 0, 0.0, phi)
+    if env_config.on_path_phi_mode == "depth_weighted":
+        return _union_depth_weighted_phi(state, env_config)
     return jnp.float32(0.0)
 
 
@@ -906,6 +951,7 @@ def step(env_config: EnvConfig, state: EnvState,
             on_path_hit=on_path_hit,
             on_path_count=on_path_count,
             on_path_deepest_step=on_path_deepest_step,
+            on_path_active_route_mask=on_path_active_route_mask,
         )
         phi_after = _on_path_phi(phi_state, env_config)
         if env_config.on_path_terminal_zero:

@@ -109,8 +109,10 @@ class PPOMCTSJAXTrainer:
         self.library_cache_size = 512
         if config.reward_mode not in ("legacy", "clean_sparse", "clean_onpath"):
             raise ValueError(f"Unknown reward_mode: {config.reward_mode}")
-        if config.on_path_phi_mode not in ("count", "max_step"):
+        if config.on_path_phi_mode not in ("count", "max_step", "depth_weighted"):
             raise ValueError(f"Unknown on_path_phi_mode: {config.on_path_phi_mode}")
+        if config.on_path_depth_weight_power < 0:
+            raise ValueError("on_path_depth_weight_power must be non-negative")
         if config.on_path_route_consistency_mode not in (
             "best_route_phi",
             "lock_on_first_hit",
@@ -751,6 +753,8 @@ class PPOMCTSJAXTrainer:
             "max_return": 0.0,
             "max_abs_advantage": 0.0,
             "grad_global_norm": 0.0,
+            "approx_kl": 0.0,
+            "kl_early_stop_count": 0,
             "skipped_minibatch_updates": 0,
             "applied_minibatch_updates": 0,
             "skipped_outer_iteration": int(skipped_outer),
@@ -800,13 +804,17 @@ class PPOMCTSJAXTrainer:
         max_return = 0.0
         max_abs_advantage = 0.0
         max_grad_global_norm = 0.0
+        max_approx_kl = 0.0
+        kl_early_stop_count = 0
         num_updates = 0
         skipped_updates = 0
 
         bs = self.config.batch_size
+        target_kl = float(self.config.target_kl)
 
         for epoch in range(self.config.ppo_epochs):
             perm = np.random.permutation(n)
+            stop_for_kl = False
 
             for start in range(0, n, bs):
                 end = min(start + bs, n)
@@ -836,6 +844,10 @@ class PPOMCTSJAXTrainer:
                     max_grad_global_norm,
                     float(loss_info["grad_global_norm"]),
                 )
+                max_approx_kl = max(
+                    max_approx_kl,
+                    float(loss_info["approx_kl"]),
+                )
 
                 if applied:
                     self.consecutive_nonfinite_minibatches = 0
@@ -843,6 +855,10 @@ class PPOMCTSJAXTrainer:
                     total_vf_loss += float(loss_info["vf_loss"])
                     total_entropy += float(loss_info["entropy"])
                     num_updates += 1
+                    if target_kl > 0.0 and float(loss_info["approx_kl"]) > target_kl:
+                        kl_early_stop_count += 1
+                        stop_for_kl = True
+                        break
                 else:
                     skipped_updates += 1
                     self.skipped_minibatch_updates_total += 1
@@ -856,6 +872,8 @@ class PPOMCTSJAXTrainer:
                             f"{self.consecutive_nonfinite_minibatches} consecutive "
                             "non-finite PPO minibatch updates"
                         )
+            if stop_for_kl:
+                break
 
         return {
             "pg_loss": total_pg_loss / max(num_updates, 1),
@@ -866,6 +884,8 @@ class PPOMCTSJAXTrainer:
             "max_return": max_return,
             "max_abs_advantage": max_abs_advantage,
             "grad_global_norm": max_grad_global_norm,
+            "approx_kl": max_approx_kl,
+            "kl_early_stop_count": kl_early_stop_count,
             "skipped_minibatch_updates": skipped_updates,
             "applied_minibatch_updates": num_updates,
             "skipped_outer_iteration": 0,
@@ -897,6 +917,7 @@ class PPOMCTSJAXTrainer:
                 self.config.ppo_log_ratio_clip,
             )
             ratio = jnp.exp(log_ratio)
+            approx_kl = jnp.mean((ratio - 1.0) - log_ratio)
             surr1 = ratio * advantages
             surr2 = jnp.clip(
                 ratio, 1 - self.config.ppo_clip, 1 + self.config.ppo_clip
@@ -918,6 +939,7 @@ class PPOMCTSJAXTrainer:
                 "max_log_ratio": jnp.max(jnp.abs(log_ratio)),
                 "max_return": jnp.max(jnp.abs(returns)),
                 "max_abs_advantage": jnp.max(jnp.abs(advantages)),
+                "approx_kl": approx_kl,
             }
             return total, aux
 
@@ -1092,6 +1114,7 @@ class PPOMCTSJAXTrainer:
             "dwell_iterations_at_level": [], "window_success_rate": [],
             "max_abs_logit": [], "max_log_ratio": [], "max_return": [],
             "max_abs_advantage": [], "grad_global_norm": [],
+            "approx_kl": [], "kl_early_stop_count": [],
             "skipped_minibatch_updates": [], "skipped_outer_iterations": [],
         }
         # Per-complexity history when using fixed_complexities.
@@ -1172,6 +1195,10 @@ class PPOMCTSJAXTrainer:
             history["max_return"].append(loss_info["max_return"])
             history["max_abs_advantage"].append(loss_info["max_abs_advantage"])
             history["grad_global_norm"].append(loss_info["grad_global_norm"])
+            history["approx_kl"].append(loss_info["approx_kl"])
+            history["kl_early_stop_count"].append(
+                loss_info["kl_early_stop_count"]
+            )
             history["skipped_minibatch_updates"].append(
                 loss_info["skipped_minibatch_updates"]
             )
@@ -1212,6 +1239,8 @@ class PPOMCTSJAXTrainer:
                     "max_return": loss_info["max_return"],
                     "max_abs_advantage": loss_info["max_abs_advantage"],
                     "grad_global_norm": loss_info["grad_global_norm"],
+                    "approx_kl": loss_info["approx_kl"],
+                    "kl_early_stop_count": loss_info["kl_early_stop_count"],
                     "skipped_minibatch_updates": (
                         loss_info["skipped_minibatch_updates"]
                     ),
@@ -1247,7 +1276,9 @@ class PPOMCTSJAXTrainer:
                     f"vf_loss={loss_info['vf_loss']:.4f} "
                     f"entropy={loss_info['entropy']:.4f} "
                     f"max_log_ratio={loss_info['max_log_ratio']:.2f} "
+                    f"approx_kl={loss_info['approx_kl']:.4f} "
                     f"grad_norm={loss_info['grad_global_norm']:.3f} "
+                    f"kl_stop={loss_info['kl_early_stop_count']} "
                     f"skip_mb={loss_info['skipped_minibatch_updates']} "
                     f"skip_outer={self.skipped_outer_iterations} "
                     f"({iter_time:.1f}s/iter)"

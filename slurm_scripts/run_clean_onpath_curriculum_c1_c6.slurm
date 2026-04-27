@@ -25,9 +25,10 @@ CACHE_DIR=${CACHE_DIR:-on_path_cache/n2_mod5_deg6_C1_C6_routes32_seed42}
 SPLIT_SEED=${SPLIT_SEED:-42}
 MAX_ON_PATH_SIZE=${MAX_ON_PATH_SIZE:-4096}
 ON_PATH_NUM_ROUTES=${ON_PATH_NUM_ROUTES:-32}
-ON_PATH_PHI_MODE=${ON_PATH_PHI_MODE:-max_step}
+ON_PATH_PHI_MODE=${ON_PATH_PHI_MODE:-depth_weighted}
+ON_PATH_DEPTH_WEIGHT_POWER=${ON_PATH_DEPTH_WEIGHT_POWER:-1.0}
 ON_PATH_ROUTE_CONSISTENCY_MODE=${ON_PATH_ROUTE_CONSISTENCY_MODE:-best_route_phi}
-GRAPH_ONPATH_SHAPING_COEFF=${GRAPH_ONPATH_SHAPING_COEFF:-1.0}
+GRAPH_ONPATH_SHAPING_COEFF=${GRAPH_ONPATH_SHAPING_COEFF:-3.0}
 
 ITERATIONS=${ITERATIONS:-2000}
 # Conservative GPU defaults. Increase to 256/32 only after confirming memory.
@@ -37,6 +38,7 @@ PPO_LR=${PPO_LR:-1e-4}
 MAX_GRAD_NORM=${MAX_GRAD_NORM:-0.25}
 PPO_LOG_RATIO_CLIP=${PPO_LOG_RATIO_CLIP:-10.0}
 PPO_EPOCHS=${PPO_EPOCHS:-2}
+TARGET_KL=${TARGET_KL:-0.03}
 ENT_COEF=${ENT_COEF:-0.05}
 LOG_INTERVAL=${LOG_INTERVAL:-10}
 PROGRESS_BAR=${PROGRESS_BAR:-0}
@@ -53,6 +55,7 @@ CURRICULUM_BACKOFF_PATIENCE_ITERATIONS=${CURRICULUM_BACKOFF_PATIENCE_ITERATIONS:
 RESULTS_DIR=${RESULTS_DIR:-results/ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C6}
 WANDB=${WANDB:-1}
 WANDB_RUN_NAME=${WANDB_RUN_NAME:-ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C6}
+FIXED_COMPLEXITIES=${FIXED_COMPLEXITIES:-}
 
 cd "$REPO_DIR"
 module load cuda
@@ -79,8 +82,10 @@ echo "  ppo_lr: $PPO_LR"
 echo "  max_grad_norm: $MAX_GRAD_NORM"
 echo "  ppo_log_ratio_clip: $PPO_LOG_RATIO_CLIP"
 echo "  ppo_epochs: $PPO_EPOCHS"
+echo "  target_kl: $TARGET_KL"
 echo "  ent_coef: $ENT_COEF"
 echo "  on_path_phi_mode: $ON_PATH_PHI_MODE"
+echo "  on_path_depth_weight_power: $ON_PATH_DEPTH_WEIGHT_POWER"
 echo "  on_path_route_consistency_mode: $ON_PATH_ROUTE_CONSISTENCY_MODE"
 echo "  starting_complexity: $STARTING_COMPLEXITY"
 echo "  advance_threshold: $ADVANCE_THRESHOLD"
@@ -103,6 +108,11 @@ fi
 PROGRESS_ARGS=()
 if [[ "$PROGRESS_BAR" != "1" ]]; then
   PROGRESS_ARGS+=(--no-progress-bar)
+fi
+FIXED_ARGS=()
+if [[ -n "$FIXED_COMPLEXITIES" ]]; then
+  # shellcheck disable=SC2206
+  FIXED_ARGS=(--fixed-complexities $FIXED_COMPLEXITIES)
 fi
 
 apptainer exec --nv --bind /gscratch:/gscratch \
@@ -129,16 +139,19 @@ apptainer exec --nv --bind /gscratch:/gscratch \
     --ppo-epochs "$PPO_EPOCHS" \
     --max-grad-norm "$MAX_GRAD_NORM" \
     --ppo-log-ratio-clip "$PPO_LOG_RATIO_CLIP" \
+    --target-kl "$TARGET_KL" \
     --ent-coef "$ENT_COEF" \
     --log-interval "$LOG_INTERVAL" \
     --reward-mode clean_onpath \
     --graph-onpath-cache-dir "$CACHE_DIR" \
     --graph-onpath-shaping-coeff "$GRAPH_ONPATH_SHAPING_COEFF" \
     --on-path-phi-mode "$ON_PATH_PHI_MODE" \
+    --on-path-depth-weight-power "$ON_PATH_DEPTH_WEIGHT_POWER" \
     --on-path-route-consistency-mode "$ON_PATH_ROUTE_CONSISTENCY_MODE" \
     --on-path-max-size "$MAX_ON_PATH_SIZE" \
     --on-path-split-seed "$SPLIT_SEED" \
     --on-path-num-routes "$ON_PATH_NUM_ROUTES" \
     --results-dir "$RESULTS_DIR" \
+    "${FIXED_ARGS[@]}" \
     "${PROGRESS_ARGS[@]}" \
     "${WANDB_ARGS[@]}"

@@ -108,10 +108,11 @@ outer PPO iterations at the current level before another level-change check;
 setting it to `1` allows level changes on consecutive iterations while still
 preventing same-iteration churn.
 
-The large clean run defaults to `ON_PATH_PHI_MODE=max_step` because it rewards
-deep progress on high-complexity targets and is less vulnerable to collecting
-incompatible nodes from the union of optimal routes. Use
-`ON_PATH_PHI_MODE=count` for the denser count-based ablation.
+The large clean run defaults to `ON_PATH_PHI_MODE=depth_weighted` with
+`ON_PATH_DEPTH_WEIGHT_POWER=1.0`, which gives deeper cached OnPath hits more
+potential while staying bounded and monotonic. Use `ON_PATH_PHI_MODE=count` for
+the denser uniform-count ablation, or `ON_PATH_PHI_MODE=max_step` for deepest-hit
+only progress.
 
 Clean OnPath caches now store `ON_PATH_NUM_ROUTES=32` coherent optimal-route
 masks per target. The default `ON_PATH_ROUTE_CONSISTENCY_MODE=best_route_phi`
@@ -129,8 +130,9 @@ python scripts/inspect_on_path_cache.py \
 The clean OnPath Slurm defaults are intended to be stable for one GPU:
 `MCTS_BATCH_SIZE=128`, `MCTS_SIMULATIONS=32`, `PPO_LR=1e-4`,
 `MAX_GRAD_NORM=0.25`, `PPO_LOG_RATIO_CLIP=10.0`, `PPO_EPOCHS=2`,
-`ENT_COEF=0.05`, `MAX_COMPLEXITY=6`, and `MAX_STEPS=12`. Progress bars are
-disabled by default for cleaner Slurm logs; set `PROGRESS_BAR=1` to re-enable.
+`TARGET_KL=0.03`, `ENT_COEF=0.05`, `GRAPH_ONPATH_SHAPING_COEFF=3.0`,
+`MAX_COMPLEXITY=6`, and `MAX_STEPS=12`. Progress bars are disabled by default
+for cleaner Slurm logs; set `PROGRESS_BAR=1` to re-enable.
 
 Run the large cached curriculum job after the cache job finishes:
 
@@ -147,7 +149,9 @@ PPO_LR=1e-4 \
 MAX_GRAD_NORM=0.25 \
 MCTS_BATCH_SIZE=128 \
 MCTS_SIMULATIONS=32 \
-ON_PATH_PHI_MODE=max_step \
+TARGET_KL=0.03 \
+ON_PATH_PHI_MODE=depth_weighted \
+ON_PATH_DEPTH_WEIGHT_POWER=1.0 \
 ON_PATH_ROUTE_CONSISTENCY_MODE=best_route_phi \
 ADVANCE_THRESHOLD=0.97 \
 BACKOFF_THRESHOLD=-1.0 \
@@ -164,7 +168,8 @@ CACHE_DIR=on_path_cache/n2_mod5_deg6_C1_C6_routes32_seed42 \
 MAX_COMPLEXITY=3 \
 RESULTS_DIR=results/ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C3 \
 WANDB_RUN_NAME=ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C3 \
-ON_PATH_PHI_MODE=count \
+ON_PATH_PHI_MODE=depth_weighted \
+ON_PATH_DEPTH_WEIGHT_POWER=1.0 \
 ON_PATH_ROUTE_CONSISTENCY_MODE=best_route_phi \
 ADVANCE_THRESHOLD=0.97 \
 BACKOFF_THRESHOLD=-1.0 \

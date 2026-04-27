@@ -590,6 +590,8 @@ class CircuitGame:
                 return self._best_route_count_phi()
             if self.config.on_path_phi_mode == "max_step":
                 return self._best_route_max_step_phi()
+            if self.config.on_path_phi_mode == "depth_weighted":
+                return self._best_route_depth_weighted_phi()
             raise ValueError(
                 f"Unknown on_path_phi_mode: {self.config.on_path_phi_mode}"
             )
@@ -603,6 +605,9 @@ class CircuitGame:
             if self._on_path_target_step <= 0:
                 return 0.0
             return self._on_path_deepest_step / self._on_path_target_step
+
+        if self.config.on_path_phi_mode == "depth_weighted":
+            return self._union_depth_weighted_phi()
 
         raise ValueError(f"Unknown on_path_phi_mode: {self.config.on_path_phi_mode}")
 
@@ -642,6 +647,43 @@ class CircuitGame:
             if route_has_nodes:
                 best_step = max(best_step, deepest)
         return best_step / self._on_path_target_step
+
+    def _on_path_step_weight(self, key: bytes) -> float:
+        step = max(0, int(self._on_path_steps.get(key, 0)))
+        if step == 0:
+            return 0.0
+        return float(step) ** float(self.config.on_path_depth_weight_power)
+
+    def _best_route_depth_weighted_phi(self) -> float:
+        best = 0.0
+        for route_idx in range(32):
+            bit = 1 << route_idx
+            total = 0.0
+            hits = 0.0
+            for key, mask in self._on_path_route_masks.items():
+                if mask & bit:
+                    weight = self._on_path_step_weight(key)
+                    total += weight
+                    if key in self._on_path_hit_keys:
+                        hits += weight
+            if total > 0.0:
+                best = max(best, hits / total)
+        return best
+
+    def _union_depth_weighted_phi(self) -> float:
+        total = 0.0
+        hits = 0.0
+        use_active_mask = self._on_path_route_mode() == "lock_on_first_hit"
+        for key, mask in self._on_path_route_masks.items():
+            if use_active_mask and not (mask & self._on_path_active_route_mask):
+                continue
+            weight = self._on_path_step_weight(key)
+            total += weight
+            if key in self._on_path_hit_keys:
+                hits += weight
+        if total <= 0.0:
+            return 0.0
+        return hits / total
 
     def clone(self) -> "CircuitGame":
         """Create a deep copy of this game state for use in MCTS tree search.

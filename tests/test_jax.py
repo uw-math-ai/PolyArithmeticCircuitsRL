@@ -514,6 +514,91 @@ class TestEnvResetStep:
         assert int(state.on_path_count) == 3
         assert float(phi3) == pytest.approx(2 / 3)
 
+    def test_clean_onpath_depth_weighted_phi_values_jax(self):
+        cfg = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=4,
+            max_steps=6,
+            reward_mode="clean_onpath",
+            on_path_max_size=3,
+            on_path_phi_mode="depth_weighted",
+            on_path_depth_weight_power=2.0,
+            on_path_route_consistency_mode="best_route_phi",
+        )
+        ec = make_env_config(cfg)
+        on_path = np.zeros((ec.on_path_max_size, ec.target_size), dtype=np.int32)
+        hashes = np.zeros((ec.on_path_max_size,), dtype=np.uint32)
+        steps = np.array([1, 2, 0], dtype=np.int32)
+        route_masks = np.array([0b01, 0b01, 0], dtype=np.uint32)
+        active = np.array([True, True, False])
+        target = jnp.zeros(ec.target_size, dtype=jnp.int32)
+
+        state = reset(
+            ec,
+            target,
+            on_path_coeffs=jnp.array(on_path, dtype=jnp.int32),
+            on_path_hashes=jnp.array(hashes, dtype=jnp.uint32),
+            on_path_steps=jnp.array(steps, dtype=jnp.int32),
+            on_path_route_masks=jnp.array(route_masks, dtype=jnp.uint32),
+            on_path_active=jnp.array(active),
+            target_board_step=jnp.int32(2),
+        )
+
+        shallow = state._replace(
+            on_path_hit=jnp.array([True, False, False])
+        )
+        deep = state._replace(
+            on_path_hit=jnp.array([False, True, False])
+        )
+        both = state._replace(
+            on_path_hit=jnp.array([True, True, False])
+        )
+
+        assert float(_on_path_phi(shallow, ec)) == pytest.approx(1 / 5)
+        assert float(_on_path_phi(deep, ec)) == pytest.approx(4 / 5)
+        assert float(_on_path_phi(both, ec)) == pytest.approx(1.0)
+
+    def test_clean_onpath_depth_weighted_prevents_frankenstein_jax(self):
+        cfg = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=4,
+            max_steps=6,
+            reward_mode="clean_onpath",
+            on_path_max_size=4,
+            on_path_phi_mode="depth_weighted",
+            on_path_depth_weight_power=1.0,
+            on_path_route_consistency_mode="best_route_phi",
+        )
+        ec = make_env_config(cfg)
+        on_path = np.zeros((ec.on_path_max_size, ec.target_size), dtype=np.int32)
+        hashes = np.zeros((ec.on_path_max_size,), dtype=np.uint32)
+        steps = np.array([1, 1, 2, 3], dtype=np.int32)
+        route_masks = np.array([0b01, 0b10, 0b10, 0b11], dtype=np.uint32)
+        active = np.array([True, True, True, True])
+        target = jnp.zeros(ec.target_size, dtype=jnp.int32)
+
+        state = reset(
+            ec,
+            target,
+            on_path_coeffs=jnp.array(on_path, dtype=jnp.int32),
+            on_path_hashes=jnp.array(hashes, dtype=jnp.uint32),
+            on_path_steps=jnp.array(steps, dtype=jnp.int32),
+            on_path_route_masks=jnp.array(route_masks, dtype=jnp.uint32),
+            on_path_active=jnp.array(active),
+            target_board_step=jnp.int32(3),
+        )
+        mixed = state._replace(
+            on_path_hit=jnp.array([True, True, False, False])
+        )
+        route_b = state._replace(
+            on_path_hit=jnp.array([True, True, True, False])
+        )
+
+        assert float(_on_path_phi(mixed, ec)) == pytest.approx(1 / 4)
+        assert float(_on_path_phi(route_b, ec)) == pytest.approx(3 / 6)
+
     def test_clean_onpath_terminal_zero_reward_jit(self):
         """Clean on-path logs terminal phi but zeroes reward-side terminal phi."""
         cfg = Config(
@@ -607,6 +692,10 @@ class TestEnvResetStep:
             target_board_step=jnp.int32(0),
         )
         assert float(_on_path_phi(max_step_state, max_step_ec)) == pytest.approx(0.0)
+
+        depth_cfg = Config(**{**cfg.__dict__, "on_path_phi_mode": "depth_weighted"})
+        depth_ec = make_env_config(depth_cfg)
+        assert float(_on_path_phi(state, depth_ec)) == pytest.approx(0.0)
 
     def test_get_observation(self, env_config, initial_state):
         """Observation dict has expected keys and shapes."""
@@ -884,3 +973,45 @@ class TestMCTXIntegration:
             not jnp.allclose(o, n) for o, n in zip(old_flat, new_flat)
         )
         assert any_changed, "PPO step should update at least some parameters"
+
+    def test_ppo_update_logs_kl_and_early_stops(self):
+        from src.algorithms.ppo_mcts_jax import PPOMCTSJAXTrainer, Transition
+
+        cfg = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=2,
+            max_steps=2,
+            hidden_dim=16,
+            embedding_dim=16,
+            num_gnn_layers=1,
+            batch_size=2,
+            ppo_epochs=3,
+            target_kl=0.01,
+            seed=0,
+        )
+        trainer = PPOMCTSJAXTrainer(cfg, batch_size=2)
+        ec = trainer.env_config
+        state = reset(ec, jnp.zeros(ec.target_size, dtype=jnp.int32))
+        obs = get_observation(ec, state)
+        transitions = [
+            Transition(
+                obs=obs,
+                action=i % ec.max_actions,
+                reward=0.0,
+                network_log_prob=10.0,
+                value=0.0,
+                done=False,
+            )
+            for i in range(4)
+        ]
+        advantages = np.array([1.0, -1.0, 0.5, -0.5], dtype=np.float32)
+        returns = np.array([1.0, 0.0, 0.5, -0.5], dtype=np.float32)
+
+        info = trainer.update(transitions, advantages, returns)
+
+        assert info["approx_kl"] > cfg.target_kl
+        assert info["kl_early_stop_count"] == 1
+        assert info["applied_minibatch_updates"] < cfg.ppo_epochs * 2
+        assert info["skipped_minibatch_updates"] == 0
+        assert info["skipped_outer_iteration"] == 0
