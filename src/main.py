@@ -163,9 +163,15 @@ def main() -> None:
     parser.add_argument("--on-path-split-seed", type=int, default=None)
     parser.add_argument("--on-path-num-routes", type=int, default=None)
     parser.add_argument(
+        "--on-path-route-consistency-mode",
+        choices=["best_route_phi", "lock_on_first_hit", "off"],
+        default=None,
+        help="How route masks constrain clean_onpath rewards.",
+    )
+    parser.add_argument(
         "--no-on-path-route-consistency",
         action="store_true",
-        help="Disable coherent-route masking for clean_onpath rewards.",
+        help="Alias for --on-path-route-consistency-mode off.",
     )
     parser.add_argument(
         "--mcts-batch-size",
@@ -262,8 +268,11 @@ def main() -> None:
         config.on_path_split_seed = args.on_path_split_seed
     if args.on_path_num_routes is not None:
         config.on_path_num_routes = args.on_path_num_routes
+    if args.on_path_route_consistency_mode is not None:
+        config.on_path_route_consistency_mode = args.on_path_route_consistency_mode
     if args.no_on_path_route_consistency:
         config.on_path_route_consistency = False
+        config.on_path_route_consistency_mode = "off"
     if args.no_factor_library:
         config.factor_library_enabled = False
     if args.factor_subgoal_reward is not None:

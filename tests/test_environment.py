@@ -513,6 +513,7 @@ class TestRewardModes:
     def test_clean_onpath_route_consistency_blocks_incompatible_hits(self):
         self.config.reward_mode = "clean_onpath"
         self.config.on_path_phi_mode = "count"
+        self.config.on_path_route_consistency_mode = "lock_on_first_hit"
         self.config.graph_onpath_shaping_coeff = 1.0
         env = CircuitGame(self.config)
 
@@ -554,6 +555,101 @@ class TestRewardModes:
             + self.config.gamma * (1 / 3)
             - (1 / 3)
         )
+
+    def test_clean_onpath_best_route_phi_allows_switch_without_frankenstein_credit(self):
+        self.config.reward_mode = "clean_onpath"
+        self.config.on_path_phi_mode = "count"
+        self.config.on_path_route_consistency_mode = "best_route_phi"
+        self.config.graph_onpath_shaping_coeff = 1.0
+        env = CircuitGame(self.config)
+
+        a1 = self.x0 + self.x1
+        b1 = self.x0 * self.x1
+        b2 = b1 + self.x1
+        target = b2 + self.x1
+        ctx = _OnPathContext(
+            {
+                a1.canonical_key(): 1,
+                b1.canonical_key(): 1,
+                b2.canonical_key(): 2,
+                target.canonical_key(): 3,
+            },
+            target_board_step=3,
+            route_mapping={
+                a1.canonical_key(): 0b01,
+                b1.canonical_key(): 0b10,
+                b2.canonical_key(): 0b10,
+                target.canonical_key(): 0b11,
+            },
+        )
+        env.reset(target, on_path_context=ctx)
+
+        a1_action = encode_action(0, 0, 1, self.config.max_nodes)
+        b1_action = encode_action(1, 0, 1, self.config.max_nodes)
+        b2_action = encode_action(0, 4, 1, self.config.max_nodes)
+
+        _, reward1, _, info1 = env.step(a1_action)
+        assert info1["on_path_hit"]
+        assert info1["on_path_hits"] == 1
+        assert info1["on_path_phi"] == pytest.approx(1 / 2)
+        assert reward1 == pytest.approx(
+            self.config.step_penalty + self.config.gamma * (1 / 2)
+        )
+
+        _, reward2, _, info2 = env.step(b1_action)
+        assert info2["on_path_hit"]
+        assert info2["on_path_hits"] == 2
+        # Frankenstein prevention: a1 + b1 does not become 2/4 union progress.
+        assert info2["on_path_phi"] == pytest.approx(1 / 2)
+        assert reward2 == pytest.approx(
+            self.config.step_penalty
+            + self.config.gamma * (1 / 2)
+            - (1 / 2)
+        )
+
+        _, reward3, _, info3 = env.step(b2_action)
+        assert info3["on_path_hit"]
+        assert info3["on_path_hits"] == 3
+        assert info3["on_path_phi"] == pytest.approx(2 / 3)
+        assert reward3 == pytest.approx(
+            self.config.step_penalty
+            + self.config.gamma * (2 / 3)
+            - (1 / 2)
+        )
+
+    def test_clean_onpath_union_off_gives_frankenstein_credit(self):
+        self.config.reward_mode = "clean_onpath"
+        self.config.on_path_phi_mode = "count"
+        self.config.on_path_route_consistency_mode = "off"
+        self.config.graph_onpath_shaping_coeff = 1.0
+        env = CircuitGame(self.config)
+
+        a1 = self.x0 + self.x1
+        b1 = self.x0 * self.x1
+        target = a1 + b1
+        ctx = _OnPathContext(
+            {
+                a1.canonical_key(): 1,
+                b1.canonical_key(): 1,
+                target.canonical_key(): 2,
+            },
+            target_board_step=2,
+            route_mapping={
+                a1.canonical_key(): 0b01,
+                b1.canonical_key(): 0b10,
+                target.canonical_key(): 0b11,
+            },
+        )
+        env.reset(target, on_path_context=ctx)
+
+        a1_action = encode_action(0, 0, 1, self.config.max_nodes)
+        b1_action = encode_action(1, 0, 1, self.config.max_nodes)
+        _, _, _, info1 = env.step(a1_action)
+        _, _, _, info2 = env.step(b1_action)
+
+        assert info1["on_path_phi"] == pytest.approx(1 / 3)
+        assert info2["on_path_hit"]
+        assert info2["on_path_phi"] == pytest.approx(2 / 3)
 
     def test_clean_onpath_success_logs_raw_phi_but_zeros_terminal_reward_phi(self):
         self.config.reward_mode = "clean_onpath"

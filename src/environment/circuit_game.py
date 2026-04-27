@@ -563,14 +563,15 @@ class CircuitGame:
         if key not in self._on_path_steps or key in self._on_path_hit_keys:
             return False
         route_mask = int(self._on_path_route_masks.get(key, (1 << 32) - 1))
+        route_mode = self._on_path_route_mode()
         if (
-            self.config.on_path_route_consistency
+            route_mode == "lock_on_first_hit"
             and (route_mask & self._on_path_active_route_mask) == 0
         ):
             return False
 
         self._on_path_hit_keys.add(key)
-        if self.config.on_path_route_consistency:
+        if route_mode == "lock_on_first_hit":
             self._on_path_active_route_mask &= route_mask
         self._on_path_count += 1
         self._on_path_deepest_step = max(
@@ -584,6 +585,15 @@ class CircuitGame:
         if self.config.reward_mode != "clean_onpath":
             return 0.0
 
+        if self._on_path_route_mode() == "best_route_phi":
+            if self.config.on_path_phi_mode == "count":
+                return self._best_route_count_phi()
+            if self.config.on_path_phi_mode == "max_step":
+                return self._best_route_max_step_phi()
+            raise ValueError(
+                f"Unknown on_path_phi_mode: {self.config.on_path_phi_mode}"
+            )
+
         if self.config.on_path_phi_mode == "count":
             if self._on_path_total <= 0:
                 return 0.0
@@ -595,6 +605,43 @@ class CircuitGame:
             return self._on_path_deepest_step / self._on_path_target_step
 
         raise ValueError(f"Unknown on_path_phi_mode: {self.config.on_path_phi_mode}")
+
+    def _on_path_route_mode(self) -> str:
+        if not self.config.on_path_route_consistency:
+            return "off"
+        return self.config.on_path_route_consistency_mode
+
+    def _best_route_count_phi(self) -> float:
+        best = 0.0
+        for route_idx in range(32):
+            bit = 1 << route_idx
+            total = 0
+            hits = 0
+            for key, mask in self._on_path_route_masks.items():
+                if mask & bit:
+                    total += 1
+                    if key in self._on_path_hit_keys:
+                        hits += 1
+            if total > 0:
+                best = max(best, hits / total)
+        return best
+
+    def _best_route_max_step_phi(self) -> float:
+        if self._on_path_target_step <= 0:
+            return 0.0
+        best_step = 0
+        for route_idx in range(32):
+            bit = 1 << route_idx
+            route_has_nodes = False
+            deepest = 0
+            for key, mask in self._on_path_route_masks.items():
+                if mask & bit:
+                    route_has_nodes = True
+                    if key in self._on_path_hit_keys:
+                        deepest = max(deepest, int(self._on_path_steps[key]))
+            if route_has_nodes:
+                best_step = max(best_step, deepest)
+        return best_step / self._on_path_target_step
 
     def clone(self) -> "CircuitGame":
         """Create a deep copy of this game state for use in MCTS tree search.

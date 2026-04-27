@@ -114,9 +114,17 @@ incompatible nodes from the union of optimal routes. Use
 `ON_PATH_PHI_MODE=count` for the denser count-based ablation.
 
 Clean OnPath caches now store `ON_PATH_NUM_ROUTES=32` coherent optimal-route
-masks per target. Once an episode gets reward for a node from one route mask,
-later hits are only rewarded if they overlap the still-compatible route mask;
-this prevents collecting reward from mutually incompatible optimal circuits.
+masks per target. The default `ON_PATH_ROUTE_CONSISTENCY_MODE=best_route_phi`
+records every unique OnPath hit but computes potential as the best progress
+within one coherent route. Use `lock_on_first_hit` to reproduce the older
+irreversible route-mask narrowing, or `off` for union-style reward.
+Inspect route-mask structure before a run with:
+
+```bash
+python scripts/inspect_on_path_cache.py \
+  --cache-dir on_path_cache/n2_mod5_deg6_C1_C6_routes32_seed42 \
+  --complexity 2
+```
 
 The clean OnPath Slurm defaults are intended to be stable for one GPU:
 `MCTS_BATCH_SIZE=128`, `MCTS_SIMULATIONS=32`, `PPO_LR=1e-4`,
@@ -140,6 +148,7 @@ MAX_GRAD_NORM=0.25 \
 MCTS_BATCH_SIZE=128 \
 MCTS_SIMULATIONS=32 \
 ON_PATH_PHI_MODE=max_step \
+ON_PATH_ROUTE_CONSISTENCY_MODE=best_route_phi \
 ADVANCE_THRESHOLD=0.97 \
 BACKOFF_THRESHOLD=-1.0 \
 CURRICULUM_WINDOW=2048 \
@@ -155,6 +164,8 @@ CACHE_DIR=on_path_cache/n2_mod5_deg6_C1_C6_routes32_seed42 \
 MAX_COMPLEXITY=3 \
 RESULTS_DIR=results/ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C3 \
 WANDB_RUN_NAME=ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C3 \
+ON_PATH_PHI_MODE=count \
+ON_PATH_ROUTE_CONSISTENCY_MODE=best_route_phi \
 ADVANCE_THRESHOLD=0.97 \
 BACKOFF_THRESHOLD=-1.0 \
 CURRICULUM_WINDOW=2048 \

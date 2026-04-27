@@ -333,6 +333,7 @@ class TestEnvResetStep:
             reward_mode="clean_onpath",
             on_path_max_size=4,
             on_path_phi_mode="count",
+            on_path_route_consistency_mode="lock_on_first_hit",
             graph_onpath_shaping_coeff=1.0,
         )
         ec = make_env_config(cfg)
@@ -440,6 +441,78 @@ class TestEnvResetStep:
         assert float(reward2) == pytest.approx(
             ec.step_penalty + ec.gamma * (1 / 3) - (1 / 3)
         )
+
+    def test_clean_onpath_best_route_phi_allows_switch_without_frankenstein_jax(self):
+        cfg = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=4,
+            max_steps=6,
+            reward_mode="clean_onpath",
+            on_path_max_size=4,
+            on_path_phi_mode="count",
+            on_path_route_consistency_mode="best_route_phi",
+            graph_onpath_shaping_coeff=1.0,
+        )
+        ec = make_env_config(cfg)
+        d = ec.max_degree + 1
+
+        a1_nd = np.zeros((d, d), dtype=np.int32)
+        a1_nd[1, 0] = 1
+        a1_nd[0, 1] = 1
+        b1_nd = np.zeros((d, d), dtype=np.int32)
+        b1_nd[1, 1] = 1
+        b2_nd = b1_nd.copy()
+        b2_nd[0, 1] = 1
+        target_nd = b2_nd.copy()
+        target_nd[0, 1] = (target_nd[0, 1] + 1) % cfg.mod
+
+        on_path = np.zeros((ec.on_path_max_size, ec.target_size), dtype=np.int32)
+        on_path[0] = a1_nd.flatten()
+        on_path[1] = b1_nd.flatten()
+        on_path[2] = b2_nd.flatten()
+        on_path[3] = target_nd.flatten()
+        hashes = hash_coeff_matrix(on_path)
+        steps = np.array([1, 1, 2, 3], dtype=np.int32)
+        route_masks = np.array([0b01, 0b10, 0b10, 0b11], dtype=np.uint32)
+        active = np.array([True, True, True, True])
+
+        state = reset(
+            ec,
+            jnp.array(target_nd.flatten(), dtype=jnp.int32),
+            on_path_coeffs=jnp.array(on_path, dtype=jnp.int32),
+            on_path_hashes=jnp.array(hashes, dtype=jnp.uint32),
+            on_path_steps=jnp.array(steps, dtype=jnp.int32),
+            on_path_route_masks=jnp.array(route_masks, dtype=jnp.uint32),
+            on_path_active=jnp.array(active),
+            target_board_step=jnp.int32(3),
+        )
+
+        import functools
+        jit_step = jax.jit(functools.partial(step, ec))
+        a1_action = encode_action(jnp.int32(0), jnp.int32(0), jnp.int32(1), ec.max_nodes)
+        b1_action = encode_action(jnp.int32(1), jnp.int32(0), jnp.int32(1), ec.max_nodes)
+        b2_action = encode_action(jnp.int32(0), jnp.int32(4), jnp.int32(1), ec.max_nodes)
+
+        state, _reward1, _done, _success, *_rest, hit1, phi1 = jit_step(
+            state, a1_action
+        )
+        assert bool(hit1)
+        assert float(phi1) == pytest.approx(1 / 2)
+
+        state, _reward2, _done, _success, *_rest, hit2, phi2 = jit_step(
+            state, b1_action
+        )
+        assert bool(hit2)
+        assert int(state.on_path_count) == 2
+        assert float(phi2) == pytest.approx(1 / 2)
+
+        state, _reward3, _done, _success, *_rest, hit3, phi3 = jit_step(
+            state, b2_action
+        )
+        assert bool(hit3)
+        assert int(state.on_path_count) == 3
+        assert float(phi3) == pytest.approx(2 / 3)
 
     def test_clean_onpath_terminal_zero_reward_jit(self):
         """Clean on-path logs terminal phi but zeroes reward-side terminal phi."""

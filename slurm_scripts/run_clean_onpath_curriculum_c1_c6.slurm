@@ -26,6 +26,7 @@ SPLIT_SEED=${SPLIT_SEED:-42}
 MAX_ON_PATH_SIZE=${MAX_ON_PATH_SIZE:-4096}
 ON_PATH_NUM_ROUTES=${ON_PATH_NUM_ROUTES:-32}
 ON_PATH_PHI_MODE=${ON_PATH_PHI_MODE:-max_step}
+ON_PATH_ROUTE_CONSISTENCY_MODE=${ON_PATH_ROUTE_CONSISTENCY_MODE:-best_route_phi}
 GRAPH_ONPATH_SHAPING_COEFF=${GRAPH_ONPATH_SHAPING_COEFF:-1.0}
 
 ITERATIONS=${ITERATIONS:-2000}
@@ -80,6 +81,7 @@ echo "  ppo_log_ratio_clip: $PPO_LOG_RATIO_CLIP"
 echo "  ppo_epochs: $PPO_EPOCHS"
 echo "  ent_coef: $ENT_COEF"
 echo "  on_path_phi_mode: $ON_PATH_PHI_MODE"
+echo "  on_path_route_consistency_mode: $ON_PATH_ROUTE_CONSISTENCY_MODE"
 echo "  starting_complexity: $STARTING_COMPLEXITY"
 echo "  advance_threshold: $ADVANCE_THRESHOLD"
 echo "  backoff_threshold: $BACKOFF_THRESHOLD"
@@ -133,6 +135,7 @@ apptainer exec --nv --bind /gscratch:/gscratch \
     --graph-onpath-cache-dir "$CACHE_DIR" \
     --graph-onpath-shaping-coeff "$GRAPH_ONPATH_SHAPING_COEFF" \
     --on-path-phi-mode "$ON_PATH_PHI_MODE" \
+    --on-path-route-consistency-mode "$ON_PATH_ROUTE_CONSISTENCY_MODE" \
     --on-path-max-size "$MAX_ON_PATH_SIZE" \
     --on-path-split-seed "$SPLIT_SEED" \
     --on-path-num-routes "$ON_PATH_NUM_ROUTES" \

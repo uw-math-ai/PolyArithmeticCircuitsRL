@@ -43,6 +43,7 @@ class Config:
     on_path_max_size: int = 4096
     on_path_split_seed: int = 42
     on_path_route_consistency: bool = True
+    on_path_route_consistency_mode: str = "best_route_phi"
     on_path_num_routes: int = 32
 
     # -------------------------------------------------------------------------

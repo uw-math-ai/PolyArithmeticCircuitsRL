@@ -116,6 +116,7 @@ class EnvConfig(NamedTuple):
     on_path_terminal_zero: bool
     on_path_phi_mode: str
     on_path_route_consistency: bool
+    on_path_route_consistency_mode: str
     on_path_max_size: int
     initial_node_coeffs: jnp.ndarray
     base_node_coeffs: jnp.ndarray
@@ -170,6 +171,11 @@ def make_env_config(config) -> EnvConfig:
         on_path_terminal_zero=config.on_path_terminal_zero,
         on_path_phi_mode=config.on_path_phi_mode,
         on_path_route_consistency=config.on_path_route_consistency,
+        on_path_route_consistency_mode=(
+            "off"
+            if not config.on_path_route_consistency
+            else config.on_path_route_consistency_mode
+        ),
         on_path_max_size=on_path_max_size,
         initial_node_coeffs=initial_node_coeffs,
         base_node_coeffs=base_node_coeffs,
@@ -391,7 +397,53 @@ def _poly_hash(poly: jnp.ndarray, env_config: EnvConfig) -> jnp.ndarray:
     return jnp.bitwise_xor.reduce(vals * env_config.on_path_hash_weights)
 
 
+def _route_bits() -> jnp.ndarray:
+    return (jnp.uint32(1) << jnp.arange(32, dtype=jnp.uint32))
+
+
+def _best_route_count_phi(state: EnvState) -> jnp.ndarray:
+    bits = _route_bits()
+    in_route = (
+        (state.on_path_route_masks[None, :] & bits[:, None]) != 0
+    ) & state.on_path_active[None, :]
+    route_totals = jnp.sum(in_route.astype(jnp.float32), axis=1)
+    route_hits = jnp.sum(
+        (in_route & state.on_path_hit[None, :]).astype(jnp.float32),
+        axis=1,
+    )
+    route_phi = jnp.where(route_totals > 0.0, route_hits / route_totals, 0.0)
+    return jnp.max(route_phi)
+
+
+def _best_route_max_step_phi(state: EnvState) -> jnp.ndarray:
+    bits = _route_bits()
+    in_route = (
+        (state.on_path_route_masks[None, :] & bits[:, None]) != 0
+    ) & state.on_path_active[None, :]
+    route_has_nodes = jnp.any(in_route, axis=1)
+    route_hit_steps = jnp.where(
+        in_route & state.on_path_hit[None, :],
+        state.on_path_steps[None, :],
+        jnp.int32(0),
+    )
+    deepest = jnp.max(route_hit_steps, axis=1).astype(jnp.float32)
+    target_step = state.target_board_step.astype(jnp.float32)
+    route_phi = jnp.where(
+        route_has_nodes & (state.target_board_step > 0),
+        deepest / jnp.maximum(target_step, 1.0),
+        0.0,
+    )
+    return jnp.max(route_phi)
+
+
 def _on_path_phi(state: EnvState, env_config: EnvConfig) -> jnp.ndarray:
+    if env_config.on_path_route_consistency_mode == "best_route_phi":
+        if env_config.on_path_phi_mode == "count":
+            return _best_route_count_phi(state)
+        if env_config.on_path_phi_mode == "max_step":
+            return _best_route_max_step_phi(state)
+        return jnp.float32(0.0)
+
     if env_config.on_path_phi_mode == "count":
         total = state.on_path_total.astype(jnp.float32)
         phi = state.on_path_count.astype(jnp.float32) / jnp.maximum(
@@ -412,7 +464,7 @@ def _on_path_match_index(poly: jnp.ndarray, state: EnvState,
     """Hash-prefilter then coefficient-verify a clean_onpath hit."""
     poly_hash = _poly_hash(poly, env_config)
     route_ok = jnp.ones_like(state.on_path_active, dtype=jnp.bool_)
-    if env_config.on_path_route_consistency:
+    if env_config.on_path_route_consistency_mode == "lock_on_first_hit":
         route_ok = (state.on_path_route_masks & state.on_path_active_route_mask) != 0
     candidate = (
         state.on_path_active
@@ -846,7 +898,7 @@ def step(env_config: EnvConfig, state: EnvState,
             lambda arr: arr,
             on_path_hit,
         )
-        if env_config.on_path_route_consistency:
+        if env_config.on_path_route_consistency_mode == "lock_on_first_hit":
             on_path_active_route_mask = on_path_active_route_mask & hit_route_mask
         on_path_count = on_path_count + has_on_path_match.astype(jnp.int32)
         on_path_deepest_step = jnp.maximum(on_path_deepest_step, hit_step)

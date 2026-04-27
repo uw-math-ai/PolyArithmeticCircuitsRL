@@ -111,6 +111,15 @@ class PPOMCTSJAXTrainer:
             raise ValueError(f"Unknown reward_mode: {config.reward_mode}")
         if config.on_path_phi_mode not in ("count", "max_step"):
             raise ValueError(f"Unknown on_path_phi_mode: {config.on_path_phi_mode}")
+        if config.on_path_route_consistency_mode not in (
+            "best_route_phi",
+            "lock_on_first_hit",
+            "off",
+        ):
+            raise ValueError(
+                "on_path_route_consistency_mode must be one of "
+                "'best_route_phi', 'lock_on_first_hit', or 'off'"
+            )
         if config.on_path_num_routes < 1 or config.on_path_num_routes > 32:
             raise ValueError("on_path_num_routes must be between 1 and 32")
 
