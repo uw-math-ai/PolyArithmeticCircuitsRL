@@ -453,7 +453,6 @@ class CircuitGame:
             "target_board_step": self._on_path_target_step,
         }
 
-        reward = float(reward) * float(getattr(self.config, "reward_scale", 1.0))
         return self.get_observation(), reward, self.done, info
 
     def get_observation(self) -> Dict[str, torch.Tensor]:

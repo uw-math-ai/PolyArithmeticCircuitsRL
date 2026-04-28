@@ -267,31 +267,6 @@ class TestEnvResetStep:
         next_state, reward, done, is_success, *_ = jit_step(initial_state, action)
         assert next_state.num_nodes.shape == ()
 
-    def test_step_reward_scale_uniform(self, config):
-        """JAX step() reward must scale linearly with EnvConfig.reward_scale."""
-        action = encode_action(jnp.int32(0), jnp.int32(0), jnp.int32(1),
-                               make_env_config(config).max_nodes)
-
-        ec_unscaled = make_env_config(config)
-        target_size = ec_unscaled.target_size
-        shape = (ec_unscaled.max_degree + 1,) * ec_unscaled.n_variables
-        t_nd = np.zeros(shape, dtype=np.int32)
-        t_nd[1, 0] = 1
-        t_nd[0, 1] = 1
-        target = jnp.array(t_nd.flatten(), dtype=jnp.int32)
-
-        state_unscaled = reset(ec_unscaled, target)
-        _, r_unscaled, *_ = step(ec_unscaled, state_unscaled, action)
-
-        config.reward_scale = 0.2
-        ec_scaled = make_env_config(config)
-        state_scaled = reset(ec_scaled, target)
-        _, r_scaled, *_ = step(ec_scaled, state_scaled, action)
-
-        assert float(r_scaled) == pytest.approx(float(r_unscaled) * 0.2, rel=1e-5)
-        # Restore so other fixtures aren't poisoned.
-        config.reward_scale = 1.0
-
     def test_fl_additive_completion(self, config):
         """JAX env awards additive completion when one add-away from target."""
         ec = make_env_config(config)

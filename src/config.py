@@ -35,10 +35,6 @@ class Config:
     success_reward: float = 10.0        # Reward given when the target is matched exactly
     terminal_success_reward: float = 10.0  # Clean-mode terminal reward.
     step_penalty: float = -0.1          # Per-step penalty to encourage shorter circuits
-    reward_scale: float = 1.0           # Multiplicative scale on the env step reward; applied
-                                        # once at end of step() so PPO and MCTS see the same
-                                        # scaled rewards. Used to bring return distributions
-                                        # into a range the value head can fit cleanly.
     use_reward_shaping: bool = True     # Enable potential-based shaping (Ng et al., 1999)
     graph_onpath_shaping_coeff: float = 1.0
     graph_onpath_cache_dir: Optional[str] = None
