@@ -17,6 +17,7 @@ import random
 import sys
 import time
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -50,6 +51,7 @@ def load_jax_deps() -> None:
     import jax as _jax
     import jax.numpy as _jnp
 
+    import src.algorithms.jax_env as _jax_env
     from src.algorithms.jax_env import (
         get_observation as _get_observation,
         make_env_config as _make_env_config,
@@ -67,6 +69,50 @@ def load_jax_deps() -> None:
     env_reset = _env_reset
     env_step = _env_step
     PPOMCTSJAXTrainer = _PPOMCTSJAXTrainer
+
+    def _direct_poly_mul(a, b, mod: int, n_variables: int, max_degree: int):
+        """Eval-only polynomial multiply that avoids cuDNN convolution."""
+        lhs_idx, rhs_idx, out_idx = _direct_mul_indices(
+            n_variables, max_degree
+        )
+        lhs = _jnp.array(lhs_idx, dtype=_jnp.int32)
+        rhs = _jnp.array(rhs_idx, dtype=_jnp.int32)
+        out = _jnp.array(out_idx, dtype=_jnp.int32)
+        result = _jnp.zeros_like(a, dtype=_jnp.int32)
+        prod = (a[lhs] * b[rhs]) % mod
+        result = result.at[out].add(prod)
+        return result % mod
+
+    # The branch's default poly_mul uses lax.conv_general_dilated, which can
+    # fail on some Hyak cuDNN stacks. Patch only this eval process.
+    _jax_env.poly_mul = _direct_poly_mul
+
+
+@lru_cache(maxsize=None)
+def _direct_mul_indices(
+    n_variables: int, max_degree: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Precompute sparse coefficient-product indices for direct multiplication."""
+    dim = max_degree + 1
+    shape = (dim,) * n_variables
+    exponents = np.array(list(np.ndindex(shape)), dtype=np.int32)
+
+    lhs: List[int] = []
+    rhs: List[int] = []
+    out: List[int] = []
+    for i, exp_i in enumerate(exponents):
+        for j, exp_j in enumerate(exponents):
+            exp_out = exp_i + exp_j
+            if np.all(exp_out <= max_degree):
+                lhs.append(i)
+                rhs.append(j)
+                out.append(int(np.ravel_multi_index(tuple(exp_out), shape)))
+
+    return (
+        np.array(lhs, dtype=np.int32),
+        np.array(rhs, dtype=np.int32),
+        np.array(out, dtype=np.int32),
+    )
 
 
 @dataclass(frozen=True)
