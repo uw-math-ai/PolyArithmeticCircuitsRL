@@ -509,6 +509,9 @@ def build_complexity_cache(
     route_cap_hit_rate = (
         float(route_cap_hit_array.mean()) if route_cap_hit_array.size else 0.0
     )
+    route_working_cap_hit_node_rate = (
+        float(len(capped_nodes) / max(len(ordered_keys), 1))
+    )
     train_ids, val_ids, test_ids = split_target_ids(target_ids, split_seed + complexity)
 
     metadata = {
@@ -530,6 +533,7 @@ def build_complexity_cache(
         "route_count_cap": int(max_routes),
         "route_working_cap": int(working_cap),
         "route_working_cap_hit_node_count": int(len(capped_nodes)),
+        "route_working_cap_hit_node_rate": route_working_cap_hit_node_rate,
         "route_cap_hit_count": int(route_cap_hit_array.sum()),
         "route_cap_hit_rate": route_cap_hit_rate,
     }
@@ -710,7 +714,9 @@ def main() -> None:
             f"(route_cap_hit_rate={metadata.get('route_cap_hit_rate', 0.0):.2%}, "
             f"route_cap_hit_count={metadata.get('route_cap_hit_count', 0)}, "
             f"route_working_cap_hit_node_count="
-            f"{metadata.get('route_working_cap_hit_node_count', 0)})"
+            f"{metadata.get('route_working_cap_hit_node_count', 0)}, "
+            f"route_working_cap_hit_node_rate="
+            f"{metadata.get('route_working_cap_hit_node_rate', 0.0):.2%})"
         )
 
 

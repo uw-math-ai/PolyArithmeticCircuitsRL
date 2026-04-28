@@ -128,6 +128,7 @@ def main() -> None:
         help="Max degree per variable (default: auto = max_complexity)",
     )
     parser.add_argument("--ent-coef", type=float, default=None)
+    parser.add_argument("--vf-coef", type=float, default=None)
     parser.add_argument("--ppo-lr", type=float, default=None)
     parser.add_argument(
         "--ppo-epochs",
@@ -238,6 +239,8 @@ def main() -> None:
         config.max_degree = args.max_degree
     if args.ent_coef is not None:
         config.ent_coef = args.ent_coef
+    if args.vf_coef is not None:
+        config.vf_coef = args.vf_coef
     if args.ppo_lr is not None:
         config.ppo_lr = args.ppo_lr
     if args.ppo_epochs is not None:

@@ -554,11 +554,12 @@ class PPOMCTSJAXTrainer:
         transitions = []
         episode_rewards = np.zeros(B)
         episode_successes = np.zeros(B, dtype=bool)
+        episode_on_path_hit = np.zeros(B, dtype=bool)
         active = np.ones(B, dtype=bool)  # Track which envs are still running.
         factor_hits = 0
         library_hits = 0
         on_path_hits = 0
-        on_path_phi_sum = np.zeros(B, dtype=np.float32)
+        episode_on_path_phi = np.zeros(B, dtype=np.float32)
         successful_final_states = []
 
         for step_idx in range(self.config.max_steps):
@@ -639,7 +640,8 @@ class PPOMCTSJAXTrainer:
                         library_hits += 1
                     if on_path_hits_np[i]:
                         on_path_hits += 1
-                    on_path_phi_sum[i] = on_path_phi_np[i]
+                        episode_on_path_hit[i] = True
+                    episode_on_path_phi[i] = on_path_phi_np[i]
                     if dones_np[i]:
                         if successes_np[i]:
                             successful_final_states.append(
@@ -662,6 +664,14 @@ class PPOMCTSJAXTrainer:
 
         success_rate = episode_successes.sum() / B
         avg_reward = episode_rewards.mean()
+        episode_lengths = np.array(next_states.steps_taken)
+        outcome_info = self._outcome_bucket_metrics(
+            episode_rewards=episode_rewards,
+            episode_successes=episode_successes,
+            episode_on_path_hit=episode_on_path_hit,
+            episode_phi=episode_on_path_phi,
+            episode_lengths=episode_lengths,
+        )
 
         rollout_info = {
             "episodes": B,
@@ -672,9 +682,10 @@ class PPOMCTSJAXTrainer:
             "library_hits": library_hits,
             "library_size": len(self.factor_library) if self.factor_library else 0,
             "on_path_hits": on_path_hits,
-            "on_path_phi": float(on_path_phi_sum.mean()),
+            "on_path_phi": float(episode_on_path_phi.mean()),
             "target_board_step": float(np.array(target_board_steps).mean()),
-            "episode_length": float(np.array(next_states.steps_taken).mean()),
+            "episode_length": float(episode_lengths.mean()),
+            **outcome_info,
         }
 
         # Per-complexity breakdown.
@@ -743,11 +754,78 @@ class PPOMCTSJAXTrainer:
         return all(np.all(np.isfinite(arr)) for arr in arrays)
 
     @staticmethod
+    def _masked_mean(values: np.ndarray, mask: np.ndarray) -> float:
+        if not np.any(mask):
+            return 0.0
+        return float(np.asarray(values)[mask].mean())
+
+    @staticmethod
+    def _trailing_mean(values: List[float], window: int) -> Optional[float]:
+        if len(values) < window:
+            return None
+        return float(np.mean(values[-window:]))
+
+    @classmethod
+    def _outcome_bucket_metrics(
+        cls,
+        episode_rewards: np.ndarray,
+        episode_successes: np.ndarray,
+        episode_on_path_hit: np.ndarray,
+        episode_phi: np.ndarray,
+        episode_lengths: np.ndarray,
+    ) -> dict:
+        success_mask = np.asarray(episode_successes, dtype=bool)
+        hit_mask = np.asarray(episode_on_path_hit, dtype=bool)
+        failure_with_hit_mask = hit_mask & ~success_mask
+        failure_no_hit_mask = ~hit_mask & ~success_mask
+
+        success_count = int(success_mask.sum())
+        failure_with_hit_count = int(failure_with_hit_mask.sum())
+        failure_no_hit_count = int(failure_no_hit_mask.sum())
+        hit_denominator = success_count + failure_with_hit_count
+
+        return {
+            "success_count": success_count,
+            "failure_with_hit_count": failure_with_hit_count,
+            "failure_no_hit_count": failure_no_hit_count,
+            "p_solve_given_hit": (
+                float(success_count / hit_denominator)
+                if hit_denominator > 0 else 0.0
+            ),
+            "avg_return_success": cls._masked_mean(
+                episode_rewards, success_mask
+            ),
+            "avg_return_failure_with_hit": cls._masked_mean(
+                episode_rewards, failure_with_hit_mask
+            ),
+            "avg_return_failure_no_hit": cls._masked_mean(
+                episode_rewards, failure_no_hit_mask
+            ),
+            "avg_phi_success": cls._masked_mean(
+                episode_phi, success_mask
+            ),
+            "avg_phi_failure_with_hit": cls._masked_mean(
+                episode_phi, failure_with_hit_mask
+            ),
+            "avg_episode_length_success": cls._masked_mean(
+                episode_lengths, success_mask
+            ),
+            "avg_episode_length_failure_with_hit": cls._masked_mean(
+                episode_lengths, failure_with_hit_mask
+            ),
+            "avg_episode_length_failure_no_hit": cls._masked_mean(
+                episode_lengths, failure_no_hit_mask
+            ),
+        }
+
+    @staticmethod
     def _empty_loss_info(skipped_outer: bool = False) -> dict:
         return {
             "pg_loss": 0.0,
             "vf_loss": 0.0,
             "entropy": 0.0,
+            "weighted_vf_loss": 0.0,
+            "pg_to_weighted_vf_ratio": 0.0,
             "max_abs_logit": 0.0,
             "max_log_ratio": 0.0,
             "max_return": 0.0,
@@ -755,6 +833,8 @@ class PPOMCTSJAXTrainer:
             "grad_global_norm": 0.0,
             "approx_kl": 0.0,
             "kl_early_stop_count": 0,
+            "kl_rejected_updates": 0,
+            "kl_rejection_rate": 0.0,
             "skipped_minibatch_updates": 0,
             "applied_minibatch_updates": 0,
             "skipped_outer_iteration": int(skipped_outer),
@@ -806,6 +886,7 @@ class PPOMCTSJAXTrainer:
         max_grad_global_norm = 0.0
         max_approx_kl = 0.0
         kl_early_stop_count = 0
+        kl_rejected_updates = 0
         num_updates = 0
         skipped_updates = 0
 
@@ -832,6 +913,7 @@ class PPOMCTSJAXTrainer:
                     batch_adv, batch_ret, batch_old_lp,
                 )
                 applied = bool(np.array(loss_info["applied"]))
+                kl_rejected = bool(np.array(loss_info["kl_rejected"]))
 
                 max_abs_logit = max(max_abs_logit, float(loss_info["max_abs_logit"]))
                 max_log_ratio = max(max_log_ratio, float(loss_info["max_log_ratio"]))
@@ -855,7 +937,14 @@ class PPOMCTSJAXTrainer:
                     total_vf_loss += float(loss_info["vf_loss"])
                     total_entropy += float(loss_info["entropy"])
                     num_updates += 1
-                    if target_kl > 0.0 and float(loss_info["approx_kl"]) > target_kl:
+                elif kl_rejected:
+                    self.consecutive_nonfinite_minibatches = 0
+                    kl_rejected_updates += 1
+                    attempted_kl_updates = num_updates + kl_rejected_updates
+                    if (
+                        target_kl > 0.0
+                        and kl_rejected_updates / max(attempted_kl_updates, 1) > 0.5
+                    ):
                         kl_early_stop_count += 1
                         stop_for_kl = True
                         break
@@ -875,10 +964,24 @@ class PPOMCTSJAXTrainer:
             if stop_for_kl:
                 break
 
+        mean_pg_loss = total_pg_loss / max(num_updates, 1)
+        mean_vf_loss = total_vf_loss / max(num_updates, 1)
+        mean_entropy = total_entropy / max(num_updates, 1)
+        weighted_vf_loss = float(self.config.vf_coef) * mean_vf_loss
+        pg_to_weighted_vf_ratio = (
+            abs(mean_pg_loss) / max(abs(weighted_vf_loss), 1e-8)
+        )
+        attempted_kl_updates = num_updates + kl_rejected_updates
+        kl_rejection_rate = (
+            kl_rejected_updates / max(attempted_kl_updates, 1)
+        )
+
         return {
-            "pg_loss": total_pg_loss / max(num_updates, 1),
-            "vf_loss": total_vf_loss / max(num_updates, 1),
-            "entropy": total_entropy / max(num_updates, 1),
+            "pg_loss": mean_pg_loss,
+            "vf_loss": mean_vf_loss,
+            "entropy": mean_entropy,
+            "weighted_vf_loss": weighted_vf_loss,
+            "pg_to_weighted_vf_ratio": pg_to_weighted_vf_ratio,
             "max_abs_logit": max_abs_logit,
             "max_log_ratio": max_log_ratio,
             "max_return": max_return,
@@ -886,6 +989,8 @@ class PPOMCTSJAXTrainer:
             "grad_global_norm": max_grad_global_norm,
             "approx_kl": max_approx_kl,
             "kl_early_stop_count": kl_early_stop_count,
+            "kl_rejected_updates": kl_rejected_updates,
+            "kl_rejection_rate": kl_rejection_rate,
             "skipped_minibatch_updates": skipped_updates,
             "applied_minibatch_updates": num_updates,
             "skipped_outer_iteration": 0,
@@ -961,6 +1066,10 @@ class PPOMCTSJAXTrainer:
             & jnp.isfinite(total_loss)
             & jnp.isfinite(grad_global_norm)
         )
+        target_kl = jnp.asarray(self.config.target_kl, dtype=loss_info["approx_kl"].dtype)
+        kl_ok = (target_kl <= 0.0) | (loss_info["approx_kl"] <= target_kl)
+        kl_rejected = should_apply & ~kl_ok
+        should_apply = should_apply & kl_ok
 
         state = jax.lax.cond(
             should_apply,
@@ -972,6 +1081,7 @@ class PPOMCTSJAXTrainer:
             **loss_info,
             "grad_global_norm": grad_global_norm,
             "applied": should_apply,
+            "kl_rejected": kl_rejected,
         }
         return state, loss_info
 
@@ -1027,11 +1137,16 @@ class PPOMCTSJAXTrainer:
     # Checkpoint save / load
     # ------------------------------------------------------------------
 
-    def save_checkpoint(self, path: str) -> None:
+    def save_checkpoint(
+        self,
+        path: str,
+        checkpoint_metadata: Optional[dict] = None,
+    ) -> None:
         """Save model params, optimizer state, and config to a pickle file.
 
         Args:
             path: File path (e.g. 'results/.../checkpoint_00050.pkl').
+            checkpoint_metadata: Optional run metadata to store with the checkpoint.
         """
         state_dict = {
             "params": self.train_state.params,
@@ -1045,6 +1160,7 @@ class PPOMCTSJAXTrainer:
             "backoff_patience_counter": self.backoff_patience_counter,
             "skipped_minibatch_updates_total": self.skipped_minibatch_updates_total,
             "skipped_outer_iterations": self.skipped_outer_iterations,
+            "checkpoint_metadata": dict(checkpoint_metadata or {}),
             "algorithm": "ppo-mcts-jax",
         }
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -1109,13 +1225,23 @@ class PPOMCTSJAXTrainer:
         checkpoint_interval = 50
         history = {
             "pg_loss": [], "vf_loss": [], "entropy": [],
+            "weighted_vf_loss": [], "pg_to_weighted_vf_ratio": [],
             "success_rate": [], "avg_reward": [], "complexity": [],
             "on_path_phi": [], "on_path_hits": [], "episode_length": [],
             "dwell_iterations_at_level": [], "window_success_rate": [],
             "max_abs_logit": [], "max_log_ratio": [], "max_return": [],
             "max_abs_advantage": [], "grad_global_norm": [],
             "approx_kl": [], "kl_early_stop_count": [],
+            "kl_rejected_updates": [], "kl_rejection_rate": [],
             "skipped_minibatch_updates": [], "skipped_outer_iterations": [],
+            "success_count": [], "failure_with_hit_count": [],
+            "failure_no_hit_count": [], "p_solve_given_hit": [],
+            "avg_return_success": [], "avg_return_failure_with_hit": [],
+            "avg_return_failure_no_hit": [], "avg_phi_success": [],
+            "avg_phi_failure_with_hit": [],
+            "avg_episode_length_success": [],
+            "avg_episode_length_failure_with_hit": [],
+            "avg_episode_length_failure_no_hit": [],
         }
         # Per-complexity history when using fixed_complexities.
         if self.fixed_complexities:
@@ -1138,6 +1264,11 @@ class PPOMCTSJAXTrainer:
             unit="iter",
             disable=self.config.disable_progress_bar,
         )
+        best_trailing_success_mean = -math.inf
+        best_metric_key = "success_rate"
+        if self.fixed_complexities and len(self.fixed_complexities) == 1:
+            best_metric_key = f"success_rate_C{self.fixed_complexities[0]}"
+
         for iteration in pbar:
             iter_start = time.time()
 
@@ -1180,6 +1311,10 @@ class PPOMCTSJAXTrainer:
             history["pg_loss"].append(loss_info["pg_loss"])
             history["vf_loss"].append(loss_info["vf_loss"])
             history["entropy"].append(loss_info["entropy"])
+            history["weighted_vf_loss"].append(loss_info["weighted_vf_loss"])
+            history["pg_to_weighted_vf_ratio"].append(
+                loss_info["pg_to_weighted_vf_ratio"]
+            )
             history["success_rate"].append(rollout_info["success_rate"])
             history["avg_reward"].append(rollout_info["avg_reward"])
             history["complexity"].append(rollout_info["complexity"])
@@ -1199,10 +1334,29 @@ class PPOMCTSJAXTrainer:
             history["kl_early_stop_count"].append(
                 loss_info["kl_early_stop_count"]
             )
+            history["kl_rejected_updates"].append(
+                loss_info["kl_rejected_updates"]
+            )
+            history["kl_rejection_rate"].append(loss_info["kl_rejection_rate"])
             history["skipped_minibatch_updates"].append(
                 loss_info["skipped_minibatch_updates"]
             )
             history["skipped_outer_iterations"].append(self.skipped_outer_iterations)
+            for key in (
+                "success_count",
+                "failure_with_hit_count",
+                "failure_no_hit_count",
+                "p_solve_given_hit",
+                "avg_return_success",
+                "avg_return_failure_with_hit",
+                "avg_return_failure_no_hit",
+                "avg_phi_success",
+                "avg_phi_failure_with_hit",
+                "avg_episode_length_success",
+                "avg_episode_length_failure_with_hit",
+                "avg_episode_length_failure_no_hit",
+            ):
+                history[key].append(rollout_info[key])
 
             if self.fixed_complexities:
                 for c in self.fixed_complexities:
@@ -1213,6 +1367,38 @@ class PPOMCTSJAXTrainer:
                         rollout_info.get(f"avg_reward_C{c}", 0.0)
                     )
 
+            if (
+                iteration > 50
+                and rollout_info["success_count"] > 0
+                and rollout_info["avg_phi_success"] < 0.95
+            ):
+                log_line(
+                    "  WARNING: avg_phi_success below 0.95 "
+                    f"({rollout_info['avg_phi_success']:.3f}); "
+                    "check OnPath hit accounting"
+                )
+
+            if len(history[best_metric_key]) >= 10:
+                trailing_success_mean = self._trailing_mean(
+                    history[best_metric_key], 10
+                )
+                if (
+                    trailing_success_mean is not None
+                    and trailing_success_mean > best_trailing_success_mean
+                ):
+                    best_trailing_success_mean = trailing_success_mean
+                    best_ckpt_path = os.path.join(results_dir, "checkpoint_best.pkl")
+                    self.save_checkpoint(
+                        best_ckpt_path,
+                        checkpoint_metadata={
+                            "kind": "best_trailing_success",
+                            "metric_key": best_metric_key,
+                            "trailing_window": 10,
+                            "best_score": best_trailing_success_mean,
+                            "iteration": iteration,
+                        },
+                    )
+
             if self.config.wandb_enabled:
                 import wandb
                 log_dict = {
@@ -1220,6 +1406,10 @@ class PPOMCTSJAXTrainer:
                     "pg_loss": loss_info["pg_loss"],
                     "vf_loss": loss_info["vf_loss"],
                     "entropy": loss_info["entropy"],
+                    "weighted_vf_loss": loss_info["weighted_vf_loss"],
+                    "pg_to_weighted_vf_ratio": (
+                        loss_info["pg_to_weighted_vf_ratio"]
+                    ),
                     "success_rate": rollout_info["success_rate"],
                     "avg_reward": rollout_info["avg_reward"],
                     "episodes": rollout_info["episodes"],
@@ -1241,10 +1431,39 @@ class PPOMCTSJAXTrainer:
                     "grad_global_norm": loss_info["grad_global_norm"],
                     "approx_kl": loss_info["approx_kl"],
                     "kl_early_stop_count": loss_info["kl_early_stop_count"],
+                    "kl_rejected_updates": loss_info["kl_rejected_updates"],
+                    "kl_rejection_rate": loss_info["kl_rejection_rate"],
                     "skipped_minibatch_updates": (
                         loss_info["skipped_minibatch_updates"]
                     ),
                     "skipped_outer_iterations": self.skipped_outer_iterations,
+                    "train/by_outcome/success_count": (
+                        rollout_info["success_count"]
+                    ),
+                    "train/by_outcome/failure_with_hit_count": (
+                        rollout_info["failure_with_hit_count"]
+                    ),
+                    "train/by_outcome/failure_no_hit_count": (
+                        rollout_info["failure_no_hit_count"]
+                    ),
+                    "train/by_outcome/P_solve_given_hit": (
+                        rollout_info["p_solve_given_hit"]
+                    ),
+                    "train/by_outcome/avg_return_success": (
+                        rollout_info["avg_return_success"]
+                    ),
+                    "train/by_outcome/avg_return_failure_with_hit": (
+                        rollout_info["avg_return_failure_with_hit"]
+                    ),
+                    "train/by_outcome/avg_return_failure_no_hit": (
+                        rollout_info["avg_return_failure_no_hit"]
+                    ),
+                    "train/by_outcome/avg_phi_success": (
+                        rollout_info["avg_phi_success"]
+                    ),
+                    "train/by_outcome/avg_phi_failure_with_hit": (
+                        rollout_info["avg_phi_failure_with_hit"]
+                    ),
                 }
                 if self.fixed_complexities:
                     for c in self.fixed_complexities:
@@ -1274,13 +1493,21 @@ class PPOMCTSJAXTrainer:
                     f"reward={rollout_info['avg_reward']:.3f} "
                     f"pg_loss={loss_info['pg_loss']:.4f} "
                     f"vf_loss={loss_info['vf_loss']:.4f} "
+                    f"wvf={loss_info['weighted_vf_loss']:.4f} "
+                    f"pg/wvf={loss_info['pg_to_weighted_vf_ratio']:.4f} "
                     f"entropy={loss_info['entropy']:.4f} "
                     f"max_log_ratio={loss_info['max_log_ratio']:.2f} "
                     f"approx_kl={loss_info['approx_kl']:.4f} "
                     f"grad_norm={loss_info['grad_global_norm']:.3f} "
                     f"kl_stop={loss_info['kl_early_stop_count']} "
+                    f"kl_rej={loss_info['kl_rejected_updates']} "
+                    f"kl_rej_rate={loss_info['kl_rejection_rate']:.1%} "
                     f"skip_mb={loss_info['skipped_minibatch_updates']} "
                     f"skip_outer={self.skipped_outer_iterations} "
+                    f"P(solve|hit)={rollout_info['p_solve_given_hit']:.1%} "
+                    f"R_succ={rollout_info['avg_return_success']:+.1f} "
+                    f"R_fail_hit={rollout_info['avg_return_failure_with_hit']:+.1f} "
+                    f"R_fail={rollout_info['avg_return_failure_no_hit']:+.1f} "
                     f"({iter_time:.1f}s/iter)"
                 )
                 if self.fixed_complexities:

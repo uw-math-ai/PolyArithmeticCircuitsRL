@@ -66,6 +66,10 @@ def initial_state(env_config):
     return reset(env_config, target)
 
 
+def test_config_default_vf_coef_is_stabilized():
+    assert Config().vf_coef == pytest.approx(0.1)
+
+
 # ---------------------------------------------------------------------------
 # jax_env: action encoding / decoding
 # ---------------------------------------------------------------------------
@@ -1008,10 +1012,49 @@ class TestMCTXIntegration:
         advantages = np.array([1.0, -1.0, 0.5, -0.5], dtype=np.float32)
         returns = np.array([1.0, 0.0, 0.5, -0.5], dtype=np.float32)
 
+        old_params = trainer.train_state.params
         info = trainer.update(transitions, advantages, returns)
 
         assert info["approx_kl"] > cfg.target_kl
         assert info["kl_early_stop_count"] == 1
-        assert info["applied_minibatch_updates"] < cfg.ppo_epochs * 2
+        assert info["kl_rejected_updates"] == 1
+        assert info["kl_rejection_rate"] == 1.0
+        assert info["applied_minibatch_updates"] == 0
         assert info["skipped_minibatch_updates"] == 0
         assert info["skipped_outer_iteration"] == 0
+        assert "weighted_vf_loss" in info
+        assert "pg_to_weighted_vf_ratio" in info
+        old_flat = jax.tree.leaves(old_params)
+        new_flat = jax.tree.leaves(trainer.train_state.params)
+        assert all(jnp.allclose(o, n) for o, n in zip(old_flat, new_flat))
+
+    def test_outcome_bucket_metrics(self):
+        from src.algorithms.ppo_mcts_jax import PPOMCTSJAXTrainer
+
+        metrics = PPOMCTSJAXTrainer._outcome_bucket_metrics(
+            episode_rewards=np.array([10.0, 1.0, -0.5, 8.0], dtype=np.float32),
+            episode_successes=np.array([True, False, False, True]),
+            episode_on_path_hit=np.array([True, True, False, True]),
+            episode_phi=np.array([1.0, 0.5, 0.0, 1.0], dtype=np.float32),
+            episode_lengths=np.array([2, 2, 2, 1], dtype=np.int32),
+        )
+
+        assert metrics["success_count"] == 2
+        assert metrics["failure_with_hit_count"] == 1
+        assert metrics["failure_no_hit_count"] == 1
+        assert metrics["p_solve_given_hit"] == pytest.approx(2 / 3)
+        assert metrics["avg_return_success"] == pytest.approx(9.0)
+        assert metrics["avg_return_failure_with_hit"] == pytest.approx(1.0)
+        assert metrics["avg_return_failure_no_hit"] == pytest.approx(-0.5)
+        assert metrics["avg_phi_success"] == pytest.approx(1.0)
+        assert metrics["avg_phi_failure_with_hit"] == pytest.approx(0.5)
+
+    def test_best_checkpoint_trailing_mean_uses_last_10_values(self):
+        from src.algorithms.ppo_mcts_jax import PPOMCTSJAXTrainer
+
+        values = [0.0, 1.0] + [0.2] * 9 + [0.8]
+
+        assert PPOMCTSJAXTrainer._trailing_mean(values[:9], 10) is None
+        assert PPOMCTSJAXTrainer._trailing_mean(values, 10) == pytest.approx(
+            (sum([0.2] * 9) + 0.8) / 10
+        )

@@ -84,7 +84,7 @@ class Config:
     gamma: float = 0.99
     gae_lambda: float = 0.95
     ent_coef: float = 0.01
-    vf_coef: float = 0.5
+    vf_coef: float = 0.1
     batch_size: int = 256
     steps_per_update: int = 4096
     max_grad_norm: float = 0.5

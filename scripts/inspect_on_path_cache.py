@@ -68,6 +68,10 @@ def inspect(cache_dir: Path, complexity: int, limit: int) -> None:
     print(f"Targets: {len(comp.target_ids)}")
     print(f"Metadata route_cap_hit_rate: {comp.metadata.get('route_cap_hit_rate', 0.0):.2%}")
     print(
+        "Metadata route_working_cap_hit_node_rate: "
+        f"{comp.metadata.get('route_working_cap_hit_node_rate', 0.0):.2%}"
+    )
+    print(
         "OnPath sizes min/median/max: "
         f"{int(lengths.min())}/{float(np.median(lengths)):.1f}/{int(lengths.max())}"
     )

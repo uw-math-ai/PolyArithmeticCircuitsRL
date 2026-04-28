@@ -38,8 +38,9 @@ PPO_LR=${PPO_LR:-1e-4}
 MAX_GRAD_NORM=${MAX_GRAD_NORM:-0.25}
 PPO_LOG_RATIO_CLIP=${PPO_LOG_RATIO_CLIP:-10.0}
 PPO_EPOCHS=${PPO_EPOCHS:-2}
-TARGET_KL=${TARGET_KL:-0.03}
-ENT_COEF=${ENT_COEF:-0.05}
+TARGET_KL=${TARGET_KL:-0.05}
+ENT_COEF=${ENT_COEF:-0.15}
+VF_COEF=${VF_COEF:-0.1}
 LOG_INTERVAL=${LOG_INTERVAL:-10}
 PROGRESS_BAR=${PROGRESS_BAR:-0}
 
@@ -84,6 +85,7 @@ echo "  ppo_log_ratio_clip: $PPO_LOG_RATIO_CLIP"
 echo "  ppo_epochs: $PPO_EPOCHS"
 echo "  target_kl: $TARGET_KL"
 echo "  ent_coef: $ENT_COEF"
+echo "  vf_coef: $VF_COEF"
 echo "  on_path_phi_mode: $ON_PATH_PHI_MODE"
 echo "  on_path_depth_weight_power: $ON_PATH_DEPTH_WEIGHT_POWER"
 echo "  on_path_route_consistency_mode: $ON_PATH_ROUTE_CONSISTENCY_MODE"
@@ -141,6 +143,7 @@ apptainer exec --nv --bind /gscratch:/gscratch \
     --ppo-log-ratio-clip "$PPO_LOG_RATIO_CLIP" \
     --target-kl "$TARGET_KL" \
     --ent-coef "$ENT_COEF" \
+    --vf-coef "$VF_COEF" \
     --log-interval "$LOG_INTERVAL" \
     --reward-mode clean_onpath \
     --graph-onpath-cache-dir "$CACHE_DIR" \
