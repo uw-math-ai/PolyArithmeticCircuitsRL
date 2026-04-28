@@ -154,6 +154,13 @@ def main() -> None:
         help="Reward mode for ablations.",
     )
     parser.add_argument("--terminal-success-reward", type=float, default=None)
+    parser.add_argument(
+        "--reward-scale",
+        type=float,
+        default=None,
+        help="Multiplicative scale on env step reward. Bring return distributions "
+             "into a value-head-fittable range (e.g. 0.2 for clean_onpath).",
+    )
     parser.add_argument("--graph-onpath-cache-dir", type=str, default=None)
     parser.add_argument("--graph-onpath-shaping-coeff", type=float, default=None)
     parser.add_argument(
@@ -263,6 +270,8 @@ def main() -> None:
         config.reward_mode = args.reward_mode
     if args.terminal_success_reward is not None:
         config.terminal_success_reward = args.terminal_success_reward
+    if args.reward_scale is not None:
+        config.reward_scale = args.reward_scale
     if args.graph_onpath_cache_dir is not None:
         config.graph_onpath_cache_dir = args.graph_onpath_cache_dir
     if args.graph_onpath_shaping_coeff is not None:

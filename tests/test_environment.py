@@ -473,6 +473,25 @@ class TestRewardModes:
         _, clean_reward, _, _ = clean_env.step(action)
         assert [clean_reward] == pytest.approx([6.9])
 
+    def test_reward_scale_multiplies_step_reward_uniformly(self):
+        target = self.x0 + self.x1
+        action = encode_action(0, 0, 1, self.config.max_nodes)
+
+        self.config.reward_mode = "legacy"
+        self.config.reward_scale = 1.0
+        env_unscaled = CircuitGame(self.config)
+        env_unscaled.reset(target)
+        _, reward_unscaled, _, _ = env_unscaled.step(action)
+
+        self.config.reward_scale = 0.2
+        env_scaled = CircuitGame(self.config)
+        env_scaled.reset(target)
+        _, reward_scaled, _, _ = env_scaled.step(action)
+
+        assert reward_scaled == pytest.approx(reward_unscaled * 0.2)
+        # Reset side effects: restore so other tests aren't affected.
+        self.config.reward_scale = 1.0
+
     def test_clean_onpath_count_phi_and_duplicate_hits(self):
         self.config.reward_mode = "clean_onpath"
         self.config.on_path_phi_mode = "count"

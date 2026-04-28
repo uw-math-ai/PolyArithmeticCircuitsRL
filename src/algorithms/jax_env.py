@@ -104,6 +104,7 @@ class EnvConfig(NamedTuple):
     success_reward: float
     terminal_success_reward: float
     step_penalty: float
+    reward_scale: float
     gamma: float
     reward_mode: str
     use_reward_shaping: bool
@@ -158,6 +159,7 @@ def make_env_config(config) -> EnvConfig:
         success_reward=config.success_reward,
         terminal_success_reward=config.terminal_success_reward,
         step_penalty=config.step_penalty,
+        reward_scale=float(getattr(config, "reward_scale", 1.0)),
         gamma=config.gamma,
         reward_mode=config.reward_mode,
         use_reward_shaping=config.use_reward_shaping,
@@ -1104,6 +1106,7 @@ def step(env_config: EnvConfig, state: EnvState,
         done=done,
         is_success=is_success,
     )
+    reward = reward * jnp.float32(env_config.reward_scale)
     return (
         next_state,
         reward.astype(jnp.float32),
