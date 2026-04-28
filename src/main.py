@@ -124,6 +124,24 @@ def main():
                         help="Number of policy/value epochs per rollout")
     parser.add_argument("--mcts-simulations", type=int, default=None,
                         help="Number of MCTS simulations per action (default: 100)")
+    parser.add_argument("--search", choices=["puct", "gumbel"], default=None,
+                        help="Search backend for ppo-mcts / alphazero (default: puct)")
+    parser.add_argument("--gumbel-num-simulations", type=int, default=None,
+                        help="Number of Gumbel root search simulations (default: 32)")
+    parser.add_argument("--gumbel-max-num-considered-actions", type=int, default=None,
+                        help="Maximum number of root actions retained after Gumbel-Top-k (default: 16)")
+    parser.add_argument("--gumbel-scale", type=float, default=None,
+                        help="Scale applied to sampled Gumbel root noise (default: 1.0)")
+    parser.add_argument("--gumbel-c-visit", type=float, default=None,
+                        help="Completed-Q visit scaling constant for Gumbel search (default: 50.0)")
+    parser.add_argument("--gumbel-c-scale", type=float, default=None,
+                        help="Completed-Q scale multiplier for Gumbel search (default: 0.1)")
+    parser.add_argument("--gumbel-distill-coef", type=float, default=None,
+                        help="Auxiliary distillation loss weight for PPO+MCTS Gumbel training (default: 0.5)")
+    parser.add_argument("--no-gumbel-q-normalize", action="store_true",
+                        help="Disable min-max normalization before the Gumbel completed-Q transform")
+    parser.add_argument("--gumbel-root-only", action="store_true",
+                        help="Use the root-only hand-written Gumbel search implementation")
     parser.add_argument("--steps-per-update", type=int, default=None,
                         help="Environment steps collected per PPO update (default: 2048)")
     parser.add_argument("--mcts-batch-size", type=int, default=256,
@@ -202,6 +220,24 @@ def main():
         config.ppo_epochs = args.ppo_epochs
     if args.mcts_simulations is not None:
         config.mcts_simulations = args.mcts_simulations
+    if args.search is not None:
+        config.search = args.search
+    if args.gumbel_num_simulations is not None:
+        config.gumbel_num_simulations = args.gumbel_num_simulations
+    if args.gumbel_max_num_considered_actions is not None:
+        config.gumbel_max_num_considered_actions = args.gumbel_max_num_considered_actions
+    if args.gumbel_scale is not None:
+        config.gumbel_scale = args.gumbel_scale
+    if args.gumbel_c_visit is not None:
+        config.gumbel_c_visit = args.gumbel_c_visit
+    if args.gumbel_c_scale is not None:
+        config.gumbel_c_scale = args.gumbel_c_scale
+    if args.gumbel_distill_coef is not None:
+        config.gumbel_distill_coef = args.gumbel_distill_coef
+    if args.no_gumbel_q_normalize:
+        config.gumbel_q_normalize = False
+    if args.gumbel_root_only:
+        config.gumbel_root_only = True
     if args.steps_per_update is not None:
         config.steps_per_update = args.steps_per_update
     if args.no_factor_library:

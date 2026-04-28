@@ -24,7 +24,7 @@ def evaluate_model(
     Args:
         model: trained model (PolicyValueNet or SAC actor)
         config: configuration
-        algorithm: "ppo"/"sac" (greedy policy) or "alphazero" (MCTS)
+        algorithm: "ppo"/"sac" (greedy policy) or a search-based algorithm
         complexities: list of complexity levels to test
         num_trials: number of trials per complexity
         device: torch device
@@ -40,7 +40,7 @@ def evaluate_model(
     env = CircuitGame(config)
 
     mcts = None
-    if algorithm == "alphazero":
+    if algorithm in {"alphazero", "ppo-mcts"} and config.search in {"puct", "gumbel"}:
         mcts = MCTS(model, config, device)
 
     results = {}
@@ -56,7 +56,7 @@ def evaluate_model(
             success = False
 
             while not env.done:
-                if algorithm == "alphazero" and mcts is not None:
+                if algorithm in {"alphazero", "ppo-mcts"} and mcts is not None:
                     action, _ = mcts.get_action_probs(env, temperature=0)
                 else:
                     # Greedy policy evaluation (PPO/SAC).

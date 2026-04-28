@@ -1,0 +1,7 @@
+[scheduler] root_dir=/home/ec2-user/PPO-MCTS/PolyArithmeticCircuitsRL
+[scheduler] waiting for PID 2859913 to exit before starting JAX Gumbel
+[scheduler] PID 2859913 exited; waiting 30s for files/GPU state to settle
+[scheduler] selected checkpoint: results/ppo-mcts-jax_fl_C5_C8_blackwell_resume850_policyfix_extend3000/checkpoint_03000.pkl
+[scheduler] results_dir: results/ppo-mcts-jax_fl_C5_C8_gumbel_from_latest_20260428_083051
+[scheduler] run_name: ppo-mcts-jax_fl_C5_C8_gumbel_from_latest_20260428_083051
+[scheduler] log: results/ppo-mcts-jax_fl_C5_C8_gumbel_from_latest_20260428_083051/run.log

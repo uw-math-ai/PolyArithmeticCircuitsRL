@@ -48,26 +48,28 @@ from .mcts import MCTS
 
 @dataclass
 class MCTSRolloutStep:
-    """Single (s, a, r, log π_θ, log π_MCTS, V, done) transition from MCTS rollout.
+    """Single MCTS-guided transition used for PPO updates.
 
     Attributes:
         obs: Observation dict at time t (graph, target, mask).
         action: Integer action index selected by MCTS.
         reward: Scalar reward received after taking the action.
-        mcts_log_prob: Log probability of the action under the MCTS visit
-                       distribution (kept for diagnostics / optional imitation).
+        behavior_log_prob: Log probability of the action under the search policy
+                           used to pick it (PUCT visit counts or Gumbel target).
         network_log_prob: Log probability of the action under the network's own
                           policy π_θ at collection time.  Used as old_log_prob
                           in the PPO importance ratio so that the ratio reflects
                           actual parameter changes between collection and update.
+        search_policy: Full improved search policy target over the action space.
         value: Baseline value estimate V(s_t) from the network's value head.
         done: True if the episode ended at this step.
     """
     obs: dict
     action: int
     reward: float
-    mcts_log_prob: float
+    behavior_log_prob: float
     network_log_prob: float
+    search_policy: np.ndarray
     value: float
     done: bool
 
@@ -88,8 +90,9 @@ class MCTSRolloutBuffer:
         obs: dict,
         action: int,
         reward: float,
-        mcts_log_prob: float,
+        behavior_log_prob: float,
         network_log_prob: float,
+        search_policy: np.ndarray,
         value: float,
         done: bool,
     ) -> None:
@@ -99,13 +102,15 @@ class MCTSRolloutBuffer:
             obs: Observation dict from the environment.
             action: Action selected by MCTS.
             reward: Immediate scalar reward.
-            mcts_log_prob: Log prob of action under MCTS visit distribution.
+            behavior_log_prob: Log prob of action under the search policy.
             network_log_prob: Log prob of action under the network's own policy.
+            search_policy: Improved search policy over all actions.
             value: Value estimate V(s) from the network.
             done: Whether the episode ended.
         """
         self.steps.append(MCTSRolloutStep(
-            obs, action, reward, mcts_log_prob, network_log_prob, value, done,
+            obs, action, reward, behavior_log_prob, network_log_prob,
+            search_policy, value, done,
         ))
 
     def clear(self) -> None:
@@ -234,10 +239,10 @@ class PPOMCTSTrainer:
     def collect_rollouts(self):
         """Collect trajectory data using MCTS for action selection.
 
-        At each step the MCTS engine runs a full search from the current game
-        state, producing a visit-count distribution π_MCTS.  An action is
-        sampled from this distribution (with temperature), and the log
-        probability under π_MCTS is recorded as the behaviour-policy log prob.
+        At each step the search engine runs from the current game state,
+        producing either a PUCT visit-count distribution or a Gumbel completed-Q
+        policy target. The chosen action's log probability under that search
+        policy is recorded as the behaviour-policy log prob.
 
         The network's value head provides V(s) for GAE computation.
 
@@ -253,6 +258,11 @@ class PPOMCTSTrainer:
         total_rewards = 0.0
         factor_hits = 0
         library_hits = 0
+        gumbel_policy_entropies = []
+        gumbel_considered_actions = []
+        gumbel_selected_visits = []
+        gumbel_max_root_q = []
+        gumbel_min_root_q = []
 
         self.model.eval()
 
@@ -270,14 +280,12 @@ class PPOMCTSTrainer:
 
                 # MCTS search → visit-count action distribution.
                 temp = self._get_temperature(step)
-                action, mcts_probs = self.mcts.get_action_probs(
+                action, search_probs = self.mcts.get_action_probs(
                     self.env, temperature=temp
                 )
 
-                # Log prob of chosen action under MCTS behaviour policy
-                # (kept for diagnostics).
-                mcts_prob = mcts_probs[action]
-                mcts_log_prob = float(np.log(max(mcts_prob, 1e-8)))
+                behavior_prob = search_probs[action]
+                behavior_log_prob = float(np.log(max(behavior_prob, 1e-8)))
 
                 # Log prob under the network's own policy π_θ — this is the
                 # "old" log prob for the PPO importance ratio so that
@@ -293,11 +301,24 @@ class PPOMCTSTrainer:
                     obs=obs,
                     action=action,
                     reward=reward,
-                    mcts_log_prob=mcts_log_prob,
+                    behavior_log_prob=behavior_log_prob,
                     network_log_prob=network_lp,
+                    search_policy=np.asarray(search_probs, dtype=np.float32),
                     value=value.item(),
                     done=done,
                 )
+
+                if self.config.search == "gumbel" and self.mcts.last_search_output is not None:
+                    search_output = self.mcts.last_search_output
+                    valid_mask = np.asarray(obs["mask"].cpu().numpy(), dtype=bool)
+                    valid_policy = search_output.action_weights[valid_mask]
+                    valid_root_q = search_output.root_q[valid_mask]
+                    entropy = -np.sum(valid_policy * np.log(np.clip(valid_policy, 1e-8, 1.0)))
+                    gumbel_policy_entropies.append(float(entropy))
+                    gumbel_considered_actions.append(int(len(search_output.considered_actions)))
+                    gumbel_selected_visits.append(int(search_output.root_visits[action]))
+                    gumbel_max_root_q.append(float(np.max(valid_root_q)))
+                    gumbel_min_root_q.append(float(np.min(valid_root_q)))
 
                 episode_reward += reward
                 obs = next_obs
@@ -327,7 +348,16 @@ class PPOMCTSTrainer:
             "factor_hits": factor_hits,
             "library_hits": library_hits,
             "library_size": len(self.factor_library) if self.factor_library else 0,
+            "search_type": self.config.search,
         }
+        if self.config.search == "gumbel":
+            rollout_info.update({
+                "gumbel_root_policy_entropy": float(np.mean(gumbel_policy_entropies)) if gumbel_policy_entropies else 0.0,
+                "gumbel_considered_actions": float(np.mean(gumbel_considered_actions)) if gumbel_considered_actions else 0.0,
+                "gumbel_selected_action_visit_count": float(np.mean(gumbel_selected_visits)) if gumbel_selected_visits else 0.0,
+                "gumbel_max_root_q": float(np.mean(gumbel_max_root_q)) if gumbel_max_root_q else 0.0,
+                "gumbel_min_root_q": float(np.mean(gumbel_min_root_q)) if gumbel_min_root_q else 0.0,
+            })
         return buffer, rollout_info
 
     def compute_gae(self, buffer: MCTSRolloutBuffer):
@@ -407,6 +437,11 @@ class PPOMCTSTrainer:
         old_log_probs = torch.tensor(
             [s.network_log_prob for s in steps], dtype=torch.float32, device=self.device
         )
+        search_policies = torch.tensor(
+            np.stack([s.search_policy for s in steps]),
+            dtype=torch.float32,
+            device=self.device,
+        )
         actions = torch.tensor(
             [s.action for s in steps], dtype=torch.long, device=self.device
         )
@@ -414,6 +449,7 @@ class PPOMCTSTrainer:
         total_pg_loss = 0.0
         total_vf_loss = 0.0
         total_entropy = 0.0
+        total_distill_loss = 0.0
         num_updates = 0
 
         for epoch in range(self.config.ppo_epochs):
@@ -437,13 +473,14 @@ class PPOMCTSTrainer:
                 batch_adv = adv_tensor[batch_idx]
                 batch_ret = ret_tensor[batch_idx]
                 batch_old_lp = old_log_probs[batch_idx]
+                batch_search_policy = search_policies[batch_idx]
 
                 # New log probs under the current network policy π_θ.
                 dist = torch.distributions.Categorical(logits=batch_logits)
                 new_log_probs = dist.log_prob(batch_actions)
                 entropy = dist.entropy().mean()
 
-                # Importance ratio: π_θ(a|s) / π_MCTS(a|s).
+                # Importance ratio: π_θ_new(a|s) / π_θ_old(a|s).
                 ratio = torch.exp(new_log_probs - batch_old_lp)
                 surr1 = ratio * batch_adv
                 surr2 = (
@@ -454,10 +491,22 @@ class PPOMCTSTrainer:
 
                 vf_loss = nn.functional.mse_loss(batch_values, batch_ret)
 
+                if self.config.search == "gumbel":
+                    log_probs = torch.log_softmax(batch_logits, dim=-1)
+                    distill_terms = torch.where(
+                        batch_search_policy > 0,
+                        batch_search_policy * log_probs,
+                        torch.zeros_like(log_probs),
+                    )
+                    distill_loss = -distill_terms.sum(dim=-1).mean()
+                else:
+                    distill_loss = batch_logits.new_tensor(0.0)
+
                 loss = (
                     pg_loss
                     + self.config.vf_coef * vf_loss
                     - self.config.ent_coef * entropy
+                    + self.config.gumbel_distill_coef * distill_loss
                 )
 
                 self.optimizer.zero_grad()
@@ -470,12 +519,14 @@ class PPOMCTSTrainer:
                 total_pg_loss += pg_loss.item()
                 total_vf_loss += vf_loss.item()
                 total_entropy += entropy.item()
+                total_distill_loss += distill_loss.item()
                 num_updates += 1
 
         return {
             "pg_loss": total_pg_loss / max(num_updates, 1),
             "vf_loss": total_vf_loss / max(num_updates, 1),
             "entropy": total_entropy / max(num_updates, 1),
+            "distill_loss": total_distill_loss / max(num_updates, 1),
         }
 
     def _maybe_advance_curriculum(self) -> None:
@@ -565,7 +616,17 @@ class PPOMCTSTrainer:
                     "factor_hits": rollout_info["factor_hits"],
                     "library_hits": rollout_info["library_hits"],
                     "library_size": rollout_info["library_size"],
+                    "search/is_gumbel": float(self.config.search == "gumbel"),
+                    "gumbel/distill_loss": loss_info["distill_loss"],
                 }, step=iteration)
+                if self.config.search == "gumbel":
+                    wandb.log({
+                        "gumbel/root_policy_entropy": rollout_info["gumbel_root_policy_entropy"],
+                        "gumbel/considered_actions": rollout_info["gumbel_considered_actions"],
+                        "gumbel/selected_action_visit_count": rollout_info["gumbel_selected_action_visit_count"],
+                        "gumbel/max_root_q": rollout_info["gumbel_max_root_q"],
+                        "gumbel/min_root_q": rollout_info["gumbel_min_root_q"],
+                    }, step=iteration)
 
             if iteration % self.config.log_interval == 0:
                 lib_str = (
@@ -585,6 +646,15 @@ class PPOMCTSTrainer:
                     f"vf_loss={loss_info['vf_loss']:.4f} "
                     f"entropy={loss_info['entropy']:.4f}"
                 )
+                if self.config.search == "gumbel":
+                    self._log(
+                        f"[Gumbel iter {iteration}] "
+                        f"entropy={rollout_info['gumbel_root_policy_entropy']:.4f} "
+                        f"considered={rollout_info['gumbel_considered_actions']:.2f} "
+                        f"selected_visits={rollout_info['gumbel_selected_action_visit_count']:.2f} "
+                        f"q_range=({rollout_info['gumbel_min_root_q']:.4f}, {rollout_info['gumbel_max_root_q']:.4f}) "
+                        f"distill_loss={loss_info['distill_loss']:.4f}"
+                    )
 
         return history
 

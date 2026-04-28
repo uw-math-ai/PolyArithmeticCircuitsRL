@@ -113,8 +113,20 @@ class Config:
     sac_curriculum_window: int = 50
 
     # AlphaZero / MCTS
+    search: str = "puct"  # choices: "puct", "gumbel"
     mcts_simulations: int = 100
     mcts_c_puct: float = 1.4
+    gumbel_num_simulations: int = 32
+    gumbel_max_num_considered_actions: int = 16
+    gumbel_scale: float = 1.0
+    gumbel_c_visit: float = 50.0
+    gumbel_c_scale: float = 0.1
+    gumbel_use_completed_q: bool = True
+    gumbel_use_mixed_value: bool = True
+    gumbel_q_normalize: bool = True
+    gumbel_root_only: bool = True
+    gumbel_policy_target: str = "completed_q"  # choices: "completed_q", "visits"
+    gumbel_distill_coef: float = 0.5
     az_lr: float = 1e-3
     az_games_per_iter: int = 200
     az_training_epochs: int = 10

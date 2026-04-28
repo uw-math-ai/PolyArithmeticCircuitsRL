@@ -62,9 +62,10 @@ src/
 │   └── policy_value_net.py       # Shared policy-value network (GNN + target encoder)
 ├── algorithms/
 │   ├── ppo.py                    # PPO training loop with GAE
+│   ├── gumbel_mcts.py            # Root-only Gumbel AlphaZero / Sequential Halving search
 │   ├── ppo_mcts.py               # PPO+MCTS hybrid (Expert Iteration with PPO updates)
 │   ├── sac.py                    # Discrete SAC with masked actions + stratified replay
-│   ├── mcts.py                   # Neural MCTS (AlphaZero-style, no random rollouts)
+│   ├── mcts.py                   # Search dispatcher: PUCT MCTS or root-only Gumbel search
 │   └── alphazero.py              # AlphaZero self-play + training
 ├── evaluation/
 │   └── evaluate.py               # Evaluation harness across complexity levels
@@ -484,17 +485,19 @@ for each iteration:
 
 A hybrid algorithm that combines MCTS-guided action selection with PPO policy updates, implementing an *Expert Iteration* loop (Anthony et al., 2017). At each step the MCTS "expert" searches for high-quality actions using the current network as a prior; the network is then trained via PPO to approximate the MCTS-improved policy. As the network improves, MCTS searches become more effective, creating a virtuous cycle.
 
+The search backend is configurable with `--search puct` (default) or `--search gumbel`. The Gumbel mode uses a root-only Gumbel AlphaZero variant: root actions are sampled with Gumbel-Top-k, compared with Sequential Halving, and turned into a completed-Q policy target for PPO distillation.
+
 #### Key Difference from Standard PPO
 
 In standard PPO the behavior policy is the network itself — the importance sampling ratio is:
 
 $$r(\theta) = \frac{\pi_\theta(a|s)}{\pi_{\theta_{\text{old}}}(a|s)}$$
 
-In PPO+MCTS the behavior policy is the MCTS visit-count distribution $\pi_{\text{MCTS}}$, so the ratio becomes:
+In this implementation the behavior policy still comes from search, but the PPO importance ratio remains anchored on the network policy recorded at data-collection time:
 
-$$r(\theta) = \frac{\pi_\theta(a|s)}{\pi_{\text{MCTS}}(a|s)}$$
+$$r(\theta) = \frac{\pi_{\theta,\text{new}}(a|s)}{\pi_{\theta,\text{old}}(a|s)}$$
 
-This drives the network toward the search-improved policy while the clipping mechanism prevents overshooting.
+Search still improves the collected actions, and in Gumbel mode the network additionally trains against the root search policy with an auxiliary cross-entropy distillation term.
 
 #### Key Difference from AlphaZero
 
@@ -511,14 +514,15 @@ This makes PPO+MCTS more suitable for environments with dense, shaped rewards (l
 for each iteration:
     1. model.eval(): Collect steps_per_update transitions
        - At each step, run MCTS search (mcts_simulations forward passes)
-       - Sample action from MCTS visit-count distribution (with temperature)
-       - Record log π_MCTS(a|s) as the behavior-policy log prob
+         - Run either PUCT MCTS or root-only Gumbel search
+         - Use the returned search policy as the behavior policy
        - Record V(s) from the network's value head
     2. Compute GAE advantages and returns (same as PPO)
     3. model.train(): For ppo_epochs over mini-batches:
        - Compute new log π_θ(a|s) from the network
-       - Importance ratio: r(θ) = π_θ / π_MCTS
-       - PPO clipped surrogate loss + value loss - entropy bonus
+         - Importance ratio: r(θ) = π_θ,new / π_θ,old
+         - PPO clipped surrogate loss + value loss - entropy bonus
+         - If search=gumbel, add cross-entropy distillation toward the Gumbel search policy
     4. Adjust curriculum complexity
 ```
 
@@ -535,6 +539,8 @@ Tuning levers:
 ### AlphaZero (MCTS + Neural Network)
 
 **Files:** `src/algorithms/mcts.py` and `src/algorithms/alphazero.py`
+
+AlphaZero can also use `--search gumbel` to replace tree PUCT search with the same root-only Gumbel backend. In that mode self-play stores the completed-Q policy target produced at the root instead of raw visit counts.
 
 #### Neural MCTS
 
@@ -684,6 +690,14 @@ python -m src.main --algorithm sac --iterations 100 \
 python -m src.main --algorithm ppo-mcts --iterations 100
 ```
 
+Use Gumbel root search instead of PUCT:
+
+```bash
+python -m src.main --algorithm ppo-mcts --search gumbel --iterations 100 \
+    --gumbel-num-simulations 32 --gumbel-max-num-considered-actions 16 \
+    --gumbel-c-visit 50 --gumbel-c-scale 0.1 --gumbel-distill-coef 0.5
+```
+
 With tuned MCTS parameters for faster CPU training:
 
 ```bash
@@ -695,6 +709,12 @@ python -m src.main --algorithm ppo-mcts --iterations 200 \
 
 ```bash
 python -m src.main --algorithm alphazero --iterations 50
+```
+
+Gumbel AlphaZero-style self-play uses the same `--search gumbel` switch:
+
+```bash
+python -m src.main --algorithm alphazero --search gumbel --iterations 50
 ```
 
 ### Configuration Overrides
@@ -730,6 +750,7 @@ python -m src.main --algorithm sac --iterations 200 \
 python -m src.main --eval-only --checkpoint checkpoint.pt --algorithm ppo
 python -m src.main --eval-only --checkpoint checkpoint.pt --algorithm sac
 python -m src.main --eval-only --checkpoint checkpoint.pt --algorithm alphazero
+python -m src.main --eval-only --checkpoint checkpoint.pt --algorithm ppo-mcts --search gumbel
 ```
 
 ### Saving and Loading Checkpoints

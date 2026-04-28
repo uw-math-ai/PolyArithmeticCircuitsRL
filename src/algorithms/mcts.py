@@ -8,6 +8,7 @@ import torch
 
 from ..config import Config
 from ..environment.circuit_game import CircuitGame
+from .gumbel_mcts import GumbelMCTSOutput, run_gumbel_mcts
 
 
 class MCTSNode:
@@ -39,6 +40,8 @@ class MCTS:
         self.model = model
         self.config = config
         self.device = device
+        self.rng = np.random.default_rng(config.seed)
+        self.last_search_output: Optional[GumbelMCTSOutput] = None
 
     @torch.no_grad()
     def search(self, game: CircuitGame) -> Dict[int, int]:
@@ -98,6 +101,21 @@ class MCTS:
         Returns:
             (selected_action, action_probability_vector)
         """
+        if self.config.search == "gumbel":
+            gumbel_scale = 0.0 if temperature == 0 else self.config.gumbel_scale
+            output = run_gumbel_mcts(
+                game,
+                self.model,
+                self.config,
+                device=self.device,
+                rng=self.rng,
+                num_simulations=self.config.gumbel_num_simulations,
+                gumbel_scale=gumbel_scale,
+            )
+            self.last_search_output = output
+            return output.action, output.action_weights
+
+        self.last_search_output = None
         visit_counts = self.search(game)
 
         if not visit_counts:

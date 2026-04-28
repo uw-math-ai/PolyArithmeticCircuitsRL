@@ -2,21 +2,22 @@
 
 This implements the same Expert Iteration loop as ppo_mcts.py but with
 batched MCTS via Google DeepMind's mctx library. All B environments are
-searched in parallel on GPU using mctx.muzero_policy, giving a massive
-speedup over the sequential PyTorch implementation.
+searched in parallel on GPU using either mctx.muzero_policy (PUCT) or
+mctx.gumbel_muzero_policy (Gumbel MuZero), giving a massive speedup over the
+sequential PyTorch implementation.
 
 Architecture:
   - Environment states are pure JAX arrays (jax_env.EnvState).
   - Policy-value network is Flax (jax_net.PolicyValueNet).
-  - MCTS uses mctx.muzero_policy with a learned dynamics model replaced by
-    the true environment dynamics (perfect simulator).
+    - Search uses mctx with a learned dynamics model replaced by the true
+        environment dynamics (perfect simulator).
     - Policy/value updates use optax for gradient clipping and Adam.
 
 Flow per iteration:
   1. Reset B parallel environments with sampled targets.
   2. For each step (up to max_steps):
      a. Batch-evaluate policy+value for all B states.
-     b. Run mctx.muzero_policy for all B states in parallel.
+    b. Run the configured mctx search policy for all B states in parallel.
      c. Execute chosen actions in all B environments.
      d. Store transitions.
   3. Compute GAE advantages.
@@ -101,6 +102,8 @@ class PPOMCTSJAXTrainer:
                 The batch is split evenly across these levels.
         """
         self.config = config
+        if config.search not in {"puct", "gumbel"}:
+            raise ValueError(f"Unsupported search backend: {config.search}")
         self.fixed_complexities = fixed_complexities
         if fixed_complexities:
             config.curriculum_enabled = False
@@ -139,6 +142,12 @@ class PPOMCTSJAXTrainer:
                 max_degree=config.effective_max_degree,
             )
         self.factor_library = factor_library
+
+        if config.search == "gumbel" and config.gumbel_root_only:
+            print(
+                "JAX Gumbel search uses full mctx Gumbel MuZero; "
+                "gumbel_root_only is ignored on this backend."
+            )
 
         # JIT-compile core functions.
         self._jit_apply = jax.jit(self.network.apply)
@@ -204,6 +213,60 @@ class PPOMCTSJAXTrainer:
 
         target /= total
         return target
+
+    def _search_num_simulations(self) -> int:
+        """Return the configured number of search simulations."""
+        if self.config.search == "gumbel":
+            return self.config.gumbel_num_simulations
+        return self.config.mcts_simulations
+
+    def _gumbel_qtransform(self):
+        """Return the configured q-transform for mctx Gumbel MuZero."""
+        if not self.config.gumbel_use_completed_q:
+            return functools.partial(mctx.qtransform_by_parent_and_siblings)
+
+        return functools.partial(
+            mctx.qtransform_completed_by_mix_value,
+            value_scale=self.config.gumbel_c_scale,
+            maxvisit_init=self.config.gumbel_c_visit,
+            rescale_values=self.config.gumbel_q_normalize,
+            use_mixed_value=self.config.gumbel_use_mixed_value,
+        )
+
+    def _extract_gumbel_policy_target(self, policy_output, search_summary):
+        """Choose which Gumbel root policy target to train against."""
+        if self.config.gumbel_policy_target == "visits":
+            return search_summary.visit_probs
+        return policy_output.action_weights
+
+    def _extract_gumbel_search_stats(self, policy_output, obs_batch, search_summary):
+        """Compute per-environment Gumbel root diagnostics from the search tree."""
+        qtransform = self._gumbel_qtransform()
+        root_completed_q = jax.vmap(
+            qtransform, in_axes=[0, None]
+        )(policy_output.search_tree, policy_output.search_tree.ROOT_INDEX)
+        target_policy = self._extract_gumbel_policy_target(policy_output, search_summary)
+        valid_mask = obs_batch["mask"]
+        clipped_policy = jnp.where(valid_mask, target_policy, 0.0)
+        policy_entropy = -jnp.sum(
+            clipped_policy * jnp.log(jnp.clip(clipped_policy, 1e-8, 1.0)),
+            axis=-1,
+        )
+
+        masked_q = jnp.where(valid_mask, root_completed_q, jnp.nan)
+        selected_visits = jnp.take_along_axis(
+            search_summary.visit_counts,
+            policy_output.action[:, None],
+            axis=-1,
+        ).squeeze(-1)
+
+        return {
+            "policy_entropy": policy_entropy,
+            "considered_actions": jnp.sum(search_summary.visit_counts > 0, axis=-1),
+            "selected_action_visit_count": selected_visits,
+            "max_root_q": jnp.nanmax(masked_q, axis=-1),
+            "min_root_q": jnp.nanmin(masked_q, axis=-1),
+        }
 
     # ------------------------------------------------------------------
     # MCTS via mctx
@@ -291,7 +354,7 @@ class PPOMCTSJAXTrainer:
 
     def _batched_mcts_search(self, params, rng_key, obs_batch, env_states,
                              library_coeffs, library_mask):
-        """Run batched MCTS using mctx.muzero_policy.
+        """Run batched search using the configured mctx backend.
 
         Args:
             params: Network parameters.
@@ -322,16 +385,30 @@ class PPOMCTSJAXTrainer:
             library_mask=library_mask,
         )
 
-        policy_output = mctx.muzero_policy(
-            params=params,
-            rng_key=rng_key,
-            root=root,
-            recurrent_fn=recurrent_fn,
-            num_simulations=self.config.mcts_simulations,
-            max_depth=self.config.max_steps,
-            invalid_actions=~obs_batch['mask'],  # True = invalid
-            temperature=self.config.temperature_init,
-        )
+        if self.config.search == "gumbel":
+            policy_output = mctx.gumbel_muzero_policy(
+                params=params,
+                rng_key=rng_key,
+                root=root,
+                recurrent_fn=recurrent_fn,
+                num_simulations=self._search_num_simulations(),
+                max_depth=self.config.max_steps,
+                invalid_actions=~obs_batch['mask'],
+                qtransform=self._gumbel_qtransform(),
+                max_num_considered_actions=self.config.gumbel_max_num_considered_actions,
+                gumbel_scale=self.config.gumbel_scale,
+            )
+        else:
+            policy_output = mctx.muzero_policy(
+                params=params,
+                rng_key=rng_key,
+                root=root,
+                recurrent_fn=recurrent_fn,
+                num_simulations=self._search_num_simulations(),
+                max_depth=self.config.max_steps,
+                invalid_actions=~obs_batch['mask'],  # True = invalid
+                temperature=self.config.temperature_init,
+            )
         return policy_output
 
     def _key_to_fastpoly(self, key: bytes) -> FastPoly:
@@ -492,6 +569,11 @@ class PPOMCTSJAXTrainer:
         factor_hits = 0
         library_hits = 0
         successful_final_states = []
+        gumbel_policy_entropies = []
+        gumbel_considered_actions = []
+        gumbel_selected_visits = []
+        gumbel_max_root_q = []
+        gumbel_min_root_q = []
 
         for step_idx in range(self.config.max_steps):
             if not active.any():
@@ -508,13 +590,24 @@ class PPOMCTSJAXTrainer:
                 params, search_rng, obs_batch, states,
                 library_coeffs, library_mask,
             )
+            search_summary = policy_output.search_tree.summary()
 
-            # Sample actions from MCTS visit counts (with temperature).
-            action_weights = policy_output.action_weights  # (B, max_actions)
-            rng, sample_rng = jax.random.split(rng)
-            actions = jax.random.categorical(
-                sample_rng, jnp.log(action_weights + 1e-8)
-            )  # (B,)
+            if self.config.search == "gumbel":
+                action_weights = self._extract_gumbel_policy_target(
+                    policy_output, search_summary
+                )
+                actions = policy_output.action
+                gumbel_stats = self._extract_gumbel_search_stats(
+                    policy_output, obs_batch, search_summary
+                )
+            else:
+                # Sample actions from MCTS visit counts (with temperature).
+                action_weights = policy_output.action_weights  # (B, max_actions)
+                rng, sample_rng = jax.random.split(rng)
+                actions = jax.random.categorical(
+                    sample_rng, jnp.log(action_weights + 1e-8)
+                )  # (B,)
+                gumbel_stats = None
 
             # Evaluate the network at the current states.
             _logits, values = jax.vmap(
@@ -542,6 +635,10 @@ class PPOMCTSJAXTrainer:
             values_np = np.array(values)
             action_weights_np = np.array(action_weights, dtype=np.float32)
             masks_np = np.array(obs_batch['mask'], dtype=bool)
+            if gumbel_stats is not None:
+                gumbel_stats_np = jax.tree.map(np.array, gumbel_stats)
+            else:
+                gumbel_stats_np = None
 
             # Store transitions for active environments.
             for i in range(B):
@@ -574,6 +671,22 @@ class PPOMCTSJAXTrainer:
                                 jax.tree.map(lambda x: np.array(x[i]), next_states)
                             )
                         active[i] = False
+                    if gumbel_stats_np is not None:
+                        gumbel_policy_entropies.append(
+                            float(gumbel_stats_np["policy_entropy"][i])
+                        )
+                        gumbel_considered_actions.append(
+                            int(gumbel_stats_np["considered_actions"][i])
+                        )
+                        gumbel_selected_visits.append(
+                            float(gumbel_stats_np["selected_action_visit_count"][i])
+                        )
+                        gumbel_max_root_q.append(
+                            float(gumbel_stats_np["max_root_q"][i])
+                        )
+                        gumbel_min_root_q.append(
+                            float(gumbel_stats_np["min_root_q"][i])
+                        )
 
             states = next_states
 
@@ -599,7 +712,16 @@ class PPOMCTSJAXTrainer:
             "factor_hits": factor_hits,
             "library_hits": library_hits,
             "library_size": len(self.factor_library) if self.factor_library else 0,
+            "search_type": self.config.search,
         }
+        if self.config.search == "gumbel":
+            rollout_info.update({
+                "gumbel_root_policy_entropy": float(np.mean(gumbel_policy_entropies)) if gumbel_policy_entropies else 0.0,
+                "gumbel_considered_actions": float(np.mean(gumbel_considered_actions)) if gumbel_considered_actions else 0.0,
+                "gumbel_selected_action_visit_count": float(np.mean(gumbel_selected_visits)) if gumbel_selected_visits else 0.0,
+                "gumbel_max_root_q": float(np.mean(gumbel_max_root_q)) if gumbel_max_root_q else 0.0,
+                "gumbel_min_root_q": float(np.mean(gumbel_min_root_q)) if gumbel_min_root_q else 0.0,
+            })
 
         # Per-complexity breakdown.
         if self.fixed_complexities:
@@ -901,6 +1023,14 @@ class PPOMCTSJAXTrainer:
             "success_rate": [], "avg_reward": [], "complexity": [],
             "grad_norm": [], "skipped_updates": [],
         }
+        if self.config.search == "gumbel":
+            history.update({
+                "gumbel_root_policy_entropy": [],
+                "gumbel_considered_actions": [],
+                "gumbel_selected_action_visit_count": [],
+                "gumbel_max_root_q": [],
+                "gumbel_min_root_q": [],
+            })
         # Per-complexity history when using fixed_complexities.
         if self.fixed_complexities:
             for c in self.fixed_complexities:
@@ -946,6 +1076,22 @@ class PPOMCTSJAXTrainer:
             history["complexity"].append(rollout_info["complexity"])
             history["grad_norm"].append(loss_info["grad_norm"])
             history["skipped_updates"].append(loss_info["skipped_updates"])
+            if self.config.search == "gumbel":
+                history["gumbel_root_policy_entropy"].append(
+                    rollout_info["gumbel_root_policy_entropy"]
+                )
+                history["gumbel_considered_actions"].append(
+                    rollout_info["gumbel_considered_actions"]
+                )
+                history["gumbel_selected_action_visit_count"].append(
+                    rollout_info["gumbel_selected_action_visit_count"]
+                )
+                history["gumbel_max_root_q"].append(
+                    rollout_info["gumbel_max_root_q"]
+                )
+                history["gumbel_min_root_q"].append(
+                    rollout_info["gumbel_min_root_q"]
+                )
 
             if self.fixed_complexities:
                 for c in self.fixed_complexities:
@@ -969,7 +1115,16 @@ class PPOMCTSJAXTrainer:
                     "factor_hits": rollout_info["factor_hits"],
                     "library_hits": rollout_info["library_hits"],
                     "library_size": rollout_info["library_size"],
+                    "search/is_gumbel": float(self.config.search == "gumbel"),
                 }
+                if self.config.search == "gumbel":
+                    log_dict.update({
+                        "gumbel/root_policy_entropy": rollout_info["gumbel_root_policy_entropy"],
+                        "gumbel/considered_actions": rollout_info["gumbel_considered_actions"],
+                        "gumbel/selected_action_visit_count": rollout_info["gumbel_selected_action_visit_count"],
+                        "gumbel/max_root_q": rollout_info["gumbel_max_root_q"],
+                        "gumbel/min_root_q": rollout_info["gumbel_min_root_q"],
+                    })
                 if self.fixed_complexities:
                     for c in self.fixed_complexities:
                         log_dict[f"success_rate_C{c}"] = rollout_info.get(
@@ -1016,6 +1171,14 @@ class PPOMCTSJAXTrainer:
                     line = line.replace(
                         f"episodes=",
                         f"complexity={rollout_info['complexity']} episodes=",
+                    )
+                if self.config.search == "gumbel":
+                    line += (
+                        f" | g_entropy={rollout_info['gumbel_root_policy_entropy']:.4f}"
+                        f" g_considered={rollout_info['gumbel_considered_actions']:.2f}"
+                        f" g_selected_visits={rollout_info['gumbel_selected_action_visit_count']:.2f}"
+                        f" g_q=({rollout_info['gumbel_min_root_q']:.4f},"
+                        f" {rollout_info['gumbel_max_root_q']:.4f})"
                     )
                 tqdm.write(line)
 

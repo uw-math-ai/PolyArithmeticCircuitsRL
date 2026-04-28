@@ -4,6 +4,8 @@ Verifies that jax_env, jax_net, and ppo_mcts_jax compile and produce
 correct shapes / values without requiring a GPU.
 """
 
+import functools
+
 import pytest
 import numpy as np
 
@@ -587,6 +589,115 @@ class TestMCTXIntegration:
         # action_weights should sum to ~1 per env
         sums = policy_output.action_weights.sum(axis=-1)
         np.testing.assert_allclose(np.array(sums), 1.0, atol=1e-5)
+
+    def test_mctx_gumbel_compiles(self, config, env_config):
+        """A minimal mctx.gumbel_muzero_policy call compiles without error."""
+        config_small = Config(
+            n_variables=2, mod=5, max_complexity=4, max_steps=4,
+            hidden_dim=16, embedding_dim=16, num_gnn_layers=1,
+            search="gumbel",
+            gumbel_num_simulations=4,
+            gumbel_max_num_considered_actions=4,
+            gumbel_scale=0.0,
+            seed=0,
+        )
+        ec = make_env_config(config_small)
+        net = create_network(config_small)
+        rng = jax.random.PRNGKey(0)
+        params = init_params(net, ec, rng)
+
+        B = 2
+        target = jnp.zeros(ec.target_size, dtype=jnp.int32)
+        states = jax.vmap(lambda tc: reset(ec, tc))(
+            jnp.stack([target] * B)
+        )
+        obs_batch = jax.vmap(lambda s: get_observation(ec, s))(states)
+
+        def root_fn(params, rng_key, obs_batch):
+            del rng_key
+            logits, values = jax.vmap(
+                lambda obs: net.apply(params, obs)
+            )(obs_batch)
+            embedding = {**obs_batch, '_env_state': states}
+            return mctx.RootFnOutput(
+                prior_logits=logits, value=values, embedding=embedding,
+            )
+
+        def recurrent_fn(params, rng_key, action, embedding):
+            del rng_key
+            env_states = embedding['_env_state']
+            next_states, rewards, dones, _, *_ = jax.vmap(
+                lambda s, a: step(ec, s, a)
+            )(env_states, action)
+            next_obs = jax.vmap(lambda s: get_observation(ec, s))(next_states)
+            logits, values = jax.vmap(
+                lambda obs: net.apply(params, obs)
+            )(next_obs)
+            discount = jnp.where(dones, 0.0, 0.99)
+            new_emb = {**next_obs, '_env_state': next_states}
+            return mctx.RecurrentFnOutput(
+                reward=rewards, discount=discount,
+                prior_logits=logits, value=values,
+            ), new_emb
+
+        qtransform = functools.partial(
+            mctx.qtransform_completed_by_mix_value,
+            value_scale=config_small.gumbel_c_scale,
+            maxvisit_init=config_small.gumbel_c_visit,
+            rescale_values=config_small.gumbel_q_normalize,
+            use_mixed_value=config_small.gumbel_use_mixed_value,
+        )
+
+        root = root_fn(params, rng, obs_batch)
+        rng, search_rng = jax.random.split(rng)
+        policy_output = mctx.gumbel_muzero_policy(
+            params=params,
+            rng_key=search_rng,
+            root=root,
+            recurrent_fn=recurrent_fn,
+            num_simulations=config_small.gumbel_num_simulations,
+            max_depth=config_small.max_steps,
+            invalid_actions=~obs_batch['mask'],
+            qtransform=qtransform,
+            max_num_considered_actions=config_small.gumbel_max_num_considered_actions,
+            gumbel_scale=config_small.gumbel_scale,
+        )
+
+        assert policy_output.action.shape == (B,)
+        assert policy_output.action_weights.shape == (B, ec.max_actions)
+        sums = policy_output.action_weights.sum(axis=-1)
+        np.testing.assert_allclose(np.array(sums), 1.0, atol=1e-5)
+
+        summary = policy_output.search_tree.summary()
+        assert summary.visit_counts.shape == (B, ec.max_actions)
+        assert summary.visit_probs.shape == (B, ec.max_actions)
+
+    def test_trainer_gumbel_rollout_collects_metrics(self, config):
+        """JAX trainer should collect Gumbel rollouts and root diagnostics."""
+        config_small = Config(
+            n_variables=2, mod=5, max_complexity=3, max_steps=3,
+            hidden_dim=16, embedding_dim=16, num_gnn_layers=1,
+            factor_library_enabled=False,
+            search="gumbel",
+            gumbel_num_simulations=4,
+            gumbel_max_num_considered_actions=4,
+            batch_size=4, ppo_epochs=1, seed=0,
+        )
+        trainer = PPOMCTSJAXTrainer(config_small, batch_size=2)
+
+        transitions, rollout_info = trainer.collect_rollouts()
+
+        assert len(transitions) > 0
+        assert rollout_info["search_type"] == "gumbel"
+        for key in [
+            "gumbel_root_policy_entropy",
+            "gumbel_considered_actions",
+            "gumbel_selected_action_visit_count",
+            "gumbel_max_root_q",
+            "gumbel_min_root_q",
+        ]:
+            assert key in rollout_info
+        np.testing.assert_allclose(transitions[0].policy_target.sum(), 1.0, atol=1e-5)
 
     def test_ppo_step_compiles(self, config, env_config):
         """A single MCTS-distillation gradient step compiles and runs."""

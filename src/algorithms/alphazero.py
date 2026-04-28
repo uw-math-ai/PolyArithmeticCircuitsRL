@@ -75,16 +75,21 @@ class AlphaZeroTrainer:
             self.config.temperature_final - self.config.temperature_init
         ) * decay_frac
 
-    def self_play_game(self, target_poly) -> Tuple[List[Tuple], bool]:
+    def self_play_game(self, target_poly) -> Tuple[List[Tuple], bool, dict]:
         """Play one game using MCTS.
 
         Returns:
-            (trajectory, success) where trajectory is list of (obs, policy, None)
-            The value targets are filled in after the game ends.
+            (trajectory, success, search_stats) where trajectory is list of
+            (obs, policy). The value targets are filled in after the game ends.
         """
         obs = self.env.reset(target_poly)
         trajectory = []
         step = 0
+        gumbel_policy_entropies = []
+        gumbel_considered_actions = []
+        gumbel_selected_visits = []
+        gumbel_max_root_q = []
+        gumbel_min_root_q = []
 
         while not self.env.done:
             temp = self._get_temperature(step, self.config.max_steps)
@@ -92,11 +97,32 @@ class AlphaZeroTrainer:
 
             trajectory.append((obs, probs))
 
+            if self.config.search == "gumbel" and self.mcts.last_search_output is not None:
+                search_output = self.mcts.last_search_output
+                valid_mask = obs["mask"].cpu().numpy()
+                valid_policy = search_output.action_weights[valid_mask]
+                valid_root_q = search_output.root_q[valid_mask]
+                entropy = -np.sum(valid_policy * np.log(np.clip(valid_policy, 1e-8, 1.0)))
+                gumbel_policy_entropies.append(float(entropy))
+                gumbel_considered_actions.append(int(len(search_output.considered_actions)))
+                gumbel_selected_visits.append(int(search_output.root_visits[action]))
+                gumbel_max_root_q.append(float(np.max(valid_root_q)))
+                gumbel_min_root_q.append(float(np.min(valid_root_q)))
+
             obs, reward, done, info = self.env.step(action)
             step += 1
 
         success = info.get("is_success", False)
-        return trajectory, success
+        search_stats = {}
+        if self.config.search == "gumbel":
+            search_stats = {
+                "gumbel_root_policy_entropy": float(np.mean(gumbel_policy_entropies)) if gumbel_policy_entropies else 0.0,
+                "gumbel_considered_actions": float(np.mean(gumbel_considered_actions)) if gumbel_considered_actions else 0.0,
+                "gumbel_selected_action_visit_count": float(np.mean(gumbel_selected_visits)) if gumbel_selected_visits else 0.0,
+                "gumbel_max_root_q": float(np.mean(gumbel_max_root_q)) if gumbel_max_root_q else 0.0,
+                "gumbel_min_root_q": float(np.mean(gumbel_min_root_q)) if gumbel_min_root_q else 0.0,
+            }
+        return trajectory, success, search_stats
 
     def generate_self_play_data(self) -> dict:
         """Run multiple self-play games and add data to replay buffer.
@@ -106,13 +132,25 @@ class AlphaZeroTrainer:
         """
         successes = 0
         total_games = self.config.az_games_per_iter
+        gumbel_policy_entropies = []
+        gumbel_considered_actions = []
+        gumbel_selected_visits = []
+        gumbel_max_root_q = []
+        gumbel_min_root_q = []
 
         for game_idx in range(total_games):
             target_poly = self._sample_target(self.current_complexity)
 
-            trajectory, success = self.self_play_game(target_poly)
+            trajectory, success, search_stats = self.self_play_game(target_poly)
             successes += int(success)
             self.success_history.append(success)
+
+            if self.config.search == "gumbel":
+                gumbel_policy_entropies.append(search_stats["gumbel_root_policy_entropy"])
+                gumbel_considered_actions.append(search_stats["gumbel_considered_actions"])
+                gumbel_selected_visits.append(search_stats["gumbel_selected_action_visit_count"])
+                gumbel_max_root_q.append(search_stats["gumbel_max_root_q"])
+                gumbel_min_root_q.append(search_stats["gumbel_min_root_q"])
 
             # Assign value targets: +1 for success, -1 for failure
             value_target = 1.0 if success else -1.0
@@ -121,12 +159,22 @@ class AlphaZeroTrainer:
                 self.replay_buffer.add(obs, policy, value_target)
 
         success_rate = successes / max(total_games, 1)
-        return {
+        stats = {
             "games": total_games,
             "success_rate": success_rate,
             "buffer_size": len(self.replay_buffer),
             "complexity": self.current_complexity,
+            "search_type": self.config.search,
         }
+        if self.config.search == "gumbel":
+            stats.update({
+                "gumbel_root_policy_entropy": float(np.mean(gumbel_policy_entropies)) if gumbel_policy_entropies else 0.0,
+                "gumbel_considered_actions": float(np.mean(gumbel_considered_actions)) if gumbel_considered_actions else 0.0,
+                "gumbel_selected_action_visit_count": float(np.mean(gumbel_selected_visits)) if gumbel_selected_visits else 0.0,
+                "gumbel_max_root_q": float(np.mean(gumbel_max_root_q)) if gumbel_max_root_q else 0.0,
+                "gumbel_min_root_q": float(np.mean(gumbel_min_root_q)) if gumbel_min_root_q else 0.0,
+            })
+        return stats
 
     def train_on_buffer(self) -> dict:
         """Train network on replay buffer data.
@@ -159,7 +207,12 @@ class AlphaZeroTrainer:
                 policy_target_tensor = torch.tensor(
                     policy_target, dtype=torch.float32, device=self.device
                 )
-                policy_loss = -(policy_target_tensor * log_probs).sum()
+                policy_terms = torch.where(
+                    policy_target_tensor > 0,
+                    policy_target_tensor * log_probs,
+                    torch.zeros_like(log_probs),
+                )
+                policy_loss = -policy_terms.sum()
                 policy_losses.append(policy_loss)
 
                 # Value loss: MSE
@@ -240,7 +293,16 @@ class AlphaZeroTrainer:
                     "policy_loss": loss_info["policy_loss"],
                     "value_loss": loss_info["value_loss"],
                     "total_loss": loss_info["total_loss"],
+                    "search/is_gumbel": float(self.config.search == "gumbel"),
                 }, step=iteration)
+                if self.config.search == "gumbel":
+                    wandb.log({
+                        "gumbel/root_policy_entropy": play_info["gumbel_root_policy_entropy"],
+                        "gumbel/considered_actions": play_info["gumbel_considered_actions"],
+                        "gumbel/selected_action_visit_count": play_info["gumbel_selected_action_visit_count"],
+                        "gumbel/max_root_q": play_info["gumbel_max_root_q"],
+                        "gumbel/min_root_q": play_info["gumbel_min_root_q"],
+                    }, step=iteration)
 
             # Logging
             if iteration % self.config.log_interval == 0:
@@ -252,6 +314,14 @@ class AlphaZeroTrainer:
                     f"p_loss={loss_info['policy_loss']:.4f} "
                     f"v_loss={loss_info['value_loss']:.4f}"
                 )
+                if self.config.search == "gumbel":
+                    print(
+                        f"[AZ Gumbel iter {iteration}] "
+                        f"entropy={play_info['gumbel_root_policy_entropy']:.4f} "
+                        f"considered={play_info['gumbel_considered_actions']:.2f} "
+                        f"selected_visits={play_info['gumbel_selected_action_visit_count']:.2f} "
+                        f"q_range=({play_info['gumbel_min_root_q']:.4f}, {play_info['gumbel_max_root_q']:.4f})"
+                    )
 
     def _obs_to_device(self, obs: dict) -> dict:
         """Move observation tensors to device."""
