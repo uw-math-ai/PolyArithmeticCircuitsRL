@@ -29,6 +29,7 @@ ON_PATH_PHI_MODE=${ON_PATH_PHI_MODE:-depth_weighted}
 ON_PATH_DEPTH_WEIGHT_POWER=${ON_PATH_DEPTH_WEIGHT_POWER:-1.0}
 ON_PATH_ROUTE_CONSISTENCY_MODE=${ON_PATH_ROUTE_CONSISTENCY_MODE:-best_route_phi}
 GRAPH_ONPATH_SHAPING_COEFF=${GRAPH_ONPATH_SHAPING_COEFF:-3.0}
+ON_ROUTE_BONUS_COEFF=${ON_ROUTE_BONUS_COEFF:-0.0}
 
 ITERATIONS=${ITERATIONS:-2000}
 # Conservative GPU defaults. Increase to 256/32 only after confirming memory.
@@ -87,6 +88,7 @@ echo "  target_kl: $TARGET_KL"
 echo "  ent_coef: $ENT_COEF"
 echo "  vf_coef: $VF_COEF"
 echo "  on_path_phi_mode: $ON_PATH_PHI_MODE"
+echo "  on_route_bonus_coeff: $ON_ROUTE_BONUS_COEFF"
 echo "  on_path_depth_weight_power: $ON_PATH_DEPTH_WEIGHT_POWER"
 echo "  on_path_route_consistency_mode: $ON_PATH_ROUTE_CONSISTENCY_MODE"
 echo "  starting_complexity: $STARTING_COMPLEXITY"
@@ -148,6 +150,7 @@ apptainer exec --nv --bind /gscratch:/gscratch \
     --reward-mode clean_onpath \
     --graph-onpath-cache-dir "$CACHE_DIR" \
     --graph-onpath-shaping-coeff "$GRAPH_ONPATH_SHAPING_COEFF" \
+    --on-route-bonus-coeff "$ON_ROUTE_BONUS_COEFF" \
     --on-path-phi-mode "$ON_PATH_PHI_MODE" \
     --on-path-depth-weight-power "$ON_PATH_DEPTH_WEIGHT_POWER" \
     --on-path-route-consistency-mode "$ON_PATH_ROUTE_CONSISTENCY_MODE" \

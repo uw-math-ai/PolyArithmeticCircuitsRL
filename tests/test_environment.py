@@ -617,6 +617,99 @@ class TestRewardModes:
             - (1 / 2)
         )
 
+    def test_on_route_bonus_paid_only_on_phi_increase(self):
+        """Bonus fires only when a hit advances coherent-route phi.
+
+        Disjoint-route hit is recorded but doesn't move best_route_phi, so the
+        bonus must be zero on that step. Capped at coeff per episode by phi <= 1.
+        """
+        self.config.reward_mode = "clean_onpath"
+        self.config.on_path_phi_mode = "count"
+        self.config.on_path_route_consistency_mode = "best_route_phi"
+        self.config.graph_onpath_shaping_coeff = 1.0
+        self.config.on_route_bonus_coeff = 1.0
+        env = CircuitGame(self.config)
+
+        a1 = self.x0 + self.x1
+        b1 = self.x0 * self.x1
+        b2 = b1 + self.x1
+        target = b2 + self.x1
+        ctx = _OnPathContext(
+            {
+                a1.canonical_key(): 1,
+                b1.canonical_key(): 1,
+                b2.canonical_key(): 2,
+                target.canonical_key(): 3,
+            },
+            target_board_step=3,
+            route_mapping={
+                a1.canonical_key(): 0b01,
+                b1.canonical_key(): 0b10,
+                b2.canonical_key(): 0b10,
+                target.canonical_key(): 0b11,
+            },
+        )
+        env.reset(target, on_path_context=ctx)
+
+        a1_action = encode_action(0, 0, 1, self.config.max_nodes)
+        b1_action = encode_action(1, 0, 1, self.config.max_nodes)
+        b2_action = encode_action(0, 4, 1, self.config.max_nodes)
+
+        # Step 1: hit a1, phi 0 -> 1/2. Bonus = 1.0 * 1/2 = 0.5.
+        _, reward1, _, _ = env.step(a1_action)
+        expected1 = (
+            self.config.step_penalty
+            + self.config.gamma * (1 / 2)        # PBRS shaping
+            + 1.0 * (1 / 2)                       # on-route bonus
+        )
+        assert reward1 == pytest.approx(expected1)
+
+        # Step 2: hit b1 (disjoint route), phi stays 1/2. Bonus = 0.
+        _, reward2, _, info2 = env.step(b1_action)
+        assert info2["on_path_hit"]
+        assert info2["on_path_phi"] == pytest.approx(1 / 2)
+        expected2 = (
+            self.config.step_penalty
+            + self.config.gamma * (1 / 2)
+            - (1 / 2)
+            + 1.0 * 0.0                           # phi unchanged: bonus = 0
+        )
+        assert reward2 == pytest.approx(expected2)
+
+        # Step 3: hit b2, phi 1/2 -> 2/3. Bonus = 1.0 * (2/3 - 1/2) = 1/6.
+        _, reward3, _, info3 = env.step(b2_action)
+        assert info3["on_path_phi"] == pytest.approx(2 / 3)
+        expected3 = (
+            self.config.step_penalty
+            + self.config.gamma * (2 / 3)
+            - (1 / 2)
+            + 1.0 * (2 / 3 - 1 / 2)
+        )
+        assert reward3 == pytest.approx(expected3)
+
+    def test_on_route_bonus_default_zero_preserves_existing_reward(self):
+        """coeff=0 must leave clean_onpath rewards byte-identical."""
+        self.config.reward_mode = "clean_onpath"
+        self.config.on_path_phi_mode = "count"
+        self.config.on_path_route_consistency_mode = "best_route_phi"
+        self.config.graph_onpath_shaping_coeff = 1.0
+        # Default for on_route_bonus_coeff is 0.0; do not set it.
+        assert self.config.on_route_bonus_coeff == 0.0
+
+        a1 = self.x0 + self.x1
+        target = a1 + self.x1
+        ctx = _OnPathContext(
+            {a1.canonical_key(): 1, target.canonical_key(): 2},
+            target_board_step=2,
+        )
+        env = CircuitGame(self.config)
+        env.reset(target, on_path_context=ctx)
+        action = encode_action(0, 0, 1, self.config.max_nodes)
+        _, reward, _, _ = env.step(action)
+        assert reward == pytest.approx(
+            self.config.step_penalty + self.config.gamma * (1 / 2)
+        )
+
     def test_clean_onpath_depth_weighted_phi_rewards_deeper_hits_more(self):
         self.config.reward_mode = "clean_onpath"
         self.config.on_path_phi_mode = "depth_weighted"

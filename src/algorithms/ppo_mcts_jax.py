@@ -783,11 +783,16 @@ class PPOMCTSJAXTrainer:
         failure_with_hit_count = int(failure_with_hit_mask.sum())
         failure_no_hit_count = int(failure_no_hit_mask.sum())
         hit_denominator = success_count + failure_with_hit_count
+        episode_total = int(success_mask.size)
 
         return {
             "success_count": success_count,
             "failure_with_hit_count": failure_with_hit_count,
             "failure_no_hit_count": failure_no_hit_count,
+            "p_hit": (
+                float(hit_denominator / episode_total)
+                if episode_total > 0 else 0.0
+            ),
             "p_solve_given_hit": (
                 float(success_count / hit_denominator)
                 if hit_denominator > 0 else 0.0
@@ -1235,7 +1240,7 @@ class PPOMCTSJAXTrainer:
             "kl_rejected_updates": [], "kl_rejection_rate": [],
             "skipped_minibatch_updates": [], "skipped_outer_iterations": [],
             "success_count": [], "failure_with_hit_count": [],
-            "failure_no_hit_count": [], "p_solve_given_hit": [],
+            "failure_no_hit_count": [], "p_hit": [], "p_solve_given_hit": [],
             "avg_return_success": [], "avg_return_failure_with_hit": [],
             "avg_return_failure_no_hit": [], "avg_phi_success": [],
             "avg_phi_failure_with_hit": [],
@@ -1346,6 +1351,7 @@ class PPOMCTSJAXTrainer:
                 "success_count",
                 "failure_with_hit_count",
                 "failure_no_hit_count",
+                "p_hit",
                 "p_solve_given_hit",
                 "avg_return_success",
                 "avg_return_failure_with_hit",
@@ -1446,6 +1452,7 @@ class PPOMCTSJAXTrainer:
                     "train/by_outcome/failure_no_hit_count": (
                         rollout_info["failure_no_hit_count"]
                     ),
+                    "train/by_outcome/P_hit": rollout_info["p_hit"],
                     "train/by_outcome/P_solve_given_hit": (
                         rollout_info["p_solve_given_hit"]
                     ),
@@ -1504,6 +1511,7 @@ class PPOMCTSJAXTrainer:
                     f"kl_rej_rate={loss_info['kl_rejection_rate']:.1%} "
                     f"skip_mb={loss_info['skipped_minibatch_updates']} "
                     f"skip_outer={self.skipped_outer_iterations} "
+                    f"P(hit)={rollout_info['p_hit']:.1%} "
                     f"P(solve|hit)={rollout_info['p_solve_given_hit']:.1%} "
                     f"R_succ={rollout_info['avg_return_success']:+.1f} "
                     f"R_fail_hit={rollout_info['avg_return_failure_with_hit']:+.1f} "

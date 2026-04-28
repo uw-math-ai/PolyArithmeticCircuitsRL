@@ -317,6 +317,9 @@ class CircuitGame:
             reward += self.config.graph_onpath_shaping_coeff * (
                 self.config.gamma * phi_after_for_reward - phi_before
             )
+            # Non-PBRS persistent bonus on coherent-route progress.
+            delta_phi_pos = max(0.0, float(phi_after) - float(phi_before))
+            reward += float(self.config.on_route_bonus_coeff) * delta_phi_pos
 
         # --- Factor subgoal reward ---
         # Check whether the newly created node matches any subgoal.

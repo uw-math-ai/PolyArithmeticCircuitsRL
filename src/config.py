@@ -46,6 +46,10 @@ class Config:
     on_path_route_consistency: bool = True
     on_path_route_consistency_mode: str = "best_route_phi"
     on_path_num_routes: int = 32
+    # Non-PBRS additive bonus paid each step phi increases (coherent-route progress).
+    # Bounded: phi <= 1 caps total per-episode bonus at this coefficient.
+    # 0.0 disables. Recommended: 0.5 for fixed-C2 diagnostic.
+    on_route_bonus_coeff: float = 0.0
 
     # -------------------------------------------------------------------------
     # Factor library and subgoal rewards

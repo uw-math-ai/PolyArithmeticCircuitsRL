@@ -119,6 +119,7 @@ class EnvConfig(NamedTuple):
     on_path_route_consistency: bool
     on_path_route_consistency_mode: str
     on_path_max_size: int
+    on_route_bonus_coeff: float
     initial_node_coeffs: jnp.ndarray
     base_node_coeffs: jnp.ndarray
     on_path_hash_weights: jnp.ndarray
@@ -179,6 +180,7 @@ def make_env_config(config) -> EnvConfig:
             else config.on_path_route_consistency_mode
         ),
         on_path_max_size=on_path_max_size,
+        on_route_bonus_coeff=float(getattr(config, "on_route_bonus_coeff", 0.0)),
         initial_node_coeffs=initial_node_coeffs,
         base_node_coeffs=base_node_coeffs,
         on_path_hash_weights=make_on_path_hash_weights(config.target_size),
@@ -961,6 +963,10 @@ def step(env_config: EnvConfig, state: EnvState,
         reward = reward + env_config.graph_onpath_shaping_coeff * (
             env_config.gamma * phi_after_for_reward - phi_before
         )
+        # Non-PBRS persistent bonus: pays each step phi increases (coherent-route
+        # progress). Capped at on_route_bonus_coeff per episode by phi <= 1.
+        delta_phi_pos = jnp.maximum(jnp.float32(0.0), phi_after - phi_before)
+        reward = reward + jnp.float32(env_config.on_route_bonus_coeff) * delta_phi_pos
         on_path_hit_flag = has_on_path_match
         on_path_phi = phi_after
 

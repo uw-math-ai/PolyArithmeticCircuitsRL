@@ -157,6 +157,13 @@ def main() -> None:
     parser.add_argument("--graph-onpath-cache-dir", type=str, default=None)
     parser.add_argument("--graph-onpath-shaping-coeff", type=float, default=None)
     parser.add_argument(
+        "--on-route-bonus-coeff",
+        type=float,
+        default=None,
+        help="Non-PBRS additive bonus per phi increase under clean_onpath. "
+             "Bounded per episode by phi <= 1. 0 disables.",
+    )
+    parser.add_argument(
         "--on-path-phi-mode",
         choices=["count", "max_step", "depth_weighted"],
         default=None,
@@ -267,6 +274,8 @@ def main() -> None:
         config.graph_onpath_cache_dir = args.graph_onpath_cache_dir
     if args.graph_onpath_shaping_coeff is not None:
         config.graph_onpath_shaping_coeff = args.graph_onpath_shaping_coeff
+    if args.on_route_bonus_coeff is not None:
+        config.on_route_bonus_coeff = args.on_route_bonus_coeff
     if args.on_path_phi_mode is not None:
         config.on_path_phi_mode = args.on_path_phi_mode
     if args.on_path_depth_weight_power is not None:
