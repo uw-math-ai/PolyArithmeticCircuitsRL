@@ -1,0 +1,11 @@
+numpy
+sympy
+matplotlib
+wandb
+tqdm
+
+# JAX dependencies for the ppo-mcts-jax trainer
+jax[cuda12]
+flax
+optax
+mctx

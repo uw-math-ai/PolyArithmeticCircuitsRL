@@ -1,4 +1,4 @@
-"""PPO + parallel MCTS trainer using JAX and mctx.
+"""MCTS-guided policy/value trainer using JAX and mctx.
 
 This implements the same Expert Iteration loop as ppo_mcts.py but with
 batched MCTS via Google DeepMind's mctx library. All B environments are
@@ -10,7 +10,7 @@ Architecture:
   - Policy-value network is Flax (jax_net.PolicyValueNet).
   - MCTS uses mctx.muzero_policy with a learned dynamics model replaced by
     the true environment dynamics (perfect simulator).
-  - PPO update uses optax for gradient clipping and Adam.
+    - Policy/value updates use optax for gradient clipping and Adam.
 
 Flow per iteration:
   1. Reset B parallel environments with sampled targets.
@@ -20,7 +20,7 @@ Flow per iteration:
      c. Execute chosen actions in all B environments.
      d. Store transitions.
   3. Compute GAE advantages.
-  4. Run PPO mini-batch updates.
+    4. Distill the MCTS visit distribution and fit values.
   5. Adjust curriculum.
 """
 
@@ -57,9 +57,10 @@ from .jax_net import PolicyValueNet, create_network, init_params
 class Transition:
     """Single transition for PPO update."""
     obs: dict           # JAX observation arrays
+    env_index: int
     action: int
     reward: float
-    network_log_prob: float
+    policy_target: np.ndarray
     value: float
     done: bool
 
@@ -151,6 +152,58 @@ class PPOMCTSJAXTrainer:
             functools.partial(get_observation, self.env_config)
         )
         self._jit_batched_mcts = jax.jit(self._batched_mcts_search)
+
+    def _tree_all_finite(self, tree) -> bool:
+        """Return True when every floating-point leaf in a pytree is finite."""
+
+        def leaf_is_finite(x):
+            arr = np.asarray(x)
+            if arr.dtype.kind == 'f':
+                return bool(np.isfinite(arr).all())
+            return True
+
+        return bool(
+            jax.tree_util.tree_all(
+                jax.tree_util.tree_map(leaf_is_finite, tree)
+            )
+        )
+
+    def _assert_finite_train_state(self, context: str) -> None:
+        """Fail fast instead of silently continuing with corrupted parameters."""
+        if not self._tree_all_finite(self.train_state.params):
+            raise RuntimeError(f"Non-finite model parameters detected {context}")
+        if not self._tree_all_finite(self.train_state.opt_state):
+            raise RuntimeError(f"Non-finite optimizer state detected {context}")
+
+    def _sanitize_policy_target(
+        self,
+        action_weights: np.ndarray,
+        valid_mask: np.ndarray,
+        sampled_action: int,
+    ) -> np.ndarray:
+        """Return a finite, normalized policy target over valid actions only."""
+        target = np.asarray(action_weights, dtype=np.float32).copy()
+        mask = np.asarray(valid_mask, dtype=bool)
+        if target.shape != mask.shape:
+            raise RuntimeError(
+                f"Policy target shape {target.shape} did not match mask {mask.shape}"
+            )
+
+        target[~mask] = 0.0
+        total = float(target.sum()) if np.isfinite(target).all() else float("nan")
+        if not math.isfinite(total) or total <= 0.0:
+            target.fill(0.0)
+            if 0 <= sampled_action < target.shape[0] and mask[sampled_action]:
+                target[sampled_action] = 1.0
+            else:
+                valid_indices = np.flatnonzero(mask)
+                if valid_indices.size == 0:
+                    raise RuntimeError("Encountered state with no valid actions")
+                target[valid_indices] = 1.0 / valid_indices.size
+            return target
+
+        target /= total
+        return target
 
     # ------------------------------------------------------------------
     # MCTS via mctx
@@ -463,14 +516,10 @@ class PPOMCTSJAXTrainer:
                 sample_rng, jnp.log(action_weights + 1e-8)
             )  # (B,)
 
-            # Get network log probs for PPO ratio.
-            logits, values = jax.vmap(
+            # Evaluate the network at the current states.
+            _logits, values = jax.vmap(
                 lambda obs: self.network.apply(params, obs)
             )(obs_batch)
-            log_probs = jax.nn.log_softmax(logits)
-            network_log_probs = log_probs[
-                jnp.arange(B), actions
-            ]  # (B,)
 
             # Step all environments.
             (
@@ -491,7 +540,8 @@ class PPOMCTSJAXTrainer:
             factor_hits_np = np.array(factor_hits_step)
             library_hits_np = np.array(library_hits_step)
             values_np = np.array(values)
-            network_lp_np = np.array(network_log_probs)
+            action_weights_np = np.array(action_weights, dtype=np.float32)
+            masks_np = np.array(obs_batch['mask'], dtype=bool)
 
             # Store transitions for active environments.
             for i in range(B):
@@ -500,9 +550,14 @@ class PPOMCTSJAXTrainer:
                     obs_i = jax.tree.map(lambda x: np.array(x[i]), obs_batch)
                     transitions.append(Transition(
                         obs=obs_i,
+                        env_index=i,
                         action=int(actions_np[i]),
                         reward=float(rewards_np[i]),
-                        network_log_prob=float(network_lp_np[i]),
+                        policy_target=self._sanitize_policy_target(
+                            action_weights_np[i],
+                            masks_np[i],
+                            int(actions_np[i]),
+                        ),
                         value=float(values_np[i]),
                         done=bool(dones_np[i]),
                     ))
@@ -573,28 +628,40 @@ class PPOMCTSJAXTrainer:
         advantages = np.zeros(n, dtype=np.float32)
         returns = np.zeros(n, dtype=np.float32)
 
-        last_gae = 0.0
-        for t in reversed(range(n)):
-            if transitions[t].done:
-                next_value = 0.0
-                last_gae = 0.0
-            elif t + 1 < n:
-                next_value = transitions[t + 1].value
-            else:
-                next_value = 0.0
+        trajectories = [[] for _ in range(self.batch_size)]
+        for idx, transition in enumerate(transitions):
+            trajectories[transition.env_index].append(idx)
 
-            delta = (transitions[t].reward
-                     + self.config.gamma * next_value
-                     - transitions[t].value)
-            last_gae = delta + self.config.gamma * self.config.gae_lambda * last_gae
-            advantages[t] = last_gae
-            returns[t] = advantages[t] + transitions[t].value
+        for env_indices in trajectories:
+            last_gae = 0.0
+            for pos in reversed(range(len(env_indices))):
+                idx = env_indices[pos]
+                transition = transitions[idx]
+                if transition.done:
+                    next_value = 0.0
+                    last_gae = 0.0
+                elif pos + 1 < len(env_indices):
+                    next_value = transitions[env_indices[pos + 1]].value
+                else:
+                    next_value = 0.0
+
+                delta = (
+                    transition.reward
+                    + self.config.gamma * next_value
+                    - transition.value
+                )
+                last_gae = (
+                    delta
+                    + self.config.gamma * self.config.gae_lambda * last_gae
+                )
+                advantages[idx] = last_gae
+                returns[idx] = advantages[idx] + transition.value
 
         return advantages, returns
 
     def update(self, transitions: List[Transition],
                advantages: np.ndarray, returns: np.ndarray) -> dict:
-        """Run PPO clipped surrogate update.
+        """Run the MCTS-distillation policy/value update.
 
         Args:
             transitions: Collected transitions.
@@ -602,15 +669,31 @@ class PPOMCTSJAXTrainer:
             returns: Target returns, shape (N,).
 
         Returns:
-            Dict with mean pg_loss, vf_loss, entropy.
+            Dict with mean policy loss, value loss, and entropy.
         """
         n = len(transitions)
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        if n == 0:
+            raise RuntimeError("PPO update received an empty rollout")
 
-        adv_jax = jnp.array(advantages)
+        self._assert_finite_train_state("before PPO update")
+
+        if not np.isfinite(advantages).all() or not np.isfinite(returns).all():
+            raise RuntimeError("Non-finite GAE targets detected before PPO update")
+
         ret_jax = jnp.array(returns)
-        old_log_probs = jnp.array([t.network_log_prob for t in transitions])
-        actions = jnp.array([t.action for t in transitions], dtype=jnp.int32)
+        policy_targets_np = np.stack(
+            [np.asarray(t.policy_target, dtype=np.float32) for t in transitions],
+            axis=0,
+        )
+        policy_target_mass = policy_targets_np.sum(axis=1, keepdims=True)
+        if (
+            not np.isfinite(policy_targets_np).all()
+            or not np.isfinite(policy_target_mass).all()
+            or np.any(policy_target_mass <= 0.0)
+        ):
+            raise RuntimeError("Non-finite MCTS policy targets detected before PPO update")
+        policy_targets_np = policy_targets_np / policy_target_mass
+        policy_targets = jnp.array(policy_targets_np)
 
         # Pre-stack all observations into batched arrays.
         obs_keys = transitions[0].obs.keys()
@@ -623,7 +706,9 @@ class PPOMCTSJAXTrainer:
         total_pg_loss = 0.0
         total_vf_loss = 0.0
         total_entropy = 0.0
+        total_grad_norm = 0.0
         num_updates = 0
+        skipped_updates = 0
 
         bs = self.config.batch_size
 
@@ -636,30 +721,43 @@ class PPOMCTSJAXTrainer:
                 idx_jax = jnp.array(idx)
 
                 batch_obs = jax.tree.map(lambda x: x[idx_jax], obs_stacked)
-                batch_actions = actions[idx_jax]
-                batch_adv = adv_jax[idx_jax]
                 batch_ret = ret_jax[idx_jax]
-                batch_old_lp = old_log_probs[idx_jax]
+                batch_policy_targets = policy_targets[idx_jax]
 
                 self.train_state, loss_info = self._ppo_step(
-                    self.train_state, batch_obs, batch_actions,
-                    batch_adv, batch_ret, batch_old_lp,
+                    self.train_state,
+                    batch_obs,
+                    batch_ret,
+                    batch_policy_targets,
                 )
 
-                total_pg_loss += float(loss_info['pg_loss'])
-                total_vf_loss += float(loss_info['vf_loss'])
-                total_entropy += float(loss_info['entropy'])
+                pg_loss = float(loss_info['pg_loss'])
+                vf_loss = float(loss_info['vf_loss'])
+                entropy = float(loss_info['entropy'])
+                grad_norm = float(loss_info['grad_norm'])
+                applied = bool(loss_info['applied'])
+
+                if applied:
+                    total_pg_loss += pg_loss
+                    total_vf_loss += vf_loss
+                    total_entropy += entropy
+                skipped_updates += int(not applied)
+                total_grad_norm += grad_norm
                 num_updates += 1
+
+        self._assert_finite_train_state("after PPO update")
 
         return {
             "pg_loss": total_pg_loss / max(num_updates, 1),
             "vf_loss": total_vf_loss / max(num_updates, 1),
             "entropy": total_entropy / max(num_updates, 1),
+            "grad_norm": total_grad_norm / max(num_updates, 1),
+            "skipped_updates": skipped_updates,
         }
 
     @functools.partial(jax.jit, static_argnums=(0,))
-    def _ppo_step(self, state, obs, actions, advantages, returns, old_log_probs):
-        """Single JIT-compiled PPO gradient step."""
+    def _ppo_step(self, state, obs, returns, policy_targets):
+        """Single JIT-compiled MCTS-distillation gradient step."""
 
         def loss_fn(params):
             # vmap network over batch.
@@ -667,21 +765,17 @@ class PPOMCTSJAXTrainer:
                 lambda o: self.network.apply(params, o)
             )(obs)
 
-            # New log probs.
             log_probs = jax.nn.log_softmax(logits)
-            new_lp = log_probs[jnp.arange(actions.shape[0]), actions]
 
             # Entropy.
             probs = jax.nn.softmax(logits)
             entropy = -(probs * log_probs).sum(axis=-1).mean()
 
-            # PPO clipped ratio.
-            ratio = jnp.exp(new_lp - old_log_probs)
-            surr1 = ratio * advantages
-            surr2 = jnp.clip(
-                ratio, 1 - self.config.ppo_clip, 1 + self.config.ppo_clip
-            ) * advantages
-            pg_loss = -jnp.minimum(surr1, surr2).mean()
+            # Distill the improved MCTS policy instead of applying PPO off-policy.
+            pg_loss = -jnp.sum(
+                jax.lax.stop_gradient(policy_targets) * log_probs,
+                axis=-1,
+            ).mean()
 
             # Value loss.
             vf_loss = jnp.mean((values - returns) ** 2)
@@ -694,7 +788,24 @@ class PPOMCTSJAXTrainer:
 
         grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
         (_, loss_info), grads = grad_fn(state.params)
-        state = state.apply_gradients(grads=grads)
+        grad_norm = optax.global_norm(grads)
+        applied = jnp.all(jnp.array([
+            jnp.isfinite(loss_info['pg_loss']),
+            jnp.isfinite(loss_info['vf_loss']),
+            jnp.isfinite(loss_info['entropy']),
+            jnp.isfinite(grad_norm),
+        ]))
+        state = jax.lax.cond(
+            applied,
+            lambda s: s.apply_gradients(grads=grads),
+            lambda s: s,
+            state,
+        )
+        loss_info = {
+            **loss_info,
+            'grad_norm': grad_norm,
+            'applied': applied,
+        }
         return state, loss_info
 
     # ------------------------------------------------------------------
@@ -730,6 +841,7 @@ class PPOMCTSJAXTrainer:
         Args:
             path: File path (e.g. 'results/.../checkpoint_00050.pkl').
         """
+        self._assert_finite_train_state(f"before saving checkpoint to {path}")
         state_dict = {
             "params": self.train_state.params,
             "opt_state": self.train_state.opt_state,
@@ -759,6 +871,7 @@ class PPOMCTSJAXTrainer:
         self.current_complexity = state_dict.get(
             "current_complexity", self.current_complexity
         )
+        self._assert_finite_train_state(f"after loading checkpoint from {path}")
 
     # ------------------------------------------------------------------
     # Main train loop
@@ -766,12 +879,12 @@ class PPOMCTSJAXTrainer:
 
     def train(self, num_iterations: int,
               results_dir: str = "results") -> dict:
-        """Run the full PPO+MCTS (JAX) training loop.
+        """Run the full MCTS-guided JAX training loop.
 
         Each iteration:
           1. Collect batch_size episodes using batched MCTS.
           2. Compute GAE.
-          3. PPO update.
+          3. Policy/value update.
           4. Adjust curriculum.
           5. Save checkpoint every 50 iterations.
 
@@ -786,6 +899,7 @@ class PPOMCTSJAXTrainer:
         history = {
             "pg_loss": [], "vf_loss": [], "entropy": [],
             "success_rate": [], "avg_reward": [], "complexity": [],
+            "grad_norm": [], "skipped_updates": [],
         }
         # Per-complexity history when using fixed_complexities.
         if self.fixed_complexities:
@@ -803,8 +917,8 @@ class PPOMCTSJAXTrainer:
             transitions, rollout_info = self.collect_rollouts()
 
             if iteration == 1:
-                print(f"  Rollout done ({time.time() - iter_start:.1f}s). "
-                      "Running PPO update...", flush=True)
+                    print(f"  Rollout done ({time.time() - iter_start:.1f}s). "
+                        "Running policy/value update...", flush=True)
 
             advantages, returns = self.compute_gae(transitions)
             loss_info = self.update(transitions, advantages, returns)
@@ -820,6 +934,7 @@ class PPOMCTSJAXTrainer:
                 "success": f"{rollout_info['success_rate']:.1%}",
                 "reward": f"{rollout_info['avg_reward']:.2f}",
                 "entropy": f"{loss_info['entropy']:.2f}",
+                "skip": int(loss_info['skipped_updates']),
                 "s/iter": f"{iter_time:.1f}",
             })
 
@@ -829,6 +944,8 @@ class PPOMCTSJAXTrainer:
             history["success_rate"].append(rollout_info["success_rate"])
             history["avg_reward"].append(rollout_info["avg_reward"])
             history["complexity"].append(rollout_info["complexity"])
+            history["grad_norm"].append(loss_info["grad_norm"])
+            history["skipped_updates"].append(loss_info["skipped_updates"])
 
             if self.fixed_complexities:
                 for c in self.fixed_complexities:
@@ -863,7 +980,15 @@ class PPOMCTSJAXTrainer:
                         )
                 else:
                     log_dict["complexity"] = rollout_info["complexity"]
+                log_dict["grad_norm"] = loss_info["grad_norm"]
+                log_dict["skipped_updates"] = loss_info["skipped_updates"]
                 wandb.log(log_dict, step=iteration)
+
+            if loss_info["skipped_updates"]:
+                tqdm.write(
+                    f"[PPO+MCTS-JAX iter {iteration}] skipped "
+                    f"{loss_info['skipped_updates']} non-finite minibatch updates"
+                )
 
             if iteration % self.config.log_interval == 0:
                 line = (
@@ -877,6 +1002,8 @@ class PPOMCTSJAXTrainer:
                     f"pg_loss={loss_info['pg_loss']:.4f} "
                     f"vf_loss={loss_info['vf_loss']:.4f} "
                     f"entropy={loss_info['entropy']:.4f} "
+                    f"grad_norm={loss_info['grad_norm']:.4f} "
+                    f"skipped={loss_info['skipped_updates']} "
                     f"({iter_time:.1f}s/iter)"
                 )
                 if self.fixed_complexities:

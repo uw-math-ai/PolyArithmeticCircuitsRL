@@ -118,6 +118,10 @@ def main():
                         help="Max degree per variable (default: auto = max_complexity)")
     parser.add_argument("--ent-coef", type=float, default=None,
                         help="Entropy coefficient for PPO (default: 0.01)")
+    parser.add_argument("--ppo-lr", type=float, default=None,
+                        help="Learning rate for the PPO/MCTS JAX optimizer")
+    parser.add_argument("--ppo-epochs", type=int, default=None,
+                        help="Number of policy/value epochs per rollout")
     parser.add_argument("--mcts-simulations", type=int, default=None,
                         help="Number of MCTS simulations per action (default: 100)")
     parser.add_argument("--steps-per-update", type=int, default=None,
@@ -192,6 +196,10 @@ def main():
         config.max_degree = args.max_degree
     if args.ent_coef is not None:
         config.ent_coef = args.ent_coef
+    if args.ppo_lr is not None:
+        config.ppo_lr = args.ppo_lr
+    if args.ppo_epochs is not None:
+        config.ppo_epochs = args.ppo_epochs
     if args.mcts_simulations is not None:
         config.mcts_simulations = args.mcts_simulations
     if args.steps_per_update is not None:
@@ -316,6 +324,10 @@ def main():
         )
         fc_str = f" fixed_complexities={fixed_c}" if fixed_c else ""
         print(f"JAX PPO+MCTS with batch_size={args.mcts_batch_size}{fc_str}")
+
+        if args.checkpoint:
+            trainer.load_checkpoint(args.checkpoint)
+            print(f"Loaded PPO+MCTS JAX checkpoint from {args.checkpoint}")
 
         if args.eval_only:
             print("Eval-only mode not supported for ppo-mcts-jax yet.")

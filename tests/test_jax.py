@@ -23,6 +23,7 @@ from src.algorithms.jax_env import (
 from src.algorithms.jax_net import (
     PolicyValueNet, create_network, init_params, GraphEncoder,
 )
+from src.algorithms.ppo_mcts_jax import PPOMCTSJAXTrainer, Transition
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +262,46 @@ class TestEnvResetStep:
         next_state, reward, done, is_success, *_ = jit_step(initial_state, action)
         assert next_state.num_nodes.shape == ()
 
+
+class TestPPOMCTSJAXTrainer:
+    def test_compute_gae_separates_parallel_trajectories(self, config):
+        """GAE should bootstrap within each environment, not across the batch."""
+        config.factor_library_enabled = False
+        trainer = PPOMCTSJAXTrainer(config, batch_size=2)
+
+        transitions = [
+            Transition(obs={}, env_index=0, action=0, reward=1.0,
+                       policy_target=np.array([1.0], dtype=np.float32),
+                       value=0.5, done=False),
+            Transition(obs={}, env_index=1, action=0, reward=10.0,
+                       policy_target=np.array([1.0], dtype=np.float32),
+                       value=9.0, done=False),
+            Transition(obs={}, env_index=0, action=0, reward=2.0,
+                       policy_target=np.array([1.0], dtype=np.float32),
+                       value=0.25, done=True),
+            Transition(obs={}, env_index=1, action=0, reward=20.0,
+                       policy_target=np.array([1.0], dtype=np.float32),
+                       value=5.0, done=True),
+        ]
+
+        advantages, returns = trainer.compute_gae(transitions)
+
+        expected_advantages = np.array([
+            1.0 + config.gamma * 0.25 - 0.5
+            + config.gamma * config.gae_lambda * (2.0 - 0.25),
+            10.0 + config.gamma * 5.0 - 9.0
+            + config.gamma * config.gae_lambda * (20.0 - 5.0),
+            2.0 - 0.25,
+            20.0 - 5.0,
+        ], dtype=np.float32)
+
+        expected_returns = expected_advantages + np.array(
+            [0.5, 9.0, 0.25, 5.0], dtype=np.float32
+        )
+
+        np.testing.assert_allclose(advantages, expected_advantages)
+        np.testing.assert_allclose(returns, expected_returns)
+
     def test_fl_additive_completion(self, config):
         """JAX env awards additive completion when one add-away from target."""
         ec = make_env_config(config)
@@ -282,6 +323,7 @@ class TestEnvResetStep:
 
     def test_fl_initial_subgoal_reward(self, config):
         """A preloaded initial subgoal should trigger factor and library bonus rewards."""
+        config.use_reward_shaping = False
         ec = make_env_config(config)
         d = ec.max_degree + 1
 
@@ -317,9 +359,26 @@ class TestEnvResetStep:
 
         assert bool(factor_hit)
         assert bool(library_hit)
-        assert float(reward) >= (
+        assert float(reward) == pytest.approx(
             ec.step_penalty + ec.factor_subgoal_reward + ec.factor_library_bonus
         )
+
+    def test_policy_target_sanitizer_falls_back_to_sampled_action(self, config):
+        """Invalid or non-finite MCTS weights should degrade to a safe target."""
+        config.factor_library_enabled = False
+        trainer = PPOMCTSJAXTrainer(config, batch_size=1)
+
+        weights = np.full(config.max_actions, np.nan, dtype=np.float32)
+        mask = np.zeros(config.max_actions, dtype=bool)
+        mask[3] = True
+        mask[7] = True
+
+        target = trainer._sanitize_policy_target(weights, mask, sampled_action=7)
+
+        assert np.isfinite(target).all()
+        np.testing.assert_allclose(target.sum(), 1.0)
+        assert target[7] == pytest.approx(1.0)
+        assert float(target[~mask].sum()) == pytest.approx(0.0)
 
     def test_get_observation(self, env_config, initial_state):
         """Observation dict has expected keys and shapes."""
@@ -530,7 +589,7 @@ class TestMCTXIntegration:
         np.testing.assert_allclose(np.array(sums), 1.0, atol=1e-5)
 
     def test_ppo_step_compiles(self, config, env_config):
-        """A single PPO gradient step compiles and runs."""
+        """A single MCTS-distillation gradient step compiles and runs."""
         config_small = Config(
             n_variables=2, mod=5, max_complexity=4, max_steps=4,
             hidden_dim=16, embedding_dim=16, num_gnn_layers=1,
@@ -555,25 +614,24 @@ class TestMCTXIntegration:
         state = reset(ec, target)
         obs = get_observation(ec, state)
         batch_obs = jax.tree.map(lambda x: jnp.stack([x] * 4), obs)
-        actions = jnp.array([0, 1, 2, 3], dtype=jnp.int32)
-        advantages = jnp.array([0.1, -0.2, 0.3, -0.1])
         returns = jnp.array([1.0, 0.5, 1.5, 0.2])
-        old_log_probs = jnp.array([-2.0, -3.0, -2.5, -1.5])
+        policy_targets = jnp.array([
+            [0.60, 0.20, 0.10, 0.10] + [0.0] * (ec.max_actions - 4),
+            [0.10, 0.70, 0.10, 0.10] + [0.0] * (ec.max_actions - 4),
+            [0.10, 0.20, 0.60, 0.10] + [0.0] * (ec.max_actions - 4),
+            [0.10, 0.10, 0.10, 0.70] + [0.0] * (ec.max_actions - 4),
+        ], dtype=jnp.float32)
 
         @jax.jit
-        def ppo_step(ts, obs, actions, advantages, returns, old_log_probs):
+        def ppo_step(ts, obs, returns, policy_targets):
             def loss_fn(params):
                 logits, values = jax.vmap(
                     lambda o: net.apply(params, o)
                 )(obs)
                 log_probs = jax.nn.log_softmax(logits)
-                new_lp = log_probs[jnp.arange(actions.shape[0]), actions]
                 probs = jax.nn.softmax(logits)
                 entropy = -(probs * log_probs).sum(axis=-1).mean()
-                ratio = jnp.exp(new_lp - old_log_probs)
-                surr1 = ratio * advantages
-                surr2 = jnp.clip(ratio, 0.8, 1.2) * advantages
-                pg_loss = -jnp.minimum(surr1, surr2).mean()
+                pg_loss = -(policy_targets * log_probs).sum(axis=-1).mean()
                 vf_loss = jnp.mean((values - returns) ** 2)
                 total = pg_loss + 0.5 * vf_loss - 0.01 * entropy
                 return total, {'pg_loss': pg_loss, 'vf_loss': vf_loss,
@@ -585,7 +643,7 @@ class TestMCTXIntegration:
             return ts, info
 
         new_ts, info = ppo_step(
-            ts, batch_obs, actions, advantages, returns, old_log_probs,
+            ts, batch_obs, returns, policy_targets,
         )
         assert jnp.isfinite(info['pg_loss'])
         assert jnp.isfinite(info['vf_loss'])
@@ -596,4 +654,4 @@ class TestMCTXIntegration:
         any_changed = any(
             not jnp.allclose(o, n) for o, n in zip(old_flat, new_flat)
         )
-        assert any_changed, "PPO step should update at least some parameters"
+        assert any_changed, "Policy step should update at least some parameters"
