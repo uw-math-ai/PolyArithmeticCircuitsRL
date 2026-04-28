@@ -187,6 +187,21 @@ class TestPolyArithmetic:
         expected[0, 1, 1] = 1  # x1*x2
         np.testing.assert_array_equal(result, expected.flatten())
 
+    def test_poly_mul_4d(self):
+        """x0 * x3 in 4 variables should populate coefficient (1,0,0,1)."""
+        d = 5
+        a = np.zeros((d, d, d, d), dtype=np.int32)
+        a[1, 0, 0, 0] = 1  # x0
+        b = np.zeros((d, d, d, d), dtype=np.int32)
+        b[0, 0, 0, 1] = 1  # x3
+        result = poly_mul(
+            jnp.array(a.flatten()), jnp.array(b.flatten()),
+            mod=5, n_variables=4, max_degree=4,
+        )
+        expected = np.zeros((d, d, d, d), dtype=np.int32)
+        expected[1, 0, 0, 1] = 1
+        np.testing.assert_array_equal(result, expected.flatten())
+
     def test_poly_mul_mod(self):
         """Multiplication result is reduced mod p."""
         # (3) * (2) = 6 mod 5 = 1 in 1 variable, degree 2.

@@ -21,6 +21,7 @@ from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
+import jax.scipy.signal as jsignal
 import numpy as np
 
 
@@ -194,6 +195,7 @@ def poly_mul(a: jnp.ndarray, b: jnp.ndarray, mod: int,
     """Multiply two polynomials mod p using n-d convolution + truncate.
 
     Supports n_variables = 1, 2, or 3 via jax.lax.conv_general_dilated.
+    For larger variable counts, falls back to JAX's generic N-D convolution.
     Coefficients are reshaped to (d+1)^n arrays, convolved, truncated back
     to (d+1)^n, flattened, and reduced mod p.
     """
@@ -216,8 +218,9 @@ def _convolve_nd_jax(a: jnp.ndarray, b: jnp.ndarray,
                      n_variables: int, max_degree: int) -> jnp.ndarray:
     """N-dimensional polynomial multiplication truncated to (max_degree+1)^n.
 
-    Uses jax.lax.conv_general_dilated for GPU-friendly n-D convolution.
-    Supports n_variables = 1, 2, or 3 (matching JAX's supported spatial dims).
+    Uses jax.lax.conv_general_dilated for GPU-friendly n-D convolution when
+    JAX has a native spatial-rank kernel, and falls back to generic signal
+    convolution for higher ranks such as 4-variable polynomials.
 
     Args:
         a: n-d array of shape (d+1,)*n_variables (int32 coefficients).
@@ -230,6 +233,16 @@ def _convolve_nd_jax(a: jnp.ndarray, b: jnp.ndarray,
     """
     d = max_degree + 1
     shape = (d,) * n_variables
+
+    if n_variables not in _CONV_DIM_NUMBERS:
+        full = jsignal.convolve(
+            a.astype(jnp.float32),
+            b.astype(jnp.float32),
+            mode='full',
+            method='fft',
+        )
+        out_slices = tuple(slice(None, d) for _ in range(n_variables))
+        return jnp.rint(full[out_slices]).astype(jnp.int32)
 
     # Reshape for conv: (batch=1, channels=1, *spatial_dims)
     a_conv = a.reshape((1, 1) + shape).astype(jnp.float32)
