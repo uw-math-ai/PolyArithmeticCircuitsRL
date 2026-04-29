@@ -63,6 +63,7 @@ class Transition:
     network_log_prob: float
     value: float
     done: bool
+    mcts_action_weights: np.ndarray  # (max_actions,) MCTS visit distribution
 
 
 class PPOMCTSJAXTrainer:
@@ -670,6 +671,7 @@ class PPOMCTSJAXTrainer:
             on_path_phi_np = np.array(on_path_phi_step)
             values_np = np.array(values)
             network_lp_np = np.array(network_log_probs)
+            action_weights_np = np.array(action_weights, dtype=np.float32)
 
             # Store transitions for active environments.
             for i in range(B):
@@ -683,6 +685,7 @@ class PPOMCTSJAXTrainer:
                         network_log_prob=float(network_lp_np[i]),
                         value=float(values_np[i]),
                         done=bool(dones_np[i]),
+                        mcts_action_weights=action_weights_np[i].copy(),
                     ))
                     episode_rewards[i] += rewards_np[i]
                     if successes_np[i]:
@@ -888,6 +891,9 @@ class PPOMCTSJAXTrainer:
             "pg_loss": 0.0,
             "vf_loss": 0.0,
             "entropy": 0.0,
+            "distill_loss": 0.0,
+            "weighted_distill_loss": 0.0,
+            "distill_coef_now": 0.0,
             "weighted_vf_loss": 0.0,
             "pg_to_weighted_vf_ratio": 0.0,
             "max_abs_logit": 0.0,
@@ -914,6 +920,14 @@ class PPOMCTSJAXTrainer:
         frac = min(1.0, max(0.0, progress) / anneal_frac)
         start = float(self.config.ent_coef)
         end = float(self.config.ent_coef_final)
+        return start + (end - start) * frac
+
+    def _current_distill_coef(self, progress: float) -> float:
+        """Linearly anneal distill_coef toward distill_coef_final."""
+        anneal_frac = max(1e-6, float(self.config.distill_coef_anneal_fraction))
+        frac = min(1.0, max(0.0, progress) / anneal_frac)
+        start = float(self.config.distill_coef)
+        end = float(self.config.distill_coef_final)
         return start + (end - start) * frac
 
     def update(self, transitions: List[Transition],
@@ -947,7 +961,13 @@ class PPOMCTSJAXTrainer:
         old_log_probs = jnp.array([t.network_log_prob for t in transitions])
         old_values = jnp.array([t.value for t in transitions], dtype=jnp.float32)
         actions = jnp.array([t.action for t in transitions], dtype=jnp.int32)
+        mcts_weights = jnp.stack(
+            [jnp.asarray(t.mcts_action_weights, dtype=jnp.float32)
+             for t in transitions],
+            axis=0,
+        )
         ent_coef = jnp.float32(self._current_ent_coef(progress))
+        distill_coef = jnp.float32(self._current_distill_coef(progress))
 
         # Pre-stack all observations into batched arrays.
         obs_keys = transitions[0].obs.keys()
@@ -960,6 +980,7 @@ class PPOMCTSJAXTrainer:
         total_pg_loss = 0.0
         total_vf_loss = 0.0
         total_entropy = 0.0
+        total_distill_loss = 0.0
         max_abs_logit = 0.0
         max_log_ratio = 0.0
         max_return = 0.0
@@ -989,11 +1010,12 @@ class PPOMCTSJAXTrainer:
                 batch_ret = ret_jax[idx_jax]
                 batch_old_lp = old_log_probs[idx_jax]
                 batch_old_v = old_values[idx_jax]
+                batch_mcts_w = mcts_weights[idx_jax]
 
                 self.train_state, loss_info = self._ppo_step(
                     self.train_state, batch_obs, batch_actions,
                     batch_adv, batch_ret, batch_old_lp, batch_old_v,
-                    ent_coef,
+                    batch_mcts_w, ent_coef, distill_coef,
                 )
                 applied = bool(np.array(loss_info["applied"]))
                 kl_rejected = bool(np.array(loss_info["kl_rejected"]))
@@ -1019,6 +1041,7 @@ class PPOMCTSJAXTrainer:
                     total_pg_loss += float(loss_info["pg_loss"])
                     total_vf_loss += float(loss_info["vf_loss"])
                     total_entropy += float(loss_info["entropy"])
+                    total_distill_loss += float(loss_info["distill_loss"])
                     num_updates += 1
                 elif kl_rejected:
                     self.consecutive_nonfinite_minibatches = 0
@@ -1050,7 +1073,9 @@ class PPOMCTSJAXTrainer:
         mean_pg_loss = total_pg_loss / max(num_updates, 1)
         mean_vf_loss = total_vf_loss / max(num_updates, 1)
         mean_entropy = total_entropy / max(num_updates, 1)
+        mean_distill_loss = total_distill_loss / max(num_updates, 1)
         weighted_vf_loss = float(self.config.vf_coef) * mean_vf_loss
+        weighted_distill_loss = float(distill_coef) * mean_distill_loss
         pg_to_weighted_vf_ratio = (
             abs(mean_pg_loss) / max(abs(weighted_vf_loss), 1e-8)
         )
@@ -1063,6 +1088,9 @@ class PPOMCTSJAXTrainer:
             "pg_loss": mean_pg_loss,
             "vf_loss": mean_vf_loss,
             "entropy": mean_entropy,
+            "distill_loss": mean_distill_loss,
+            "weighted_distill_loss": weighted_distill_loss,
+            "distill_coef_now": float(distill_coef),
             "weighted_vf_loss": weighted_vf_loss,
             "pg_to_weighted_vf_ratio": pg_to_weighted_vf_ratio,
             "max_abs_logit": max_abs_logit,
@@ -1081,7 +1109,8 @@ class PPOMCTSJAXTrainer:
 
     @functools.partial(jax.jit, static_argnums=(0,))
     def _ppo_step(self, state, obs, actions, advantages, returns,
-                  old_log_probs, old_values, ent_coef):
+                  old_log_probs, old_values, mcts_weights,
+                  ent_coef, distill_coef):
         """Single JIT-compiled PPO gradient step."""
 
         if self.config.adv_normalize_per_minibatch:
@@ -1100,6 +1129,17 @@ class PPOMCTSJAXTrainer:
             # Entropy.
             probs = jax.nn.softmax(logits)
             entropy = -(probs * log_probs).sum(axis=-1).mean()
+
+            # Forward-KL distillation: KL(MCTS || network) per state, averaged.
+            # MCTS weights are zero on invalid actions, so masked entries
+            # contribute nothing.
+            mcts_log = jnp.log(mcts_weights + 1e-12)
+            kl_terms = jnp.where(
+                mcts_weights > 0,
+                mcts_weights * (mcts_log - log_probs),
+                0.0,
+            )
+            distill_loss = kl_terms.sum(axis=-1).mean()
 
             # PPO clipped ratio.
             raw_log_ratio = new_lp - old_log_probs
@@ -1131,12 +1171,14 @@ class PPOMCTSJAXTrainer:
 
             total = (pg_loss
                      + self.config.vf_coef * vf_loss
-                     - ent_coef * entropy)
+                     - ent_coef * entropy
+                     + distill_coef * distill_loss)
 
             aux = {
                 "pg_loss": pg_loss,
                 "vf_loss": vf_loss,
                 "entropy": entropy,
+                "distill_loss": distill_loss,
                 "max_abs_logit": jnp.max(jnp.abs(logits)),
                 "max_log_ratio": jnp.max(jnp.abs(log_ratio)),
                 "max_return": jnp.max(jnp.abs(returns)),
@@ -1322,6 +1364,7 @@ class PPOMCTSJAXTrainer:
         checkpoint_interval = 50
         history = {
             "pg_loss": [], "vf_loss": [], "entropy": [],
+            "distill_loss": [], "weighted_distill_loss": [], "distill_coef_now": [],
             "weighted_vf_loss": [], "pg_to_weighted_vf_ratio": [],
             "success_rate": [], "avg_reward": [], "complexity": [],
             "on_path_phi": [], "on_path_hits": [], "episode_length": [],
@@ -1416,6 +1459,9 @@ class PPOMCTSJAXTrainer:
             history["pg_loss"].append(loss_info["pg_loss"])
             history["vf_loss"].append(loss_info["vf_loss"])
             history["entropy"].append(loss_info["entropy"])
+            history["distill_loss"].append(loss_info["distill_loss"])
+            history["weighted_distill_loss"].append(loss_info["weighted_distill_loss"])
+            history["distill_coef_now"].append(loss_info["distill_coef_now"])
             history["weighted_vf_loss"].append(loss_info["weighted_vf_loss"])
             history["pg_to_weighted_vf_ratio"].append(
                 loss_info["pg_to_weighted_vf_ratio"]
@@ -1517,6 +1563,9 @@ class PPOMCTSJAXTrainer:
                     "pg_loss": loss_info["pg_loss"],
                     "vf_loss": loss_info["vf_loss"],
                     "entropy": loss_info["entropy"],
+                    "distill_loss": loss_info["distill_loss"],
+                    "weighted_distill_loss": loss_info["weighted_distill_loss"],
+                    "distill_coef_now": loss_info["distill_coef_now"],
                     "weighted_vf_loss": loss_info["weighted_vf_loss"],
                     "pg_to_weighted_vf_ratio": (
                         loss_info["pg_to_weighted_vf_ratio"]
@@ -1616,6 +1665,9 @@ class PPOMCTSJAXTrainer:
                     f"vf_loss={loss_info['vf_loss']:.4f} "
                     f"wvf={loss_info['weighted_vf_loss']:.4f} "
                     f"pg/wvf={loss_info['pg_to_weighted_vf_ratio']:.4f} "
+                    f"distill={loss_info['distill_loss']:.3f} "
+                    f"wdistill={loss_info['weighted_distill_loss']:.3f} "
+                    f"dcoef={loss_info['distill_coef_now']:.2f} "
                     f"entropy={loss_info['entropy']:.4f} "
                     f"max_log_ratio={loss_info['max_log_ratio']:.2f} "
                     f"approx_kl={loss_info['approx_kl']:.4f} "

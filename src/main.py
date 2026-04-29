@@ -155,6 +155,13 @@ def main() -> None:
     parser.add_argument("--no-adv-normalize-per-minibatch", action="store_true",
                         help="Disable per-minibatch advantage normalization "
                              "(falls back to per-rollout normalization).")
+    parser.add_argument("--distill-coef", type=float, default=None,
+                        help="MCTS distillation KL(MCTS || network) coefficient.")
+    parser.add_argument("--distill-coef-final", type=float, default=None,
+                        help="Final distillation coefficient after annealing.")
+    parser.add_argument("--distill-coef-anneal-fraction", type=float, default=None,
+                        help="Fraction of training over which distill_coef anneals "
+                             "from initial to final.")
     parser.add_argument("--ppo-lr", type=float, default=None)
     parser.add_argument(
         "--ppo-epochs",
@@ -288,6 +295,12 @@ def main() -> None:
         config.value_clip_enabled = False
     if args.no_adv_normalize_per_minibatch:
         config.adv_normalize_per_minibatch = False
+    if args.distill_coef is not None:
+        config.distill_coef = args.distill_coef
+    if args.distill_coef_final is not None:
+        config.distill_coef_final = args.distill_coef_final
+    if args.distill_coef_anneal_fraction is not None:
+        config.distill_coef_anneal_fraction = args.distill_coef_anneal_fraction
     if args.ppo_lr is not None:
         config.ppo_lr = args.ppo_lr
     if args.ppo_epochs is not None:

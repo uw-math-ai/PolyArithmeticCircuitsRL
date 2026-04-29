@@ -99,6 +99,11 @@ class Config:
     value_clip_enabled: bool = True
     value_clip_range: float = 0.2
     adv_normalize_per_minibatch: bool = True
+    # MCTS-policy distillation: forward-KL auxiliary loss pulling the network
+    # softmax toward MCTS visit counts.
+    distill_coef: float = 0.0
+    distill_coef_final: float = 0.0
+    distill_coef_anneal_fraction: float = 0.5
     batch_size: int = 256
     steps_per_update: int = 4096
     max_grad_norm: float = 0.5

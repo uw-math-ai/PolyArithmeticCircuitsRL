@@ -47,6 +47,9 @@ ENT_COEF_FINAL=${ENT_COEF_FINAL:-0.01}
 ENT_COEF_ANNEAL_FRACTION=${ENT_COEF_ANNEAL_FRACTION:-0.5}
 VF_COEF=${VF_COEF:-0.5}
 VALUE_CLIP_RANGE=${VALUE_CLIP_RANGE:-0.2}
+DISTILL_COEF=${DISTILL_COEF:-0.0}
+DISTILL_COEF_FINAL=${DISTILL_COEF_FINAL:-0.0}
+DISTILL_COEF_ANNEAL_FRACTION=${DISTILL_COEF_ANNEAL_FRACTION:-0.5}
 LOG_INTERVAL=${LOG_INTERVAL:-10}
 PROGRESS_BAR=${PROGRESS_BAR:-0}
 
@@ -98,6 +101,9 @@ echo "  ent_coef_final: $ENT_COEF_FINAL"
 echo "  ent_coef_anneal_fraction: $ENT_COEF_ANNEAL_FRACTION"
 echo "  vf_coef: $VF_COEF"
 echo "  value_clip_range: $VALUE_CLIP_RANGE"
+echo "  distill_coef: $DISTILL_COEF"
+echo "  distill_coef_final: $DISTILL_COEF_FINAL"
+echo "  distill_coef_anneal_fraction: $DISTILL_COEF_ANNEAL_FRACTION"
 echo "  on_path_phi_mode: $ON_PATH_PHI_MODE"
 echo "  on_route_bonus_coeff: $ON_ROUTE_BONUS_COEFF"
 echo "  on_path_depth_weight_power: $ON_PATH_DEPTH_WEIGHT_POWER"
@@ -162,6 +168,9 @@ apptainer exec --nv --bind /gscratch:/gscratch \
     --ent-coef-anneal-fraction "$ENT_COEF_ANNEAL_FRACTION" \
     --vf-coef "$VF_COEF" \
     --value-clip-range "$VALUE_CLIP_RANGE" \
+    --distill-coef "$DISTILL_COEF" \
+    --distill-coef-final "$DISTILL_COEF_FINAL" \
+    --distill-coef-anneal-fraction "$DISTILL_COEF_ANNEAL_FRACTION" \
     --log-interval "$LOG_INTERVAL" \
     --reward-mode clean_onpath \
     --graph-onpath-cache-dir "$CACHE_DIR" \
