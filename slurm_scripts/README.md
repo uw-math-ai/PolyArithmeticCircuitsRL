@@ -42,11 +42,13 @@ sbatch slurm_scripts/build_on_path_cache_c1_c6.slurm
 By default this writes:
 
 ```text
-on_path_cache/n2_mod5_deg6_SEQ_C1_C6_routes32_seed42
+on_path_cache/v5_n2_mod5_deg6_SEQ_C1_C6_routes32_seed42
 ```
 
 for 2-variable, mod-5 targets with `max_degree=6` and curriculum
-complexities `1 2 3 4 5 6`. The cache stores the actual train/val/test
+complexities `1 2 3 4 5 6`.
+
+The cache stores the actual train/val/test
 target ID splits, coherent optimal-route masks, and training loads those
 splits directly.
 The route-mask cache records how many targets hit the configured route cap and
@@ -63,11 +65,12 @@ The requested curriculum complexities may be a subset of the cached
 complexities. To override defaults at submission time:
 
 ```bash
-CACHE_DIR=on_path_cache/n2_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
+CACHE_DIR=on_path_cache/v5_n2_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
 COMPLEXITIES="1 2 3 4 5 6" \
 ON_PATH_NUM_ROUTES=32 \
 MAX_ON_PATH_SIZE=8192 \
 MAX_ROUTE_TRUNCATION_RATE=0.25 \
+CACHE_BACKEND=jax \
 sbatch slurm_scripts/build_on_path_cache_c1_c6.slurm
 ```
 
@@ -76,7 +79,7 @@ geometry and output names:
 
 ```bash
 N_VARIABLES=3 \
-CACHE_DIR=on_path_cache/n3_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
+CACHE_DIR=on_path_cache/v5_n3_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
 RESULTS_DIR=results/ppo-mcts-jax_clean_onpath_curriculum_3var_C1_C6 \
 WANDB_RUN_NAME=ppo-mcts-jax_clean_onpath_curriculum_3var_C1_C6 \
 sbatch slurm_scripts/run_clean_onpath_curriculum_c1_c6.slurm
@@ -126,7 +129,7 @@ Inspect route-mask structure before a run with:
 
 ```bash
 python scripts/inspect_on_path_cache.py \
-  --cache-dir on_path_cache/n2_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
+  --cache-dir on_path_cache/v5_n2_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
   --complexity 2
 ```
 
@@ -167,7 +170,7 @@ For a C1→C3 stable debug run against the C1→C6 cache you already built, keep
 the cache path as C1→C6 and only lower `MAX_COMPLEXITY`:
 
 ```bash
-CACHE_DIR=on_path_cache/n2_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
+CACHE_DIR=on_path_cache/v5_n2_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
 MAX_COMPLEXITY=3 \
 RESULTS_DIR=results/ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C3 \
 WANDB_RUN_NAME=ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C3 \

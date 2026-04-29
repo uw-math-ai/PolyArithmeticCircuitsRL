@@ -36,7 +36,7 @@ class Config:
     terminal_success_reward: float = 10.0  # Clean-mode terminal reward.
     step_penalty: float = -0.1          # Per-step penalty to encourage shorter circuits
     use_reward_shaping: bool = True     # Enable potential-based shaping (Ng et al., 1999)
-    graph_onpath_shaping_coeff: float = 1.0
+    graph_onpath_shaping_coeff: float = 3.0
     graph_onpath_cache_dir: Optional[str] = None
     on_path_terminal_zero: bool = True
     on_path_phi_mode: str = "count"     # "count", "max_step", or "depth_weighted"
@@ -49,7 +49,7 @@ class Config:
     # Non-PBRS additive bonus paid each step phi increases (coherent-route progress).
     # Bounded: phi <= 1 caps total per-episode bonus at this coefficient.
     # 0.0 disables. Recommended: 0.5 for fixed-C2 diagnostic.
-    on_route_bonus_coeff: float = 0.0
+    on_route_bonus_coeff: float = 3.0
 
     # -------------------------------------------------------------------------
     # Factor library and subgoal rewards
@@ -57,7 +57,7 @@ class Config:
     # When enabled, the target polynomial is factorized at each episode reset
     # (using SymPy over Z). Non-trivial factors become subgoals: the agent is
     # rewarded for building them as intermediate circuit nodes.
-    factor_library_enabled: bool = True
+    factor_library_enabled: bool = False
     # Bonus reward for constructing any non-trivial factor of the current target.
     # Applied once per factor per episode (cannot be collected twice for the same
     # factor in one episode).

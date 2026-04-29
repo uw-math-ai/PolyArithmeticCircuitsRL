@@ -6,6 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
+#SBATCH --gres=gpu:1
 #SBATCH --time=12:00:00
 #SBATCH --output=results/slurm/%x_%j.out
 
@@ -22,12 +23,23 @@ SPLIT_SEED=${SPLIT_SEED:-42}
 MAX_ON_PATH_SIZE=${MAX_ON_PATH_SIZE:-4096}
 ON_PATH_NUM_ROUTES=${ON_PATH_NUM_ROUTES:-32}
 MAX_ROUTE_TRUNCATION_RATE=${MAX_ROUTE_TRUNCATION_RATE:-0.25}
-CACHE_DIR=${CACHE_DIR:-on_path_cache/n2_mod5_deg6_SEQ_C1_C6_routes32_seed42}
+CACHE_BACKEND=${CACHE_BACKEND:-jax}
+NUM_PROCESSES=${NUM_PROCESSES:-}
+NO_PARALLEL=${NO_PARALLEL:-0}
+CACHE_DIR=${CACHE_DIR:-on_path_cache/v5_n2_mod5_deg6_SEQ_C1_C6_routes32_seed42}
 
 cd "$REPO_DIR"
+module load cuda
 mkdir -p results/slurm "$CACHE_DIR"
 
 read -r -a COMPLEXITY_ARGS <<< "$COMPLEXITIES"
+PARALLEL_ARGS=()
+if [[ -n "$NUM_PROCESSES" ]]; then
+  PARALLEL_ARGS+=(--num-processes "$NUM_PROCESSES")
+fi
+if [[ "$NO_PARALLEL" == "1" ]]; then
+  PARALLEL_ARGS+=(--no-parallel)
+fi
 
 echo "Building cached OnPath target set"
 echo "  repo: $REPO_DIR"
@@ -40,9 +52,19 @@ echo "  split_seed: $SPLIT_SEED"
 echo "  max_on_path_size: $MAX_ON_PATH_SIZE"
 echo "  on_path_num_routes: $ON_PATH_NUM_ROUTES"
 echo "  max_route_truncation_rate: $MAX_ROUTE_TRUNCATION_RATE"
+echo "  cache_backend: $CACHE_BACKEND"
+echo "  num_processes: ${NUM_PROCESSES:-auto}"
+echo "  no_parallel: $NO_PARALLEL"
 
-apptainer exec --bind /gscratch:/gscratch \
+apptainer exec --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
+  --env XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false \
+  "$CONTAINER" \
+  python -u -c "import jax; print('JAX devices:', jax.devices())"
+
+apptainer exec --nv --bind /gscratch:/gscratch \
+  --env PYTHONUNBUFFERED=1 \
+  --env XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false \
   "$CONTAINER" \
   python -u -m src.game_board.on_path \
     --complexities "${COMPLEXITY_ARGS[@]}" \
@@ -53,6 +75,8 @@ apptainer exec --bind /gscratch:/gscratch \
     --split-seed "$SPLIT_SEED" \
     --max-on-path-size "$MAX_ON_PATH_SIZE" \
     --num-routes "$ON_PATH_NUM_ROUTES" \
-    --max-route-truncation-rate "$MAX_ROUTE_TRUNCATION_RATE"
+    --max-route-truncation-rate "$MAX_ROUTE_TRUNCATION_RATE" \
+    --backend "$CACHE_BACKEND" \
+    "${PARALLEL_ARGS[@]}"
 
 echo "OnPath cache complete: $CACHE_DIR"
