@@ -562,6 +562,14 @@ class PPOMCTSJAXTrainer:
         episode_on_path_phi = np.zeros(B, dtype=np.float32)
         successful_final_states = []
 
+        # MCTS-policy distillation metrics: accumulated over (step, active env) tuples.
+        distill_top1_match_sum = 0.0
+        distill_kl_sum = 0.0
+        distill_mcts_entropy_sum = 0.0
+        distill_net_entropy_sum = 0.0
+        distill_value_gap_sum = 0.0
+        distill_count = 0
+
         for step_idx in range(self.config.max_steps):
             if not active.any():
                 break
@@ -593,6 +601,51 @@ class PPOMCTSJAXTrainer:
             network_log_probs = log_probs[
                 jnp.arange(B), actions
             ]  # (B,)
+
+            # MCTS-policy distillation diagnostics (per-env scalars).
+            mcts_argmax = jnp.argmax(action_weights, axis=-1)
+            net_argmax = jnp.argmax(logits, axis=-1)
+            top1_match_per_env = (mcts_argmax == net_argmax).astype(jnp.float32)
+            # KL(MCTS || network) using log_probs from masked logits. action_weights
+            # is zero for invalid actions, so the contribution there is zero.
+            mcts_log = jnp.log(action_weights + 1e-12)
+            kl_terms = jnp.where(
+                action_weights > 0,
+                action_weights * (mcts_log - log_probs),
+                0.0,
+            )
+            kl_per_env = jnp.sum(kl_terms, axis=-1)
+            mcts_entropy_per_env = -jnp.sum(
+                jnp.where(action_weights > 0, action_weights * mcts_log, 0.0),
+                axis=-1,
+            )
+            net_probs = jax.nn.softmax(logits)
+            net_entropy_per_env = -jnp.sum(
+                jnp.where(net_probs > 0, net_probs * log_probs, 0.0),
+                axis=-1,
+            )
+            # MCTS root value comes from the search tree (mctx stores it as
+            # search_tree.node_values at the root index 0).
+            try:
+                mcts_root_values = policy_output.search_tree.node_values[:, 0]
+            except (AttributeError, IndexError):
+                mcts_root_values = values  # Fallback if mctx API differs.
+            value_gap_per_env = mcts_root_values - values
+
+            top1_np = np.array(top1_match_per_env)
+            kl_np = np.array(kl_per_env)
+            mcts_ent_np = np.array(mcts_entropy_per_env)
+            net_ent_np = np.array(net_entropy_per_env)
+            value_gap_np = np.array(value_gap_per_env)
+            active_mask = active.astype(np.float32)
+            n_active_step = int(active.sum())
+            if n_active_step > 0:
+                distill_top1_match_sum += float((top1_np * active_mask).sum())
+                distill_kl_sum += float((kl_np * active_mask).sum())
+                distill_mcts_entropy_sum += float((mcts_ent_np * active_mask).sum())
+                distill_net_entropy_sum += float((net_ent_np * active_mask).sum())
+                distill_value_gap_sum += float((value_gap_np * active_mask).sum())
+                distill_count += n_active_step
 
             # Step all environments.
             (
@@ -673,6 +726,7 @@ class PPOMCTSJAXTrainer:
             episode_lengths=episode_lengths,
         )
 
+        denom = max(distill_count, 1)
         rollout_info = {
             "episodes": B,
             "success_rate": float(success_rate),
@@ -685,6 +739,11 @@ class PPOMCTSJAXTrainer:
             "on_path_phi": float(episode_on_path_phi.mean()),
             "target_board_step": float(np.array(target_board_steps).mean()),
             "episode_length": float(episode_lengths.mean()),
+            "mcts_top1_match_rate": distill_top1_match_sum / denom,
+            "mcts_policy_kl": distill_kl_sum / denom,
+            "mcts_entropy": distill_mcts_entropy_sum / denom,
+            "network_entropy": distill_net_entropy_sum / denom,
+            "mcts_minus_network_value": distill_value_gap_sum / denom,
             **outcome_info,
         }
 
@@ -1280,6 +1339,11 @@ class PPOMCTSJAXTrainer:
             "avg_episode_length_success": [],
             "avg_episode_length_failure_with_hit": [],
             "avg_episode_length_failure_no_hit": [],
+            "mcts_top1_match_rate": [],
+            "mcts_policy_kl": [],
+            "mcts_entropy": [],
+            "network_entropy": [],
+            "mcts_minus_network_value": [],
         }
         # Per-complexity history when using fixed_complexities.
         if self.fixed_complexities:
@@ -1397,6 +1461,11 @@ class PPOMCTSJAXTrainer:
                 "avg_episode_length_success",
                 "avg_episode_length_failure_with_hit",
                 "avg_episode_length_failure_no_hit",
+                "mcts_top1_match_rate",
+                "mcts_policy_kl",
+                "mcts_entropy",
+                "network_entropy",
+                "mcts_minus_network_value",
             ):
                 history[key].append(rollout_info[key])
 
@@ -1507,6 +1576,15 @@ class PPOMCTSJAXTrainer:
                     "train/by_outcome/avg_phi_failure_with_hit": (
                         rollout_info["avg_phi_failure_with_hit"]
                     ),
+                    "distill/mcts_top1_match_rate": (
+                        rollout_info["mcts_top1_match_rate"]
+                    ),
+                    "distill/mcts_policy_kl": rollout_info["mcts_policy_kl"],
+                    "distill/mcts_entropy": rollout_info["mcts_entropy"],
+                    "distill/network_entropy": rollout_info["network_entropy"],
+                    "distill/mcts_minus_network_value": (
+                        rollout_info["mcts_minus_network_value"]
+                    ),
                 }
                 if self.fixed_complexities:
                     for c in self.fixed_complexities:
@@ -1552,6 +1630,10 @@ class PPOMCTSJAXTrainer:
                     f"R_succ={rollout_info['avg_return_success']:+.1f} "
                     f"R_fail_hit={rollout_info['avg_return_failure_with_hit']:+.1f} "
                     f"R_fail={rollout_info['avg_return_failure_no_hit']:+.1f} "
+                    f"top1={rollout_info['mcts_top1_match_rate']:.1%} "
+                    f"mcts_kl={rollout_info['mcts_policy_kl']:.3f} "
+                    f"mcts_H={rollout_info['mcts_entropy']:.2f} "
+                    f"net_H={rollout_info['network_entropy']:.2f} "
                     f"({iter_time:.1f}s/iter)"
                 )
                 if self.fixed_complexities:
