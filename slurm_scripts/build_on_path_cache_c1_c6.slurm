@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=onpath_cache_2var_c1_c6
+#SBATCH --job-name=onpath_cache_2var_c1_c5
 #SBATCH --account=stf
 #SBATCH --partition=ckpt
 #SBATCH --nodes=1
@@ -18,7 +18,7 @@ CONTAINER=${CONTAINER:-container_jax.sif}
 N_VARIABLES=${N_VARIABLES:-2}
 MOD=${MOD:-5}
 MAX_DEGREE=${MAX_DEGREE:-6}
-COMPLEXITIES=${COMPLEXITIES:-"1 2 3 4 5 6"}
+COMPLEXITIES=${COMPLEXITIES:-"1 2 3 4 5"}
 SPLIT_SEED=${SPLIT_SEED:-42}
 MAX_ON_PATH_SIZE=${MAX_ON_PATH_SIZE:-4096}
 ON_PATH_NUM_ROUTES=${ON_PATH_NUM_ROUTES:-32}
@@ -27,7 +27,7 @@ CACHE_BACKEND=${CACHE_BACKEND:-jax}
 POLY_BATCH_JAX_CHUNK_SIZE=${POLY_BATCH_JAX_CHUNK_SIZE:-1024}
 NUM_PROCESSES=${NUM_PROCESSES:-}
 NO_PARALLEL=${NO_PARALLEL:-1}
-CACHE_DIR=${CACHE_DIR:-on_path_cache/v5_n2_mod5_deg6_SEQ_C1_C6_routes32_seed42}
+CACHE_DIR=${CACHE_DIR:-on_path_cache/c1_c5}
 
 cd "$REPO_DIR"
 module load cuda

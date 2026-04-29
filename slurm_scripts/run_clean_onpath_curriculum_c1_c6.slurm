@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=clean_onpath_2var_c1_c6
+#SBATCH --job-name=clean_onpath_2var_c1_c5
 #SBATCH --account=stf
 #SBATCH --partition=ckpt
 #SBATCH --nodes=1
@@ -17,11 +17,11 @@ CONTAINER=${CONTAINER:-container_jax.sif}
 
 N_VARIABLES=${N_VARIABLES:-2}
 MOD=${MOD:-5}
-MAX_COMPLEXITY=${MAX_COMPLEXITY:-6}
+MAX_COMPLEXITY=${MAX_COMPLEXITY:-5}
 MAX_DEGREE=${MAX_DEGREE:-6}
 MAX_STEPS=${MAX_STEPS:-12}
 
-CACHE_DIR=${CACHE_DIR:-on_path_cache/v5_n2_mod5_deg6_SEQ_C1_C6_routes32_seed42}
+CACHE_DIR=${CACHE_DIR:-on_path_cache/c1_c5}
 SPLIT_SEED=${SPLIT_SEED:-42}
 MAX_ON_PATH_SIZE=${MAX_ON_PATH_SIZE:-4096}
 ON_PATH_NUM_ROUTES=${ON_PATH_NUM_ROUTES:-32}
@@ -54,9 +54,9 @@ CURRICULUM_WINDOW=${CURRICULUM_WINDOW:-2048}
 CURRICULUM_MIN_DWELL_ITERATIONS=${CURRICULUM_MIN_DWELL_ITERATIONS:-64}
 CURRICULUM_BACKOFF_PATIENCE_ITERATIONS=${CURRICULUM_BACKOFF_PATIENCE_ITERATIONS:-0}
 
-RESULTS_DIR=${RESULTS_DIR:-results/ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C6}
+RESULTS_DIR=${RESULTS_DIR:-results/ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C5}
 WANDB=${WANDB:-1}
-WANDB_RUN_NAME=${WANDB_RUN_NAME:-ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C6}
+WANDB_RUN_NAME=${WANDB_RUN_NAME:-ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C5}
 FIXED_COMPLEXITIES=${FIXED_COMPLEXITIES:-}
 
 cd "$REPO_DIR"

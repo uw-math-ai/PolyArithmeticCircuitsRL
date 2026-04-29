@@ -42,11 +42,11 @@ sbatch slurm_scripts/build_on_path_cache_c1_c6.slurm
 By default this writes:
 
 ```text
-on_path_cache/v5_n2_mod5_deg6_SEQ_C1_C6_routes32_seed42
+on_path_cache/c1_c5
 ```
 
 for 2-variable, mod-5 targets with `max_degree=6` and curriculum
-complexities `1 2 3 4 5 6`.
+complexities `1 2 3 4 5`.
 
 The cache stores the actual train/val/test
 target ID splits, coherent optimal-route masks, and training loads those
@@ -65,8 +65,8 @@ The requested curriculum complexities may be a subset of the cached
 complexities. To override defaults at submission time:
 
 ```bash
-CACHE_DIR=on_path_cache/v5_n2_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
-COMPLEXITIES="1 2 3 4 5 6" \
+CACHE_DIR=on_path_cache/c1_c5 \
+COMPLEXITIES="1 2 3 4 5" \
 ON_PATH_NUM_ROUTES=32 \
 MAX_ON_PATH_SIZE=8192 \
 MAX_ROUTE_TRUNCATION_RATE=0.25 \
@@ -79,9 +79,9 @@ geometry and output names:
 
 ```bash
 N_VARIABLES=3 \
-CACHE_DIR=on_path_cache/v5_n3_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
-RESULTS_DIR=results/ppo-mcts-jax_clean_onpath_curriculum_3var_C1_C6 \
-WANDB_RUN_NAME=ppo-mcts-jax_clean_onpath_curriculum_3var_C1_C6 \
+CACHE_DIR=on_path_cache/c1_c5_3var \
+RESULTS_DIR=results/ppo-mcts-jax_clean_onpath_curriculum_3var_C1_C5 \
+WANDB_RUN_NAME=ppo-mcts-jax_clean_onpath_curriculum_3var_C1_C5 \
 sbatch slurm_scripts/run_clean_onpath_curriculum_c1_c6.slurm
 ```
 
@@ -98,7 +98,7 @@ sbatch slurm_scripts/run_clean_onpath_curriculum_c1_c6.slurm
 - `run_jax_c5_c8.slurm`: JAX PPO+MCTS legacy reward baseline over fixed
   complexities 5, 6, 7, and 8.
 - `run_clean_onpath_curriculum_c1_c6.slurm`: large JAX PPO+MCTS adaptive
-  curriculum run from C1 through C6 on 2-variable targets using cached
+  curriculum run from C1 through C5 on 2-variable targets using cached
   `clean_onpath` teacher shaping.
 
 The adaptive curriculum samples only the current complexity, then advances or
@@ -129,7 +129,7 @@ Inspect route-mask structure before a run with:
 
 ```bash
 python scripts/inspect_on_path_cache.py \
-  --cache-dir on_path_cache/v5_n2_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
+  --cache-dir on_path_cache/c1_c5 \
   --complexity 2
 ```
 
@@ -137,7 +137,7 @@ The clean OnPath Slurm defaults are intended to be stable for one GPU:
 `MCTS_BATCH_SIZE=128`, `MCTS_SIMULATIONS=32`, `PPO_LR=1e-4`,
 `MAX_GRAD_NORM=0.25`, `PPO_LOG_RATIO_CLIP=10.0`, `PPO_EPOCHS=2`,
 `TARGET_KL=0.03`, `ENT_COEF=0.05`, `GRAPH_ONPATH_SHAPING_COEFF=3.0`,
-`MAX_COMPLEXITY=6`, and `MAX_STEPS=12`. Progress bars are disabled by default
+`MAX_COMPLEXITY=5`, and `MAX_STEPS=12`. Progress bars are disabled by default
 for cleaner Slurm logs; set `PROGRESS_BAR=1` to re-enable.
 
 Run the large cached curriculum job after the cache job finishes:
@@ -166,11 +166,11 @@ CURRICULUM_MIN_DWELL_ITERATIONS=64 \
 sbatch slurm_scripts/run_clean_onpath_curriculum_c1_c6.slurm
 ```
 
-For a C1→C3 stable debug run against the C1→C6 cache you already built, keep
-the cache path as C1→C6 and only lower `MAX_COMPLEXITY`:
+For a C1→C3 stable debug run against the C1→C5 cache you already built, keep
+the cache path as C1→C5 and only lower `MAX_COMPLEXITY`:
 
 ```bash
-CACHE_DIR=on_path_cache/v5_n2_mod5_deg6_SEQ_C1_C6_routes32_seed42 \
+CACHE_DIR=on_path_cache/c1_c5 \
 MAX_COMPLEXITY=3 \
 RESULTS_DIR=results/ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C3 \
 WANDB_RUN_NAME=ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C3 \
@@ -198,4 +198,4 @@ sbatch slurm_scripts/run_clean_onpath_curriculum_c1_c6.slurm
 - `results/ppo-mcts-jax_fl_C5`
 - `results/ppo-mcts-jax_fl_C6`
 - `results/ppo-mcts-jax_fl_C5_C8`
-- `results/ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C6`
+- `results/ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C5`
