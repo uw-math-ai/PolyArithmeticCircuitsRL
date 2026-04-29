@@ -1,10 +1,13 @@
 """Tests for the game board generator."""
 
+import warnings
+
 import numpy as np
 import pytest
 
 from src.config import Config
 from src.environment.fast_polynomial import FastPoly
+from src.environment.poly_batch_ops import PolyBatchOps
 from src.game_board.generator import (
     build_game_board,
     find_interesting_targets,
@@ -20,6 +23,71 @@ from src.game_board.on_path import (
     compute_sequential_route_sets,
     validate_cache_metadata,
 )
+
+
+def _bs(*ids: int) -> int:
+    """Build a bitset from node ids; route literals are Python ints now."""
+    out = 0
+    for i in ids:
+        out |= 1 << i
+    return out
+
+
+def _build_game_board_scalar_reference(config: Config, complexity: int):
+    """Legacy scalar-loop board builder kept for vectorization parity tests."""
+    n_vars = config.n_variables
+    mod = config.mod
+    max_deg = config.effective_max_degree
+
+    initial_polys = [
+        FastPoly.variable(i, n_vars, max_deg, mod)
+        for i in range(n_vars)
+    ]
+    initial_polys.append(FastPoly.constant(1, n_vars, max_deg, mod))
+
+    board = {}
+    all_polys = []
+    for poly in initial_polys:
+        key = poly.canonical_key()
+        if key not in board:
+            board[key] = {
+                "poly": poly,
+                "step": 0,
+                "parents": [],
+                "paths": 1,
+            }
+            all_polys.append(poly)
+
+    for step in range(1, complexity + 1):
+        new_polys = []
+        n = len(all_polys)
+        for i in range(n):
+            for j in range(i, n):
+                for op in (0, 1):
+                    result = (
+                        all_polys[i] + all_polys[j]
+                        if op == 0
+                        else all_polys[i] * all_polys[j]
+                    )
+                    key = result.canonical_key()
+                    parent_info = {
+                        "op": "add" if op == 0 else "mul",
+                        "left": all_polys[i].canonical_key(),
+                        "right": all_polys[j].canonical_key(),
+                    }
+                    if key not in board:
+                        board[key] = {
+                            "poly": result,
+                            "step": step,
+                            "parents": [parent_info],
+                            "paths": 1,
+                        }
+                        new_polys.append(result)
+                    else:
+                        board[key]["parents"].append(parent_info)
+                        board[key]["paths"] += 1
+        all_polys.extend(new_polys)
+    return board
 
 
 class TestBuildGameBoard:
@@ -62,6 +130,85 @@ class TestBuildGameBoard:
         b1 = build_game_board(self.config, complexity=1)
         b2 = build_game_board(self.config, complexity=2)
         assert len(b2) >= len(b1)
+
+    def test_vectorized_builder_matches_scalar_reference_c3(self):
+        config = Config(n_variables=2, mod=5, max_complexity=3, max_degree=3)
+        board = build_game_board(config, complexity=3)
+        ref = _build_game_board_scalar_reference(config, complexity=3)
+
+        assert set(board) == set(ref)
+        for key in ref:
+            assert board[key]["step"] == ref[key]["step"]
+            assert board[key]["paths"] == ref[key]["paths"]
+            assert np.array_equal(board[key]["poly"].coeffs, ref[key]["poly"].coeffs)
+            assert len(board[key]["parents"]) == len(ref[key]["parents"])
+
+
+class TestPolyBatchOpsBackends:
+    @staticmethod
+    def _sample_coeffs_and_pairs():
+        config = Config(n_variables=2, mod=5, max_complexity=2, max_degree=2)
+        n_vars = config.n_variables
+        max_deg = config.effective_max_degree
+        mod = config.mod
+        polys = [
+            FastPoly.variable(0, n_vars, max_deg, mod),
+            FastPoly.variable(1, n_vars, max_deg, mod),
+            FastPoly.constant(1, n_vars, max_deg, mod),
+        ]
+        polys.append(polys[0] + polys[1])
+        coeffs = np.stack([p.coeffs.reshape(-1) for p in polys], axis=0)
+        tri_i, tri_j = np.triu_indices(len(polys))
+        pair_idx = np.stack((tri_i, tri_j), axis=1)
+        return config, polys, coeffs, pair_idx
+
+    def test_numpy_backend_matches_scalar_loop_c2(self):
+        config, polys, coeffs, pair_idx = self._sample_coeffs_and_pairs()
+        n_vars = config.n_variables
+        max_deg = config.effective_max_degree
+        mod = config.mod
+
+        ops = PolyBatchOps(n_vars, max_deg, mod, backend="numpy")
+        add_rows = ops.add_all_pairs(coeffs, pair_idx)
+        mul_rows = ops.mul_all_pairs(coeffs, pair_idx)
+
+        expected_add = []
+        expected_mul = []
+        for i, j in pair_idx:
+            expected_add.append((polys[int(i)] + polys[int(j)]).coeffs.reshape(-1))
+            expected_mul.append((polys[int(i)] * polys[int(j)]).coeffs.reshape(-1))
+
+        assert np.array_equal(add_rows, np.stack(expected_add, axis=0))
+        assert np.array_equal(mul_rows, np.stack(expected_mul, axis=0))
+
+    def test_jax_backend_matches_numpy_when_available(self):
+        pytest.importorskip("jax")
+        config, _polys, coeffs, pair_idx = self._sample_coeffs_and_pairs()
+        numpy_ops = PolyBatchOps(
+            config.n_variables,
+            config.effective_max_degree,
+            config.mod,
+            backend="numpy",
+        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            jax_ops = PolyBatchOps(
+                config.n_variables,
+                config.effective_max_degree,
+                config.mod,
+                backend="jax",
+            )
+        if jax_ops.backend != "jax":
+            pytest.skip("JAX is importable but no JAX GPU device is available")
+
+        assert np.array_equal(
+            jax_ops.add_all_pairs(coeffs, pair_idx),
+            numpy_ops.add_all_pairs(coeffs, pair_idx),
+        )
+        assert np.array_equal(
+            jax_ops.mul_all_pairs(coeffs, pair_idx),
+            numpy_ops.mul_all_pairs(coeffs, pair_idx),
+        )
 
 
 class TestInterestingTargets:
@@ -165,7 +312,7 @@ class TestOnPathCache:
         # Two minimal routes selected; both fit under max_routes; target itself
         # is not capped. But ancestor 2 was working-cap truncated upstream, so
         # the conservative cap-hit flag must still fire.
-        minimal_routes = [frozenset({1, 2, 10}), frozenset({3, 4, 10})]
+        minimal_routes = [_bs(1, 2, 10), _bs(3, 4, 10)]
         masks, route_cap_hit = _route_masks_from_minimal_routes(
             minimal_routes,
             max_routes=8,
@@ -176,7 +323,7 @@ class TestOnPathCache:
         assert route_cap_hit, "ancestor 2 was capped; target route_cap_hit should fire"
 
     def test_route_cap_hit_does_not_fire_for_unrelated_capped_node(self):
-        minimal_routes = [frozenset({1, 2, 10})]
+        minimal_routes = [_bs(1, 2, 10)]
         _masks, route_cap_hit = _route_masks_from_minimal_routes(
             minimal_routes,
             max_routes=8,
@@ -187,7 +334,7 @@ class TestOnPathCache:
 
     def test_route_cap_hit_fires_on_overflow_when_minimal_count_exceeds_max(self):
         minimal_routes = [
-            frozenset({i, 100}) for i in range(5)
+            _bs(i, 100) for i in range(5)
         ]
         _masks, route_cap_hit = _route_masks_from_minimal_routes(
             minimal_routes,
@@ -223,7 +370,7 @@ class TestOnPathCache:
         # Imagine the target is node 6 itself, selected from a single
         # minimal route. The target isn't capped at "more routes than
         # max_routes", but enumeration at node 6 was truncated upstream.
-        minimal_routes = [frozenset({3, 4, 6})]
+        minimal_routes = [_bs(3, 4, 6)]
         _masks, route_cap_hit = _route_masks_from_minimal_routes(
             minimal_routes,
             max_routes=8,
@@ -376,11 +523,21 @@ class TestOnPathCache:
             "base_node_count": 3,
             "step_metric": "board_step_depth_max_parent_plus_one",
             "route_mask_mode": "coherent_optimal_route_masks_v1",
+            "route_enumeration_mode": "bitset_minimal_routes_v1",
             "route_count_cap": config.on_path_num_routes,
+            "board_backend": "numpy",
             "complexity": 1,
         }
         with pytest.raises(ValueError, match="metadata mismatch for cache_version"):
             validate_cache_metadata(metadata, config, requested_complexity=1)
+
+        metadata_v4 = dict(metadata)
+        metadata_v4.update({
+            "cache_version": 4,
+            "step_metric": "sequential_route_size_nonbase_nodes",
+        })
+        with pytest.raises(ValueError, match="metadata mismatch for cache_version"):
+            validate_cache_metadata(metadata_v4, config, requested_complexity=1)
 
     def test_cache_route_truncation_threshold_fails(self, tmp_path):
         config = Config(
@@ -401,6 +558,168 @@ class TestOnPathCache:
                 max_routes=1,
                 max_route_truncation_rate=0.0,
             )
+
+
+class TestRouteEnumerationEquivalence:
+    """Bitset enumeration must match a frozenset reference implementation."""
+
+    @staticmethod
+    def _frozenset_reference(parents_by_id, base_ids, max_cost, working_route_cap):
+        """Legacy frozenset enumeration kept inline for equivalence testing."""
+
+        def sort_key(route):
+            return (len(route), tuple(sorted(int(n) for n in route)))
+
+        n_nodes = len(parents_by_id)
+        routes_by_id = [set() for _ in range(n_nodes)]
+        for base_id in base_ids:
+            if 0 <= int(base_id) < n_nodes:
+                routes_by_id[int(base_id)].add(frozenset())
+
+        capped = set()
+        for _ in range(max_cost):
+            changed = False
+            for child in range(n_nodes):
+                if child in base_ids:
+                    continue
+                before = len(routes_by_id[child])
+                for left, right in parents_by_id[child]:
+                    lefts = tuple(routes_by_id[int(left)])
+                    rights = tuple(routes_by_id[int(right)])
+                    if not lefts or not rights:
+                        continue
+                    for lr in lefts:
+                        if child in lr:
+                            continue
+                        for rr in rights:
+                            if child in rr:
+                                continue
+                            r = frozenset({child}) | lr | rr
+                            if len(r) <= max_cost:
+                                routes_by_id[child].add(r)
+                if len(routes_by_id[child]) > working_route_cap:
+                    capped.add(child)
+                    kept = sorted(routes_by_id[child], key=sort_key)[:working_route_cap]
+                    routes_by_id[child] = set(kept)
+                if len(routes_by_id[child]) != before:
+                    changed = True
+            if not changed:
+                break
+
+        return (
+            tuple(tuple(sorted(rs, key=sort_key)) for rs in routes_by_id),
+            capped,
+        )
+
+    @staticmethod
+    def _bitset_to_frozenset(route: int) -> frozenset:
+        out = set()
+        i = 0
+        while route:
+            if route & 1:
+                out.add(i)
+            route >>= 1
+            i += 1
+        return frozenset(out)
+
+    def _assert_equal(self, parents, base_ids, max_cost, cap):
+        bs_routes, bs_capped = compute_sequential_route_sets(
+            parents, base_ids, max_cost=max_cost, working_route_cap=cap
+        )
+        fs_routes, fs_capped = self._frozenset_reference(
+            parents, base_ids, max_cost=max_cost, working_route_cap=cap
+        )
+        assert bs_capped == fs_capped
+        for node_id, (bs_node, fs_node) in enumerate(zip(bs_routes, fs_routes)):
+            bs_as_fs = sorted(
+                (self._bitset_to_frozenset(r) for r in bs_node),
+                key=lambda r: (len(r), tuple(sorted(r))),
+            )
+            fs_sorted = list(fs_node)
+            assert bs_as_fs == fs_sorted, f"mismatch at node {node_id}"
+
+    def test_bitset_matches_frozenset_toy_graph(self):
+        parents = [
+            [],
+            [],
+            [(0, 1)],
+            [(0, 1)],
+            [(2, 1), (3, 1)],
+        ]
+        self._assert_equal(parents, base_ids={0, 1}, max_cost=2, cap=128)
+
+    def test_bitset_matches_frozenset_with_truncation(self):
+        # Three disjoint parent pairs into node 6; cap=2 forces truncation.
+        parents = [
+            [],
+            [],
+            [],
+            [(0, 1)],
+            [(0, 2)],
+            [(1, 2)],
+            [(3, 4), (3, 5), (4, 5)],
+        ]
+        self._assert_equal(parents, base_ids={0, 1, 2}, max_cost=4, cap=2)
+
+    def test_bitset_matches_frozenset_c3_board(self):
+        from src.game_board.generator import build_game_board
+
+        config = Config(n_variables=2, mod=5, max_complexity=3, max_degree=2)
+        board = build_game_board(config, complexity=3)
+        ordered_keys = sorted(board.keys(), key=lambda k: (board[k]["step"], k))
+        key_to_id = {k: i for i, k in enumerate(ordered_keys)}
+        parents = [[] for _ in ordered_keys]
+        for k, entry in board.items():
+            cid = key_to_id[k]
+            for p in entry["parents"]:
+                parents[cid].append((key_to_id[p["left"]], key_to_id[p["right"]]))
+        base_ids = {i for i, k in enumerate(ordered_keys) if board[k]["step"] == 0}
+        self._assert_equal(parents, base_ids=base_ids, max_cost=3, cap=128)
+
+
+class TestParallelDeterminism:
+    @staticmethod
+    def _assert_npz_equal(left, right):
+        with np.load(left, allow_pickle=False) as left_data:
+            with np.load(right, allow_pickle=False) as right_data:
+                assert set(left_data.files) == set(right_data.files)
+                for name in left_data.files:
+                    assert np.array_equal(left_data[name], right_data[name]), name
+
+    def test_serial_and_parallel_builds_match(self, tmp_path):
+        config = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=4,
+            max_degree=1,
+            on_path_max_size=128,
+        )
+        serial_dir = tmp_path / "serial"
+        parallel_dir = tmp_path / "parallel"
+        complexities = [2, 3, 4]
+
+        serial_paths = build_caches(
+            config,
+            complexities,
+            serial_dir,
+            split_seed=13,
+            max_on_path_size=128,
+            force_serial=True,
+            max_route_truncation_rate=1.0,
+        )
+        parallel_paths = build_caches(
+            config,
+            complexities,
+            parallel_dir,
+            split_seed=13,
+            max_on_path_size=128,
+            num_processes=4,
+            max_route_truncation_rate=1.0,
+        )
+
+        assert [p.name for p in serial_paths] == [p.name for p in parallel_paths]
+        for serial_path, parallel_path in zip(serial_paths, parallel_paths):
+            self._assert_npz_equal(serial_path, parallel_path)
 
 
 if __name__ == "__main__":

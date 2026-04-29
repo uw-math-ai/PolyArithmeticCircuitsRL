@@ -15,24 +15,31 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import numpy as np
 
 from ..config import Config
 from ..environment.fast_polynomial import FastPoly
+from ..environment.poly_batch_ops import PolyBatchOps
 from .generator import build_game_board
+from .parallel_build import map_complexities
+from .route_enum import (
+    compute_sequential_route_sets_bitset,
+    route_iter,
+)
 
 
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 STEP_METRIC = "sequential_route_size_nonbase_nodes"
 CANONICALIZER_VERSION = "FastPoly.coeffs.int64.tobytes.v1"
 OP_SET = ("add", "mul")
 SPLIT_METHOD = "deterministic_shuffle"
 SPLIT_RATIO = (0.8, 0.1, 0.1)
 ROUTE_MASK_MODE = "coherent_optimal_route_masks_v1"
+ROUTE_ENUMERATION_MODE = "bitset_minimal_routes_v1"
 ROUTE_WORKING_CAP_MULTIPLIER = 4
 ROUTE_WORKING_CAP_MIN = 128
 
@@ -236,89 +243,45 @@ def cache_file_path(cache_dir: str | Path, complexity: int) -> Path:
     return Path(cache_dir) / f"on_path_C{int(complexity)}.npz"
 
 
-def _route_sort_key(route: frozenset[int]) -> tuple[int, tuple[int, ...]]:
-    return (len(route), tuple(sorted(int(node_id) for node_id in route)))
-
-
 def compute_sequential_route_sets(
     parents_by_id: Sequence[Sequence[tuple[int, int]]],
     base_ids: set[int],
     max_cost: int,
     working_route_cap: Optional[int] = None,
-) -> tuple[tuple[tuple[frozenset[int], ...], ...], set[int]]:
-    """Enumerate route frozensets with at most ``max_cost`` non-base nodes.
+) -> tuple[tuple[tuple[int, ...], ...], set[int]]:
+    """Enumerate minimal route bitsets per node.
 
-    A route is a coherent set of non-base board nodes that can be constructed in
-    a sequential episode. Combining two parents unions their route sets and adds
-    the child. This naturally counts shared subcomputations once.
+    Thin wrapper around :func:`route_enum.compute_sequential_route_sets_bitset`.
+    Routes are Python ``int`` bitsets; bit ``i`` is set iff node ``i`` is in
+    the route. See ``route_enum.py`` for ordering and truncation guarantees.
     """
-    if max_cost < 0:
-        raise ValueError("max_cost must be non-negative")
-
-    n_nodes = len(parents_by_id)
     if working_route_cap is None:
         working_route_cap = max(ROUTE_WORKING_CAP_MIN, ROUTE_WORKING_CAP_MULTIPLIER)
-
-    routes_by_id: List[set[frozenset[int]]] = [set() for _ in range(n_nodes)]
-    for base_id in base_ids:
-        if 0 <= int(base_id) < n_nodes:
-            routes_by_id[int(base_id)].add(frozenset())
-
-    capped_nodes: set[int] = set()
-    for _ in range(max_cost):
-        changed = False
-        for child in range(n_nodes):
-            if child in base_ids:
-                continue
-            before = len(routes_by_id[child])
-            for left, right in parents_by_id[child]:
-                left_routes = tuple(routes_by_id[int(left)])
-                right_routes = tuple(routes_by_id[int(right)])
-                if not left_routes or not right_routes:
-                    continue
-                for left_route in left_routes:
-                    if child in left_route:
-                        continue
-                    for right_route in right_routes:
-                        if child in right_route:
-                            continue
-                        route = frozenset({child}) | left_route | right_route
-                        if len(route) <= max_cost:
-                            routes_by_id[child].add(route)
-
-            if len(routes_by_id[child]) > working_route_cap:
-                capped_nodes.add(child)
-                kept = sorted(routes_by_id[child], key=_route_sort_key)[:working_route_cap]
-                routes_by_id[child] = set(kept)
-
-            if len(routes_by_id[child]) != before:
-                changed = True
-        if not changed:
-            break
-
-    return (
-        tuple(tuple(sorted(routes, key=_route_sort_key)) for routes in routes_by_id),
-        capped_nodes,
+    return compute_sequential_route_sets_bitset(
+        parents_by_id,
+        base_ids,
+        max_cost=max_cost,
+        working_route_cap=working_route_cap,
     )
 
 
-def _minimal_routes(routes: Sequence[frozenset[int]]) -> tuple[frozenset[int], ...]:
+def _minimal_routes(routes: Sequence[int]) -> tuple[int, ...]:
     if not routes:
         return tuple()
-    min_cost = min(len(route) for route in routes)
-    return tuple(route for route in routes if len(route) == min_cost)
+    min_cost = min(r.bit_count() for r in routes)
+    return tuple(r for r in routes if r.bit_count() == min_cost)
 
 
 def _route_masks_from_minimal_routes(
-    minimal_routes: Sequence[frozenset[int]],
+    minimal_routes: Sequence[int],
     max_routes: int,
     capped_nodes: Optional[set[int]] = None,
     target_id: Optional[int] = None,
 ) -> tuple[Dict[int, np.uint32], bool]:
     """Build per-node route bitmasks from a list of minimal coherent routes.
 
-    Returns ``(masks, route_cap_hit)``. ``route_cap_hit`` is conservative — it
-    fires if any of the following hold:
+    Routes are Python ``int`` bitsets. Returns ``(masks, route_cap_hit)``.
+    ``route_cap_hit`` is conservative — it fires if any of the following hold:
 
       (a) more minimal routes existed than ``max_routes`` (overflow at selection),
       (b) the target's own route enumeration was working-cap truncated,
@@ -330,8 +293,8 @@ def _route_masks_from_minimal_routes(
     masks: Dict[int, np.uint32] = {}
     for route_idx, route in enumerate(selected):
         bit = np.uint32(1 << route_idx)
-        for node_id in route:
-            masks[int(node_id)] = np.uint32(masks.get(int(node_id), np.uint32(0)) | bit)
+        for node_id in route_iter(route):
+            masks[node_id] = np.uint32(masks.get(node_id, np.uint32(0)) | bit)
 
     cap_overflow = len(minimal_routes) > max_routes
     target_capped = (
@@ -342,9 +305,9 @@ def _route_masks_from_minimal_routes(
     ancestor_capped = (
         capped_nodes is not None
         and any(
-            int(node_id) in capped_nodes
+            node_id in capped_nodes
             for route in selected
-            for node_id in route
+            for node_id in route_iter(route)
         )
     )
     return masks, bool(cap_overflow or target_capped or ancestor_capped)
@@ -374,7 +337,7 @@ def compute_on_path_ids(
     routes = _minimal_routes(routes_by_id[int(target_id)])
     on_path: set[int] = set()
     for route in routes:
-        on_path.update(int(node_id) for node_id in route)
+        on_path.update(route_iter(route))
     return on_path
 
 
@@ -420,9 +383,16 @@ def build_complexity_cache(
     split_seed: int,
     max_on_path_size: int,
     max_routes: int = 32,
+    board_backend: str = "numpy",
 ) -> dict:
     """Build raw cache arrays for one complexity."""
-    board = build_game_board(config, complexity)
+    poly_ops = PolyBatchOps(
+        config.n_variables,
+        config.effective_max_degree,
+        config.mod,
+        backend=board_backend,
+    )
+    board = build_game_board(config, complexity, poly_ops=poly_ops)
     ordered_keys = sorted(board.keys(), key=lambda k: (board[k]["step"], k))
     key_to_id = {key: idx for idx, key in enumerate(ordered_keys)}
 
@@ -455,7 +425,7 @@ def build_complexity_cache(
         node_steps[int(base_id)] = 0
     for idx, routes in enumerate(routes_by_id):
         if routes:
-            node_steps[idx] = min(len(route) for route in routes)
+            node_steps[idx] = min(route.bit_count() for route in routes)
 
     target_ids = np.array(
         [
@@ -476,7 +446,7 @@ def build_complexity_cache(
     for target_id in target_ids:
         minimal_routes = tuple(
             route for route in routes_by_id[int(target_id)]
-            if len(route) == int(complexity)
+            if route.bit_count() == int(complexity)
         )
         if not minimal_routes:
             continue
@@ -530,12 +500,14 @@ def build_complexity_cache(
         "split_method": SPLIT_METHOD,
         "split_ratio": list(SPLIT_RATIO),
         "route_mask_mode": ROUTE_MASK_MODE,
+        "route_enumeration_mode": ROUTE_ENUMERATION_MODE,
         "route_count_cap": int(max_routes),
         "route_working_cap": int(working_cap),
         "route_working_cap_hit_node_count": int(len(capped_nodes)),
         "route_working_cap_hit_node_rate": route_working_cap_hit_node_rate,
         "route_cap_hit_count": int(route_cap_hit_array.sum()),
         "route_cap_hit_rate": route_cap_hit_rate,
+        "board_backend": poly_ops.backend,
     }
 
     return {
@@ -626,6 +598,7 @@ def validate_cache_metadata(metadata: dict, config: Config, requested_complexity
         "base_node_count": int(config.n_variables + 1),
         "step_metric": STEP_METRIC,
         "route_mask_mode": ROUTE_MASK_MODE,
+        "route_enumeration_mode": ROUTE_ENUMERATION_MODE,
         "route_count_cap": int(config.on_path_num_routes),
     }
     for key, expected_value in expected.items():
@@ -635,11 +608,47 @@ def validate_cache_metadata(metadata: dict, config: Config, requested_complexity
                 f"on-path cache metadata mismatch for {key}: "
                 f"expected {expected_value!r}, got {actual!r}"
             )
+    if "board_backend" not in metadata:
+        raise ValueError(
+            "on-path cache metadata mismatch for board_backend: missing required key"
+        )
+    if metadata["board_backend"] not in ("numpy", "jax"):
+        raise ValueError(
+            "on-path cache metadata mismatch for board_backend: "
+            f"expected 'numpy' or 'jax', got {metadata['board_backend']!r}"
+        )
     if int(metadata.get("complexity", -1)) != int(requested_complexity):
         raise ValueError(
             f"cache complexity {metadata.get('complexity')} does not match "
             f"requested C{requested_complexity}"
         )
+
+
+def _config_kwargs(config: Config) -> dict[str, Any]:
+    return {field.name: getattr(config, field.name) for field in fields(Config)}
+
+
+def _build_one_complexity(item: dict[str, Any]) -> tuple[int, dict]:
+    config = Config(**item["config_kwargs"])
+    complexity = int(item["complexity"])
+    arrays = build_complexity_cache(
+        config=config,
+        complexity=complexity,
+        split_seed=int(item["split_seed"]),
+        max_on_path_size=int(item["max_on_path_size"]),
+        max_routes=int(item["max_routes"]),
+        board_backend=str(item["board_backend"]),
+    )
+    metadata = json.loads(str(arrays["metadata_json"].item()))
+    truncation_rate = float(metadata.get("route_cap_hit_rate", 0.0))
+    max_route_truncation_rate = float(item["max_route_truncation_rate"])
+    if truncation_rate > max_route_truncation_rate:
+        raise ValueError(
+            f"C{complexity} route cap hit rate {truncation_rate:.2%} "
+            f"exceeds max_route_truncation_rate={max_route_truncation_rate:.2%}; "
+            "increase --num-routes or narrow the target set"
+        )
+    return complexity, arrays
 
 
 def build_caches(
@@ -650,24 +659,30 @@ def build_caches(
     max_on_path_size: int,
     max_routes: int = 32,
     max_route_truncation_rate: float = 0.25,
+    board_backend: str = "numpy",
+    force_serial: bool = False,
+    num_processes: Optional[int] = None,
 ) -> List[Path]:
+    work_items = [
+        {
+            "config_kwargs": _config_kwargs(config),
+            "complexity": complexity,
+            "split_seed": split_seed,
+            "max_on_path_size": max_on_path_size,
+            "max_routes": max_routes,
+            "max_route_truncation_rate": max_route_truncation_rate,
+            "board_backend": board_backend,
+        }
+        for complexity in sorted(set(int(c) for c in complexities))
+    ]
+
     paths = []
-    for complexity in sorted(set(int(c) for c in complexities)):
-        arrays = build_complexity_cache(
-            config=config,
-            complexity=complexity,
-            split_seed=split_seed,
-            max_on_path_size=max_on_path_size,
-            max_routes=max_routes,
-        )
-        metadata = json.loads(str(arrays["metadata_json"].item()))
-        truncation_rate = float(metadata.get("route_cap_hit_rate", 0.0))
-        if truncation_rate > max_route_truncation_rate:
-            raise ValueError(
-                f"C{complexity} route cap hit rate {truncation_rate:.2%} "
-                f"exceeds max_route_truncation_rate={max_route_truncation_rate:.2%}; "
-                "increase --num-routes or narrow the target set"
-            )
+    for complexity, arrays in map_complexities(
+        _build_one_complexity,
+        work_items,
+        processes=num_processes,
+        force_serial=force_serial,
+    ):
         paths.append(save_complexity_cache(cache_dir, arrays, complexity))
     return paths
 
@@ -683,6 +698,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-on-path-size", type=int, default=4096)
     parser.add_argument("--num-routes", type=int, default=32)
     parser.add_argument("--max-route-truncation-rate", type=float, default=0.25)
+    parser.add_argument("--backend", choices=("numpy", "jax"), default="numpy")
+    parser.add_argument("--no-parallel", action="store_true")
+    parser.add_argument("--num-processes", type=int, default=None)
     return parser.parse_args()
 
 
@@ -705,6 +723,9 @@ def main() -> None:
         max_on_path_size=args.max_on_path_size,
         max_routes=args.num_routes,
         max_route_truncation_rate=args.max_route_truncation_rate,
+        board_backend=args.backend,
+        force_serial=args.no_parallel,
+        num_processes=args.num_processes,
     )
     for path in paths:
         with np.load(path, allow_pickle=False) as data:

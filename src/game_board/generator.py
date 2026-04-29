@@ -7,11 +7,39 @@ speedup over SymPy for BFS exploration of reachable polynomials.
 import random
 from typing import Dict, List, Optional, Tuple
 
+import numpy as np
+
 from ..config import Config
 from ..environment.fast_polynomial import FastPoly
+from ..environment.poly_batch_ops import PolyBatchOps
 
 
-def build_game_board(config: Config, complexity: int) -> Dict[bytes, dict]:
+def _interleave_pair_results(add_rows: np.ndarray, mul_rows: np.ndarray) -> np.ndarray:
+    """Return rows in legacy pair-major order: add, mul, add, mul, ..."""
+    candidates = np.empty(
+        (add_rows.shape[0] + mul_rows.shape[0], add_rows.shape[1]),
+        dtype=add_rows.dtype,
+    )
+    candidates[0::2] = add_rows
+    candidates[1::2] = mul_rows
+    return candidates
+
+
+def _row_view(rows: np.ndarray) -> np.ndarray:
+    """View a 2D contiguous array as one opaque value per row for np.unique."""
+    if rows.ndim != 2:
+        raise ValueError("rows must be a 2D array")
+    contiguous = np.ascontiguousarray(rows)
+    row_dtype = np.dtype((np.void, contiguous.dtype.itemsize * contiguous.shape[1]))
+    return contiguous.view(row_dtype).reshape(-1)
+
+
+def build_game_board(
+    config: Config,
+    complexity: int,
+    backend: str = "numpy",
+    poly_ops: Optional[PolyBatchOps] = None,
+) -> Dict[bytes, dict]:
     """Build a DAG of all reachable polynomials up to `complexity` operations.
 
     Uses BFS: layer 0 = initial nodes (variables + constant),
@@ -27,6 +55,8 @@ def build_game_board(config: Config, complexity: int) -> Dict[bytes, dict]:
     n_vars = config.n_variables
     mod = config.mod
     max_deg = config.effective_max_degree
+    coeff_shape = (max_deg + 1,) * n_vars
+    ops = poly_ops or PolyBatchOps(n_vars, max_deg, mod, backend=backend)
 
     # Initialize with base nodes
     initial_polys = []
@@ -36,6 +66,8 @@ def build_game_board(config: Config, complexity: int) -> Dict[bytes, dict]:
 
     board = {}
     all_polys: List[FastPoly] = []
+    all_keys: List[bytes] = []
+    coeffs = np.empty((0, config.target_size), dtype=np.int64)
 
     for poly in initial_polys:
         key = poly.canonical_key()
@@ -47,41 +79,78 @@ def build_game_board(config: Config, complexity: int) -> Dict[bytes, dict]:
                 "paths": 1,
             }
             all_polys.append(poly)
+            all_keys.append(key)
+
+    if all_polys:
+        coeffs = np.stack(
+            [poly.coeffs.reshape(-1).astype(np.int64, copy=False) for poly in all_polys],
+            axis=0,
+        )
 
     # BFS layers
     for step in range(1, complexity + 1):
-        new_polys = []
+        new_polys: List[FastPoly] = []
+        new_keys: List[bytes] = []
+        new_coeff_rows: List[np.ndarray] = []
         n = len(all_polys)
 
-        for i in range(n):
-            for j in range(i, n):
-                for op in (0, 1):  # 0=add, 1=mul
-                    if op == 0:
-                        result = all_polys[i] + all_polys[j]
-                    else:
-                        result = all_polys[i] * all_polys[j]
+        tri_i, tri_j = np.triu_indices(n)
+        pair_idx = np.stack((tri_i, tri_j), axis=1)
+        add_rows = ops.add_all_pairs(coeffs, pair_idx)
+        mul_rows = ops.mul_all_pairs(coeffs, pair_idx)
+        candidate_rows = _interleave_pair_results(add_rows, mul_rows)
+        candidate_view = _row_view(candidate_rows)
 
-                    key = result.canonical_key()
+        _unique_rows, first_indices, inverse = np.unique(
+            candidate_view,
+            return_index=True,
+            return_inverse=True,
+        )
+        path_counts = np.bincount(inverse, minlength=len(first_indices))
+        unique_ids_by_first_seen = np.argsort(first_indices, kind="stable")
 
-                    parent_info = {
-                        "op": "add" if op == 0 else "mul",
-                        "left": all_polys[i].canonical_key(),
-                        "right": all_polys[j].canonical_key(),
-                    }
+        unique_id_to_key: Dict[int, bytes] = {}
+        for unique_id in range(len(first_indices)):
+            first_idx = int(first_indices[unique_id])
+            unique_id_to_key[unique_id] = candidate_rows[first_idx].tobytes()
 
-                    if key not in board:
-                        board[key] = {
-                            "poly": result,
-                            "step": step,
-                            "parents": [parent_info],
-                            "paths": 1,
-                        }
-                        new_polys.append(result)
-                    else:
-                        board[key]["parents"].append(parent_info)
-                        board[key]["paths"] += 1
+        for unique_id in unique_ids_by_first_seen:
+            key = unique_id_to_key[int(unique_id)]
+            if key in board:
+                board[key]["paths"] += int(path_counts[unique_id])
+                continue
+            first_idx = int(first_indices[unique_id])
+            coeff_row = candidate_rows[first_idx].copy()
+            poly = FastPoly(coeff_row.reshape(coeff_shape).copy(), mod)
+            board[key] = {
+                "poly": poly,
+                "step": step,
+                "parents": [],
+                "paths": int(path_counts[unique_id]),
+            }
+            new_polys.append(poly)
+            new_keys.append(key)
+            new_coeff_rows.append(coeff_row)
+
+        for candidate_idx, unique_id in enumerate(inverse):
+            pair_pos = candidate_idx // 2
+            op_name = "add" if candidate_idx % 2 == 0 else "mul"
+            left_idx = int(pair_idx[pair_pos, 0])
+            right_idx = int(pair_idx[pair_pos, 1])
+            key = unique_id_to_key[int(unique_id)]
+            board[key]["parents"].append({
+                "op": op_name,
+                "left": all_keys[left_idx],
+                "right": all_keys[right_idx],
+            })
 
         all_polys.extend(new_polys)
+        all_keys.extend(new_keys)
+        if new_coeff_rows:
+            coeffs = np.concatenate(
+                [coeffs, np.stack(new_coeff_rows, axis=0)],
+                axis=0,
+            )
 
     return board
 
