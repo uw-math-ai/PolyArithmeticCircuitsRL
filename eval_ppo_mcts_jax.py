@@ -30,7 +30,6 @@ from pathlib import Path
 
 import jax
 import jax.numpy as jnp
-import mctx
 import numpy as np
 from tqdm import tqdm
 
@@ -71,7 +70,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--temperature", type=float, default=0.1,
-        help="MCTS temperature for eval (low = greedy, default: 0.1).",
+        help=(
+            "MCTS temperature for eval (low = greedy, default: 0.1). "
+            "For Gumbel checkpoints, this is interpreted as eval gumbel_scale."
+        ),
     )
     parser.add_argument(
         "--batch-size", type=int, default=256,
@@ -128,7 +130,7 @@ def evaluate_checkpoint(
     """
     from src.algorithms.jax_env import (
         reset as env_reset, step as env_step,
-        get_observation, get_valid_actions_mask,
+        get_observation,
     )
 
     env_config = trainer.env_config
@@ -138,11 +140,19 @@ def evaluate_checkpoint(
 
     # Override MCTS settings for eval.
     orig_sims = config.mcts_simulations
+    orig_gumbel_sims = config.gumbel_num_simulations
     orig_temp = config.temperature_init
-    config.mcts_simulations = mcts_simulations
-    config.temperature_init = temperature
+    orig_gumbel_scale = config.gumbel_scale
+    if config.search == "gumbel":
+        config.gumbel_num_simulations = mcts_simulations
+        config.gumbel_scale = max(float(temperature), 0.0)
+    else:
+        config.mcts_simulations = mcts_simulations
+        config.temperature_init = temperature
 
     results = {}
+
+    library_coeffs, library_mask = trainer._export_library_cache()
 
     for c in complexities:
         successes = 0
@@ -158,18 +168,23 @@ def evaluate_checkpoint(
             rng = jax.random.PRNGKey(np.random.randint(0, 2**31))
 
             # Sample targets.
-            targets = []
+            target_polys = []
             for _ in range(B):
                 poly, _ = generate_random_circuit(config, c)
-                targets.append(
-                    jnp.array(poly.coeffs.flatten(), dtype=jnp.int32)
-                )
-            target_arrays = jnp.stack(targets, axis=0)
+                target_polys.append(poly)
+            target_arrays = jnp.stack(
+                [jnp.array(poly.coeffs.flatten(), dtype=jnp.int32) for poly in target_polys],
+                axis=0,
+            )
+
+            subgoal_coeffs, subgoal_active, subgoal_library_known = (
+                trainer._prepare_initial_subgoals(target_polys)
+            )
 
             # Reset envs.
             states = jax.vmap(
-                lambda tc: env_reset(env_config, tc)
-            )(target_arrays)
+                lambda tc, sgc, sga, sgl: env_reset(env_config, tc, sgc, sga, sgl)
+            )(target_arrays, subgoal_coeffs, subgoal_active, subgoal_library_known)
 
             episode_rewards = np.zeros(B)
             episode_successes = np.zeros(B, dtype=bool)
@@ -187,10 +202,14 @@ def evaluate_checkpoint(
                 rng, search_rng = jax.random.split(rng)
                 policy_output = trainer._jit_batched_mcts(
                     params, search_rng, obs_batch, states,
+                    library_coeffs, library_mask,
                 )
 
-                # Near-greedy: argmax of MCTS visit counts.
-                actions = jnp.argmax(policy_output.action_weights, axis=-1)
+                if config.search == "gumbel":
+                    actions = policy_output.action
+                else:
+                    # Near-greedy: argmax of MCTS visit counts.
+                    actions = jnp.argmax(policy_output.action_weights, axis=-1)
 
                 # Compute entropy of the network policy for logging.
                 logits, _ = jax.vmap(
@@ -207,8 +226,8 @@ def evaluate_checkpoint(
                         entropy_count += 1
 
                 # Step envs.
-                next_states, rewards, dones, successes_batch = jax.vmap(
-                    lambda s, a: env_step(env_config, s, a)
+                next_states, rewards, dones, successes_batch, *_ = jax.vmap(
+                    lambda s, a: env_step(env_config, s, a, library_coeffs, library_mask)
                 )(states, actions)
 
                 rewards_np = np.array(rewards)
@@ -240,7 +259,9 @@ def evaluate_checkpoint(
 
     # Restore original settings.
     config.mcts_simulations = orig_sims
+    config.gumbel_num_simulations = orig_gumbel_sims
     config.temperature_init = orig_temp
+    config.gumbel_scale = orig_gumbel_scale
 
     return results
 
