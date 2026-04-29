@@ -45,7 +45,7 @@ By default this writes:
 on_path_cache/c1_c5
 ```
 
-for 2-variable, mod-5 targets with `max_degree=6` and curriculum
+for 2-variable, mod-5 targets with `max_degree=5` and curriculum
 complexities `1 2 3 4 5`.
 
 The cache stores the actual train/val/test
@@ -71,6 +71,8 @@ ON_PATH_NUM_ROUTES=32 \
 MAX_ON_PATH_SIZE=8192 \
 MAX_ROUTE_TRUNCATION_RATE=0.25 \
 CACHE_BACKEND=jax \
+POLY_BOARD_PAIR_CHUNK_SIZE=100000 \
+POLY_BATCH_JAX_CHUNK_SIZE=1024 \
 sbatch slurm_scripts/build_on_path_cache_c1_c6.slurm
 ```
 

@@ -17,13 +17,14 @@ CONTAINER=${CONTAINER:-container_jax.sif}
 
 N_VARIABLES=${N_VARIABLES:-2}
 MOD=${MOD:-5}
-MAX_DEGREE=${MAX_DEGREE:-6}
+MAX_DEGREE=${MAX_DEGREE:-5}
 COMPLEXITIES=${COMPLEXITIES:-"1 2 3 4 5"}
 SPLIT_SEED=${SPLIT_SEED:-42}
 MAX_ON_PATH_SIZE=${MAX_ON_PATH_SIZE:-4096}
 ON_PATH_NUM_ROUTES=${ON_PATH_NUM_ROUTES:-32}
 MAX_ROUTE_TRUNCATION_RATE=${MAX_ROUTE_TRUNCATION_RATE:-0.25}
 CACHE_BACKEND=${CACHE_BACKEND:-jax}
+POLY_BOARD_PAIR_CHUNK_SIZE=${POLY_BOARD_PAIR_CHUNK_SIZE:-100000}
 POLY_BATCH_JAX_CHUNK_SIZE=${POLY_BATCH_JAX_CHUNK_SIZE:-1024}
 NUM_PROCESSES=${NUM_PROCESSES:-}
 NO_PARALLEL=${NO_PARALLEL:-1}
@@ -54,6 +55,7 @@ echo "  max_on_path_size: $MAX_ON_PATH_SIZE"
 echo "  on_path_num_routes: $ON_PATH_NUM_ROUTES"
 echo "  max_route_truncation_rate: $MAX_ROUTE_TRUNCATION_RATE"
 echo "  cache_backend: $CACHE_BACKEND"
+echo "  poly_board_pair_chunk_size: $POLY_BOARD_PAIR_CHUNK_SIZE"
 echo "  poly_batch_jax_chunk_size: $POLY_BATCH_JAX_CHUNK_SIZE"
 echo "  num_processes: ${NUM_PROCESSES:-auto}"
 echo "  no_parallel: $NO_PARALLEL"
@@ -61,6 +63,7 @@ echo "  no_parallel: $NO_PARALLEL"
 apptainer exec --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
   --env XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false \
+  --env POLY_BOARD_PAIR_CHUNK_SIZE="$POLY_BOARD_PAIR_CHUNK_SIZE" \
   --env POLY_BATCH_JAX_CHUNK_SIZE="$POLY_BATCH_JAX_CHUNK_SIZE" \
   "$CONTAINER" \
   python -u -c "import jax; print('JAX devices:', jax.devices())"
@@ -68,6 +71,7 @@ apptainer exec --nv --bind /gscratch:/gscratch \
 apptainer exec --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
   --env XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false \
+  --env POLY_BOARD_PAIR_CHUNK_SIZE="$POLY_BOARD_PAIR_CHUNK_SIZE" \
   --env POLY_BATCH_JAX_CHUNK_SIZE="$POLY_BATCH_JAX_CHUNK_SIZE" \
   "$CONTAINER" \
   python -u -m src.game_board.on_path \

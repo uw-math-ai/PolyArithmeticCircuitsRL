@@ -1134,19 +1134,36 @@ def get_observation(env_config: EnvConfig, state: EnvState) -> dict:
           'edge_dst': (max_edges,) int32
           'num_nodes': int32 scalar
           'num_edges': int32 scalar
+          'node_coeffs': (max_nodes, target_size) float32, normalized to [0, 1]
           'target': (target_size,) float32, normalized to [0, 1]
+          'global_features': (3,) float32 horizon/state-size features
           'mask': (max_actions,) bool
     """
+    node_coeffs_norm = state.node_coeffs.astype(jnp.float32) / env_config.mod
     target_norm = state.target_coeffs.astype(jnp.float32) / env_config.mod
+    max_steps = jnp.maximum(jnp.asarray(env_config.max_steps, dtype=jnp.float32), 1.0)
+    max_nodes = jnp.maximum(jnp.asarray(env_config.max_nodes, dtype=jnp.float32), 1.0)
+    steps_taken = state.steps_taken.astype(jnp.float32)
+    remaining_steps = jnp.maximum(max_steps - steps_taken, 0.0)
+    global_features = jnp.array(
+        [
+            steps_taken / max_steps,
+            remaining_steps / max_steps,
+            state.num_nodes.astype(jnp.float32) / max_nodes,
+        ],
+        dtype=jnp.float32,
+    )
     mask = get_valid_actions_mask(
         state.num_nodes, env_config.max_nodes, env_config.max_actions
     )
     return {
         'node_features': state.node_features,
+        'node_coeffs': node_coeffs_norm,
         'edge_src': state.edge_src,
         'edge_dst': state.edge_dst,
         'num_nodes': state.num_nodes,
         'num_edges': state.num_edges,
         'target': target_norm,
+        'global_features': global_features,
         'mask': mask,
     }

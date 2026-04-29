@@ -4,8 +4,9 @@ Uses FastPoly (numpy-based) for all polynomial arithmetic, giving massive
 speedup over SymPy for BFS exploration of reachable polynomials.
 """
 
+import os
 import random
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple
 
 import numpy as np
 
@@ -34,11 +35,37 @@ def _row_view(rows: np.ndarray) -> np.ndarray:
     return contiguous.view(row_dtype).reshape(-1)
 
 
+def _iter_upper_tri_pair_chunks(
+    n: int,
+    chunk_size: int,
+) -> Iterator[np.ndarray]:
+    """Yield upper-triangular pair indices in legacy nested-loop order."""
+    if chunk_size <= 0:
+        raise ValueError("pair chunk size must be positive")
+
+    pair_idx = np.empty((chunk_size, 2), dtype=np.int64)
+    used = 0
+    for i in range(n):
+        j = i
+        while j < n:
+            take = min(chunk_size - used, n - j)
+            pair_idx[used:used + take, 0] = i
+            pair_idx[used:used + take, 1] = np.arange(j, j + take, dtype=np.int64)
+            used += take
+            j += take
+            if used == chunk_size:
+                yield pair_idx.copy()
+                used = 0
+    if used:
+        yield pair_idx[:used].copy()
+
+
 def build_game_board(
     config: Config,
     complexity: int,
     backend: str = "numpy",
     poly_ops: Optional[PolyBatchOps] = None,
+    pair_chunk_size: Optional[int] = None,
 ) -> Dict[bytes, dict]:
     """Build a DAG of all reachable polynomials up to `complexity` operations.
 
@@ -57,6 +84,10 @@ def build_game_board(
     max_deg = config.effective_max_degree
     coeff_shape = (max_deg + 1,) * n_vars
     ops = poly_ops or PolyBatchOps(n_vars, max_deg, mod, backend=backend)
+    if pair_chunk_size is None:
+        pair_chunk_size = int(os.environ.get("POLY_BOARD_PAIR_CHUNK_SIZE", "100000"))
+    if pair_chunk_size <= 0:
+        raise ValueError("POLY_BOARD_PAIR_CHUNK_SIZE must be positive")
 
     # Initialize with base nodes
     initial_polys = []
@@ -94,55 +125,54 @@ def build_game_board(
         new_coeff_rows: List[np.ndarray] = []
         n = len(all_polys)
 
-        tri_i, tri_j = np.triu_indices(n)
-        pair_idx = np.stack((tri_i, tri_j), axis=1)
-        add_rows = ops.add_all_pairs(coeffs, pair_idx)
-        mul_rows = ops.mul_all_pairs(coeffs, pair_idx)
-        candidate_rows = _interleave_pair_results(add_rows, mul_rows)
-        candidate_view = _row_view(candidate_rows)
+        for pair_idx in _iter_upper_tri_pair_chunks(n, pair_chunk_size):
+            add_rows = ops.add_all_pairs(coeffs, pair_idx)
+            mul_rows = ops.mul_all_pairs(coeffs, pair_idx)
+            candidate_rows = _interleave_pair_results(add_rows, mul_rows)
+            candidate_view = _row_view(candidate_rows)
 
-        _unique_rows, first_indices, inverse = np.unique(
-            candidate_view,
-            return_index=True,
-            return_inverse=True,
-        )
-        path_counts = np.bincount(inverse, minlength=len(first_indices))
-        unique_ids_by_first_seen = np.argsort(first_indices, kind="stable")
+            _unique_rows, first_indices, inverse = np.unique(
+                candidate_view,
+                return_index=True,
+                return_inverse=True,
+            )
+            path_counts = np.bincount(inverse, minlength=len(first_indices))
+            unique_ids_by_first_seen = np.argsort(first_indices, kind="stable")
 
-        unique_id_to_key: Dict[int, bytes] = {}
-        for unique_id in range(len(first_indices)):
-            first_idx = int(first_indices[unique_id])
-            unique_id_to_key[unique_id] = candidate_rows[first_idx].tobytes()
+            unique_id_to_key: Dict[int, bytes] = {}
+            for unique_id in range(len(first_indices)):
+                first_idx = int(first_indices[unique_id])
+                unique_id_to_key[unique_id] = candidate_rows[first_idx].tobytes()
 
-        for unique_id in unique_ids_by_first_seen:
-            key = unique_id_to_key[int(unique_id)]
-            if key in board:
-                board[key]["paths"] += int(path_counts[unique_id])
-                continue
-            first_idx = int(first_indices[unique_id])
-            coeff_row = candidate_rows[first_idx].copy()
-            poly = FastPoly(coeff_row.reshape(coeff_shape).copy(), mod)
-            board[key] = {
-                "poly": poly,
-                "step": step,
-                "parents": [],
-                "paths": int(path_counts[unique_id]),
-            }
-            new_polys.append(poly)
-            new_keys.append(key)
-            new_coeff_rows.append(coeff_row)
+            for unique_id in unique_ids_by_first_seen:
+                key = unique_id_to_key[int(unique_id)]
+                if key in board:
+                    board[key]["paths"] += int(path_counts[unique_id])
+                    continue
+                first_idx = int(first_indices[unique_id])
+                coeff_row = candidate_rows[first_idx].copy()
+                poly = FastPoly(coeff_row.reshape(coeff_shape).copy(), mod)
+                board[key] = {
+                    "poly": poly,
+                    "step": step,
+                    "parents": [],
+                    "paths": int(path_counts[unique_id]),
+                }
+                new_polys.append(poly)
+                new_keys.append(key)
+                new_coeff_rows.append(coeff_row)
 
-        for candidate_idx, unique_id in enumerate(inverse):
-            pair_pos = candidate_idx // 2
-            op_name = "add" if candidate_idx % 2 == 0 else "mul"
-            left_idx = int(pair_idx[pair_pos, 0])
-            right_idx = int(pair_idx[pair_pos, 1])
-            key = unique_id_to_key[int(unique_id)]
-            board[key]["parents"].append({
-                "op": op_name,
-                "left": all_keys[left_idx],
-                "right": all_keys[right_idx],
-            })
+            for candidate_idx, unique_id in enumerate(inverse):
+                pair_pos = candidate_idx // 2
+                op_name = "add" if candidate_idx % 2 == 0 else "mul"
+                left_idx = int(pair_idx[pair_pos, 0])
+                right_idx = int(pair_idx[pair_pos, 1])
+                key = unique_id_to_key[int(unique_id)]
+                board[key]["parents"].append({
+                    "op": op_name,
+                    "left": all_keys[left_idx],
+                    "right": all_keys[right_idx],
+                })
 
         all_polys.extend(new_polys)
         all_keys.extend(new_keys)

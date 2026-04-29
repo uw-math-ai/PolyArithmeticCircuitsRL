@@ -708,14 +708,28 @@ class TestEnvResetStep:
         max_edges = max_nodes * 4
 
         assert obs['node_features'].shape == (max_nodes, 4)
+        assert obs['node_coeffs'].shape == (max_nodes, env_config.target_size)
+        assert obs['node_coeffs'].dtype == jnp.float32
         assert obs['edge_src'].shape == (max_edges,)
         assert obs['edge_dst'].shape == (max_edges,)
         assert obs['num_nodes'].shape == ()
         assert obs['num_edges'].shape == ()
         assert obs['target'].shape == (env_config.target_size,)
+        assert obs['global_features'].shape == (3,)
+        assert obs['global_features'].dtype == jnp.float32
         assert obs['mask'].shape == (env_config.max_actions,)
         # Target should be normalized to [0, 1]
         assert float(obs['target'].max()) <= 1.0
+        assert float(obs['node_coeffs'].max()) <= 1.0
+        assert float(obs['global_features'].min()) >= 0.0
+        assert float(obs['global_features'].max()) <= 1.0
+        assert jnp.all(obs['node_coeffs'][int(obs['num_nodes']):] == 0)
+        assert not bool(jnp.array_equal(obs['node_coeffs'][0], obs['node_coeffs'][1]))
+        assert not any(key.startswith("on_path_") for key in obs)
+        assert "phi" not in obs
+        assert "target_board_step" not in obs
+        assert "route_mask" not in obs
+        assert "hit_flag" not in obs
 
     def test_valid_actions_mask(self, env_config):
         """Mask should be True only for pairs (i, j) with i, j < num_nodes."""
@@ -755,6 +769,8 @@ class TestJAXNet:
         logits, value = net.apply(params, obs)
         assert logits.shape == (env_config.max_actions,)
         assert value.shape == ()
+        assert jnp.isfinite(logits[obs['mask']]).all()
+        assert jnp.isfinite(value)
 
     def test_masked_logits(self, config, env_config):
         """Invalid actions should have very negative logits."""
@@ -803,6 +819,26 @@ class TestJAXNet:
         assert logits.shape == (4, env_config.max_actions)
         assert values.shape == (4,)
 
+    def test_node_coeffs_affect_outputs(self, config, env_config):
+        """Changing visible node coefficients changes policy and value outputs."""
+        net = create_network(config)
+        rng = jax.random.PRNGKey(0)
+        params = init_params(net, env_config, rng)
+
+        target = jnp.zeros(env_config.target_size, dtype=jnp.int32)
+        state = reset(env_config, target)
+        obs = get_observation(env_config, state)
+        coeffs = obs['node_coeffs'].at[0].set(jnp.zeros(env_config.target_size))
+        obs2 = {**obs, 'node_coeffs': coeffs}
+
+        logits, value = net.apply(params, obs)
+        logits2, value2 = net.apply(params, obs2)
+
+        valid = obs['mask']
+        max_logit_delta = jnp.max(jnp.abs(logits[valid] - logits2[valid]))
+        assert float(max_logit_delta) > 1e-7
+        assert float(jnp.abs(value - value2)) > 1e-7
+
 
 # ---------------------------------------------------------------------------
 # jax_net: graph encoder
@@ -818,9 +854,10 @@ class TestGraphEncoder:
         edge_dst = jnp.array([1, 2], dtype=jnp.int32)
         params = enc.init(rng, x, edge_src, edge_dst,
                           jnp.int32(3), jnp.int32(2))
-        out = enc.apply(params, x, edge_src, edge_dst,
-                        jnp.int32(3), jnp.int32(2))
-        assert out.shape == (8,)
+        node_emb, graph_emb = enc.apply(params, x, edge_src, edge_dst,
+                                        jnp.int32(3), jnp.int32(2))
+        assert node_emb.shape == (5, 8)
+        assert graph_emb.shape == (8,)
 
     def test_no_edges(self):
         """GraphEncoder handles zero edges gracefully."""
@@ -831,10 +868,12 @@ class TestGraphEncoder:
         edge_dst = jnp.array([-1, -1], dtype=jnp.int32)
         params = enc.init(rng, x, edge_src, edge_dst,
                           jnp.int32(3), jnp.int32(0))
-        out = enc.apply(params, x, edge_src, edge_dst,
-                        jnp.int32(3), jnp.int32(0))
-        assert out.shape == (8,)
-        assert jnp.isfinite(out).all()
+        node_emb, graph_emb = enc.apply(params, x, edge_src, edge_dst,
+                                        jnp.int32(3), jnp.int32(0))
+        assert node_emb.shape == (5, 8)
+        assert graph_emb.shape == (8,)
+        assert jnp.isfinite(node_emb).all()
+        assert jnp.isfinite(graph_emb).all()
 
 
 # ---------------------------------------------------------------------------

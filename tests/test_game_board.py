@@ -133,7 +133,7 @@ class TestBuildGameBoard:
 
     def test_vectorized_builder_matches_scalar_reference_c3(self):
         config = Config(n_variables=2, mod=5, max_complexity=3, max_degree=3)
-        board = build_game_board(config, complexity=3)
+        board = build_game_board(config, complexity=3, pair_chunk_size=7)
         ref = _build_game_board_scalar_reference(config, complexity=3)
 
         assert set(board) == set(ref)

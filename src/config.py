@@ -32,15 +32,15 @@ class Config:
     #   clean_sparse: terminal_success_reward + step_penalty only.
     #   clean_onpath: clean_sparse + cached sequential-route on-path potential shaping.
     reward_mode: str = "clean_onpath"
-    success_reward: float = 10.0        # Reward given when the target is matched exactly
-    terminal_success_reward: float = 10.0  # Clean-mode terminal reward.
-    step_penalty: float = -0.1          # Per-step penalty to encourage shorter circuits
-    use_reward_shaping: bool = True     # Enable potential-based shaping (Ng et al., 1999)
+    success_reward: float = 10.0                # Reward given when the target is matched exactly
+    terminal_success_reward: float = 10.0       # Clean-mode terminal reward.
+    step_penalty: float = -0.1                  # Per-step penalty to encourage shorter circuits
+    use_reward_shaping: bool = True             # Enable potential-based shaping (Ng et al., 1999)
     graph_onpath_shaping_coeff: float = 3.0
     graph_onpath_cache_dir: Optional[str] = None
     on_path_terminal_zero: bool = True
-    on_path_phi_mode: str = "depth_weighted"     # "count", "max_step", or "depth_weighted"
-    on_path_depth_weight_power: float = 1.0 #1,2,3,4(1) ->1,4,9,16(2)
+    on_path_phi_mode: str = "depth_weighted"    # "count", "max_step", or "depth_weighted"
+    on_path_depth_weight_power: float = 1.0     #1,2,3,4(1) ->1,4,9,16(2)
     on_path_max_size: int = 4096
     on_path_split_seed: int = 42
     on_path_route_consistency: bool = True # prevents reward from mixing unrelated pieces from incompatible optimal routes.
