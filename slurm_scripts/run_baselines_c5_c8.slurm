@@ -29,7 +29,7 @@ CHECKPOINT=${CHECKPOINT:-results/ppo-mcts-jax_fl_C5_C8/checkpoint_00500.pkl}
 TRUE_COMPLEXITY_JSON=${TRUE_COMPLEXITY_JSON:-results/random_circuit_true_complexity.json}
 TARGET_CACHE=${TARGET_CACHE:-results/baselines/target_cache.npz}
 OUT_CSV=${OUT_CSV:-results/baselines/comparison_C5_C8.csv}
-METHODS=${METHODS:-"greedy_1step uniform_mcts_32 ppo_mcts_checkpoint"}
+METHODS=${METHODS:-"greedy_1step uniform_mcts_32 factor_mcts_32 beam_search_64 ppo_mcts_checkpoint"}
 WANDB=${WANDB:-1}
 WANDB_RUN_NAME=${WANDB_RUN_NAME:-baselines_C5_C8}
 

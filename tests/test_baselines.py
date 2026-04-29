@@ -1,4 +1,4 @@
-"""Tests for baseline scripts (greedy, uniform MCTS, target cache builder)."""
+"""Tests for baseline scripts and shared baseline reward helpers."""
 
 import sys
 from pathlib import Path
@@ -13,7 +13,10 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.config import Config
 from src.environment.fast_polynomial import FastPoly
 
+from scripts.baseline_beam_search import solve_beam_search
+from scripts.baseline_factor_mcts import solve_factor_mcts
 from scripts.baseline_greedy import solve_greedy
+from scripts.baseline_reward import BaselineRewardEvaluator, initial_nodes
 from scripts.baseline_uniform_mcts import solve_uniform_mcts
 
 
@@ -91,6 +94,74 @@ class TestUniformMCTS:
             # Successful trajectories should land near +success_reward,
             # minus a small step_penalty.
             assert r["success_only_return"] == pytest.approx(small_config.success_reward)
+
+
+class TestRichBaselineReward:
+    def test_factor_reward_fires_once(self, small_config):
+        """Building a target factor earns the subgoal bonus once per trajectory."""
+        x0 = FastPoly.variable(0, 2, small_config.effective_max_degree, 5)
+        x1 = FastPoly.variable(1, 2, small_config.effective_max_degree, 5)
+        one = FastPoly.constant(1, 2, small_config.effective_max_degree, 5)
+        target = (x0 + one) * (x1 + one)
+
+        evaluator = BaselineRewardEvaluator(small_config, target)
+        nodes = initial_nodes(small_config)
+        state = evaluator.initial_state()
+
+        first = evaluator.step_reward(nodes, x0 + one, state)
+        second = evaluator.step_reward(nodes + [x0 + one], x0 + one, first.next_state)
+
+        assert first.factor_hit is True
+        assert second.factor_hit is False
+        assert first.reward >= second.reward + small_config.factor_subgoal_reward
+
+    def test_completion_bonus_improves_one_away_action(self, small_config):
+        """A state one ADD away from target should rank above a neutral action."""
+        x0 = FastPoly.variable(0, 2, small_config.effective_max_degree, 5)
+        x1 = FastPoly.variable(1, 2, small_config.effective_max_degree, 5)
+        one = FastPoly.constant(1, 2, small_config.effective_max_degree, 5)
+        target = x0 + x1 + one
+
+        evaluator = BaselineRewardEvaluator(small_config, target)
+        nodes = initial_nodes(small_config)
+        state = evaluator.initial_state()
+
+        one_away = evaluator.step_reward(nodes, x0 + x1, state)
+        neutral = evaluator.step_reward(nodes, x0 + x0, state)
+
+        assert one_away.additive_complete is True
+        assert one_away.reward > neutral.reward
+
+
+class TestFactorMCTS:
+    def test_solves_c1_at_default_budget(self, small_config):
+        """Factor-aware MCTS should preserve uniform MCTS one-step strength."""
+        x0 = FastPoly.variable(0, 2, small_config.effective_max_degree, 5)
+        x1 = FastPoly.variable(1, 2, small_config.effective_max_degree, 5)
+        target = x0 + x1
+        succ = 0
+        for seed in range(10):
+            r = solve_factor_mcts(
+                _flatten(target), small_config,
+                mcts_simulations=32, seed=seed,
+            )
+            succ += int(r["success"])
+        assert succ >= 8, f"Expected >=8/10 successes, got {succ}"
+
+
+class TestBeamSearch:
+    def test_terminates_with_valid_metrics(self, small_config):
+        x0 = FastPoly.variable(0, 2, small_config.effective_max_degree, 5)
+        x1 = FastPoly.variable(1, 2, small_config.effective_max_degree, 5)
+        one = FastPoly.constant(1, 2, small_config.effective_max_degree, 5)
+        target = x0 + x1 + one
+
+        r = solve_beam_search(_flatten(target), small_config, beam_width=8)
+
+        assert isinstance(r["success"], bool)
+        assert 0 <= r["num_steps"] <= small_config.max_steps
+        assert len(r["actions"]) == r["num_steps"]
+        assert isinstance(r["env_reward"], float)
 
 
 class TestTargetCacheBuilder:

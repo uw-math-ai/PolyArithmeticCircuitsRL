@@ -12,6 +12,8 @@ CSV schema:
 Methods (selected via --methods):
     greedy_1step
     uniform_mcts_32   (configurable simulations via --mcts-simulations)
+    factor_mcts_32    (uniform MCTS + per-target factor/completion rewards)
+    beam_search_64    (deterministic rich-reward beam search)
     ppo_mcts_checkpoint   (requires --checkpoint, JAX, mctx)
 """
 
@@ -21,6 +23,7 @@ import argparse
 import csv
 import sys
 import time
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -33,8 +36,37 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.config import Config  # noqa: E402
 
 # Local baselines (CPU-only, no JAX needed):
+import scripts.baseline_beam_search as bbeam  # noqa: E402
+import scripts.baseline_factor_mcts as bfactor  # noqa: E402
 import scripts.baseline_greedy as bgreedy  # noqa: E402
 import scripts.baseline_uniform_mcts as bmcts  # noqa: E402
+
+
+@lru_cache(maxsize=None)
+def _direct_mul_indices(
+    n_variables: int, max_degree: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Precompute sparse coefficient-product indices for direct multiplication."""
+    dim = max_degree + 1
+    shape = (dim,) * n_variables
+    exponents = np.array(list(np.ndindex(shape)), dtype=np.int32)
+
+    lhs: List[int] = []
+    rhs: List[int] = []
+    out: List[int] = []
+    for i, exp_i in enumerate(exponents):
+        for j, exp_j in enumerate(exponents):
+            exp_out = exp_i + exp_j
+            if np.all(exp_out <= max_degree):
+                lhs.append(i)
+                rhs.append(j)
+                out.append(int(np.ravel_multi_index(tuple(exp_out), shape)))
+
+    return (
+        np.array(lhs, dtype=np.int32),
+        np.array(rhs, dtype=np.int32),
+        np.array(out, dtype=np.int32),
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,6 +79,7 @@ def parse_args() -> argparse.Namespace:
         help="Methods to run. Add 'ppo_mcts_checkpoint' if --checkpoint is set.",
     )
     p.add_argument("--mcts-simulations", type=int, default=32)
+    p.add_argument("--beam-width", type=int, default=64)
     p.add_argument(
         "--checkpoint",
         type=str,
@@ -61,6 +94,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--wandb-project", type=str, default=None)
     p.add_argument("--wandb-run-name", type=str, default=None)
     return p.parse_args()
+
+
+def _int_suffix(method: str, default: int) -> int:
+    tail = method.split("_")[-1]
+    return int(tail) if tail.isdigit() else default
 
 
 def _load_cache(path: Path) -> Dict[str, Any]:
@@ -99,7 +137,8 @@ def _aggregate_rows(
         g = int(gen_c[idx])
         t = int(true_c[idx])
         by_gen.setdefault(g, []).append(r)
-        by_pair.setdefault((g, t), []).append(r)
+        if t >= 0:
+            by_pair.setdefault((g, t), []).append(r)
 
     def _summarize(rows_subset: List[Dict[str, Any]]) -> Dict[str, float]:
         n = len(rows_subset)
@@ -172,6 +211,44 @@ def _run_uniform_mcts(
     return results
 
 
+def _run_factor_mcts(
+    cache: Dict[str, Any],
+    mcts_simulations: int,
+    seed: int,
+) -> List[Dict[str, Any]]:
+    config = cache["config"]
+    coeffs = cache["target_coeffs"]
+    results: List[Dict[str, Any]] = []
+    for idx in range(coeffs.shape[0]):
+        r = bfactor.solve_factor_mcts(
+            coeffs[idx],
+            config,
+            mcts_simulations=mcts_simulations,
+            seed=seed + idx,
+        )
+        r["target_idx"] = idx
+        results.append(r)
+    return results
+
+
+def _run_beam_search(
+    cache: Dict[str, Any],
+    beam_width: int,
+) -> List[Dict[str, Any]]:
+    config = cache["config"]
+    coeffs = cache["target_coeffs"]
+    results: List[Dict[str, Any]] = []
+    for idx in range(coeffs.shape[0]):
+        r = bbeam.solve_beam_search(
+            coeffs[idx],
+            config,
+            beam_width=beam_width,
+        )
+        r["target_idx"] = idx
+        results.append(r)
+    return results
+
+
 def _run_ppo_checkpoint(
     cache: Dict[str, Any],
     checkpoint_path: str,
@@ -182,11 +259,29 @@ def _run_ppo_checkpoint(
     import pickle
     import jax
     import jax.numpy as jnp
+    import src.algorithms.jax_env as jax_env
     from src.algorithms.jax_env import (
         make_env_config, reset as env_reset, step as env_step,
         get_observation,
     )
     from src.algorithms.ppo_mcts_jax import PPOMCTSJAXTrainer
+
+    def _direct_poly_mul(a, b, mod: int, n_variables: int, max_degree: int):
+        """Eval-only polynomial multiply that avoids cuDNN convolution."""
+        lhs_idx, rhs_idx, out_idx = _direct_mul_indices(
+            n_variables, max_degree
+        )
+        lhs = jnp.array(lhs_idx, dtype=jnp.int32)
+        rhs = jnp.array(rhs_idx, dtype=jnp.int32)
+        out = jnp.array(out_idx, dtype=jnp.int32)
+        result = jnp.zeros_like(a, dtype=jnp.int32)
+        prod = (a[lhs] * b[rhs]) % mod
+        result = result.at[out].add(prod)
+        return result % mod
+
+    # The branch's default poly_mul uses lax.conv_general_dilated, which can
+    # fail on some Hyak cuDNN stacks. Patch only this eval process.
+    jax_env.poly_mul = _direct_poly_mul
 
     config = cache["config"]
     # Load the checkpoint's saved config to ensure shapes match training.
@@ -302,12 +397,14 @@ def main() -> None:
         if method == "greedy_1step":
             results = _run_greedy(cache)
         elif method.startswith("uniform_mcts"):
-            sims = args.mcts_simulations
-            if "_" in method:
-                tail = method.split("_")[-1]
-                if tail.isdigit():
-                    sims = int(tail)
+            sims = _int_suffix(method, args.mcts_simulations)
             results = _run_uniform_mcts(cache, sims, args.seed)
+        elif method.startswith("factor_mcts"):
+            sims = _int_suffix(method, args.mcts_simulations)
+            results = _run_factor_mcts(cache, sims, args.seed)
+        elif method.startswith("beam_search"):
+            beam_width = _int_suffix(method, args.beam_width)
+            results = _run_beam_search(cache, beam_width)
         elif method == "ppo_mcts_checkpoint":
             if args.checkpoint is None:
                 print("ERROR: ppo_mcts_checkpoint requires --checkpoint.")
@@ -350,6 +447,7 @@ def main() -> None:
                 "target_cache": args.target_cache,
                 "methods": args.methods,
                 "mcts_simulations": args.mcts_simulations,
+                "beam_width": args.beam_width,
                 "checkpoint": args.checkpoint,
             },
         )
