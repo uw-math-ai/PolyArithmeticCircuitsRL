@@ -677,6 +677,23 @@ def build_caches(
     ]
 
     paths = []
+    if force_serial or len(work_items) <= 1 or num_processes == 1:
+        for item in work_items:
+            complexity = int(item["complexity"])
+            print(f"Building OnPath C{complexity}...", flush=True)
+            built_complexity, arrays = _build_one_complexity(item)
+            path = save_complexity_cache(cache_dir, arrays, built_complexity)
+            metadata = json.loads(str(arrays["metadata_json"].item()))
+            print(
+                f"Wrote {path} "
+                f"(targets={len(arrays['target_ids'])}, "
+                f"route_cap_hit_rate={metadata.get('route_cap_hit_rate', 0.0):.2%}, "
+                f"board_backend={metadata.get('board_backend', 'unknown')})",
+                flush=True,
+            )
+            paths.append(path)
+        return paths
+
     for complexity, arrays in map_complexities(
         _build_one_complexity,
         work_items,

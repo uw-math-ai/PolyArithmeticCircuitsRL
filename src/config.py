@@ -31,7 +31,7 @@ class Config:
     #   legacy: current term/factor/completion shaping baseline.
     #   clean_sparse: terminal_success_reward + step_penalty only.
     #   clean_onpath: clean_sparse + cached sequential-route on-path potential shaping.
-    reward_mode: str = "legacy"
+    reward_mode: str = "clean_onpath"
     success_reward: float = 10.0        # Reward given when the target is matched exactly
     terminal_success_reward: float = 10.0  # Clean-mode terminal reward.
     step_penalty: float = -0.1          # Per-step penalty to encourage shorter circuits
@@ -39,12 +39,15 @@ class Config:
     graph_onpath_shaping_coeff: float = 3.0
     graph_onpath_cache_dir: Optional[str] = None
     on_path_terminal_zero: bool = True
-    on_path_phi_mode: str = "count"     # "count", "max_step", or "depth_weighted"
-    on_path_depth_weight_power: float = 1.0
+    on_path_phi_mode: str = "depth_weighted"     # "count", "max_step", or "depth_weighted"
+    on_path_depth_weight_power: float = 1.0 #1,2,3,4(1) ->1,4,9,16(2)
     on_path_max_size: int = 4096
     on_path_split_seed: int = 42
-    on_path_route_consistency: bool = True
+    on_path_route_consistency: bool = True # prevents reward from mixing unrelated pieces from incompatible optimal routes.
     on_path_route_consistency_mode: str = "best_route_phi"
+    # best_route_phi: compute progress for each coherent route and use the best one. This is the current preferred mode.
+    # lock_on_first_hit: once the agent hits a route, only compatible route nodes count afterward. Stricter and more brittle.
+    # off: union all on-path nodes, ignoring route compatibility.
     on_path_num_routes: int = 32
     # Non-PBRS additive bonus paid each step phi increases (coherent-route progress).
     # Bounded: phi <= 1 caps total per-episode bonus at this coefficient.
