@@ -14,6 +14,7 @@ Coefficient layout matches :class:`src.environment.fast_polynomial.FastPoly`:
 from __future__ import annotations
 
 import itertools
+import os
 import warnings
 from typing import Callable, Literal, Optional
 
@@ -61,6 +62,9 @@ class PolyBatchOps:
         self._jax_device = None
         self._jax_add: Optional[Callable] = None
         self._jax_mul: Optional[Callable] = None
+        self._jax_mul_chunk_size = int(os.environ.get("POLY_BATCH_JAX_CHUNK_SIZE", "1024"))
+        if self._jax_mul_chunk_size <= 0:
+            raise ValueError("POLY_BATCH_JAX_CHUNK_SIZE must be positive")
 
         if backend == "jax":
             self._try_enable_jax()
@@ -202,21 +206,28 @@ class PolyBatchOps:
             assert self._jax is not None
             assert self._jnp is not None
             assert self._jax_mul is not None
-            left_jax = self._jax.device_put(
-                self._jnp.asarray(
-                    left.reshape(P, self.target_size),
-                    dtype=self._jnp.int32,
-                ),
-                self._jax_device,
-            )
-            right_jax = self._jax.device_put(
-                self._jnp.asarray(
-                    right.reshape(P, self.target_size),
-                    dtype=self._jnp.int32,
-                ),
-                self._jax_device,
-            )
-            return np.asarray(self._jax_mul(left_jax, right_jax), dtype=np.int64)
+            left_flat = left.reshape(P, self.target_size)
+            right_flat = right.reshape(P, self.target_size)
+            chunk_size = min(self._jax_mul_chunk_size, P)
+            chunks = []
+            for start in range(0, P, chunk_size):
+                end = min(start + chunk_size, P)
+                left_jax = self._jax.device_put(
+                    self._jnp.asarray(
+                        left_flat[start:end],
+                        dtype=self._jnp.int32,
+                    ),
+                    self._jax_device,
+                )
+                right_jax = self._jax.device_put(
+                    self._jnp.asarray(
+                        right_flat[start:end],
+                        dtype=self._jnp.int32,
+                    ),
+                    self._jax_device,
+                )
+                chunks.append(np.asarray(self._jax_mul(left_jax, right_jax), dtype=np.int64))
+            return np.concatenate(chunks, axis=0)
 
         result = np.zeros((P,) + self.grid_shape, dtype=np.int64)
 

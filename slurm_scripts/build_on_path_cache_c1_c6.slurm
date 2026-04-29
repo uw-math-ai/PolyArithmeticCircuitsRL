@@ -24,6 +24,7 @@ MAX_ON_PATH_SIZE=${MAX_ON_PATH_SIZE:-4096}
 ON_PATH_NUM_ROUTES=${ON_PATH_NUM_ROUTES:-32}
 MAX_ROUTE_TRUNCATION_RATE=${MAX_ROUTE_TRUNCATION_RATE:-0.25}
 CACHE_BACKEND=${CACHE_BACKEND:-jax}
+POLY_BATCH_JAX_CHUNK_SIZE=${POLY_BATCH_JAX_CHUNK_SIZE:-1024}
 NUM_PROCESSES=${NUM_PROCESSES:-}
 NO_PARALLEL=${NO_PARALLEL:-1}
 CACHE_DIR=${CACHE_DIR:-on_path_cache/v5_n2_mod5_deg6_SEQ_C1_C6_routes32_seed42}
@@ -53,18 +54,21 @@ echo "  max_on_path_size: $MAX_ON_PATH_SIZE"
 echo "  on_path_num_routes: $ON_PATH_NUM_ROUTES"
 echo "  max_route_truncation_rate: $MAX_ROUTE_TRUNCATION_RATE"
 echo "  cache_backend: $CACHE_BACKEND"
+echo "  poly_batch_jax_chunk_size: $POLY_BATCH_JAX_CHUNK_SIZE"
 echo "  num_processes: ${NUM_PROCESSES:-auto}"
 echo "  no_parallel: $NO_PARALLEL"
 
 apptainer exec --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
   --env XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false \
+  --env POLY_BATCH_JAX_CHUNK_SIZE="$POLY_BATCH_JAX_CHUNK_SIZE" \
   "$CONTAINER" \
   python -u -c "import jax; print('JAX devices:', jax.devices())"
 
 apptainer exec --nv --bind /gscratch:/gscratch \
   --env PYTHONUNBUFFERED=1 \
   --env XLA_FLAGS=--xla_gpu_strict_conv_algorithm_picker=false \
+  --env POLY_BATCH_JAX_CHUNK_SIZE="$POLY_BATCH_JAX_CHUNK_SIZE" \
   "$CONTAINER" \
   python -u -m src.game_board.on_path \
     --complexities "${COMPLEXITY_ARGS[@]}" \
