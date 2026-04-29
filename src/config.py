@@ -29,7 +29,7 @@ class Config:
     # -------------------------------------------------------------------------
     success_reward: float = 10.0        # Reward given when the target is matched exactly
     step_penalty: float = -0.1          # Per-step penalty to encourage shorter circuits
-    use_reward_shaping: bool = True     # Enable potential-based shaping (Ng et al., 1999)
+    use_reward_shaping: bool = False    # Enable potential-based shaping (Ng et al., 1999)
 
     # -------------------------------------------------------------------------
     # Factor library and subgoal rewards
