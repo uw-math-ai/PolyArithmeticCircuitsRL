@@ -741,6 +741,33 @@ class TestEnvResetStep:
         # times 2 ops = 12 valid actions.
         assert int(mask.sum()) == 12
 
+    def test_target_depth_slack_caps_valid_actions(self):
+        """Large static capacity still masks actions after per-target budget."""
+        cfg = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=3,
+            max_build_complexity=8,
+            build_complexity_slack=2,
+            max_steps=8,
+            max_degree=6,
+        )
+        ec = make_env_config(cfg)
+        target = jnp.zeros(ec.target_size, dtype=jnp.int32)
+        state = reset(ec, target)._replace(target_board_step=jnp.int32(2))
+
+        active_max_nodes = ec.n_variables + 1 + 2 + 2
+        before_cap = state._replace(num_nodes=jnp.int32(active_max_nodes - 1))
+        assert int(get_observation(ec, before_cap)["mask"].sum()) > 0
+
+        at_cap = state._replace(num_nodes=jnp.int32(active_max_nodes))
+        assert int(get_observation(ec, at_cap)["mask"].sum()) == 0
+
+        action = encode_action(jnp.int32(0), jnp.int32(0), jnp.int32(1), ec.max_nodes)
+        next_state, _reward, done, _success, *_ = step(ec, before_cap, action)
+        assert bool(done)
+        assert int(next_state.num_nodes) == active_max_nodes
+
 
 # ---------------------------------------------------------------------------
 # jax_net: network forward pass

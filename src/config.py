@@ -21,6 +21,7 @@ class Config:
     mod: int = 5                # Prime modulus p for F_p arithmetic
     max_complexity: int = 6     # Maximum target/cache complexity used for training
     max_build_complexity: int = -1  # Operation-node budget (-1 = max_complexity)
+    build_complexity_slack: int = -1  # Per-target extra op budget (-1 = disabled)
     max_steps: int = 10         # Hard step limit per episode (terminates if reached)
     max_degree: int = -1        # Max degree per variable in dense representation
                                 # (-1 = auto: set to max_complexity)
@@ -92,7 +93,12 @@ class Config:
     gamma: float = 0.99
     gae_lambda: float = 0.95
     ent_coef: float = 0.01
+    ent_coef_final: float = 0.01
+    ent_coef_anneal_fraction: float = 0.5
     vf_coef: float = 0.1
+    value_clip_enabled: bool = True
+    value_clip_range: float = 0.2
+    adv_normalize_per_minibatch: bool = True
     batch_size: int = 256
     steps_per_update: int = 4096
     max_grad_norm: float = 0.5

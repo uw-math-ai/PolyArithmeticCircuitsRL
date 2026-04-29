@@ -19,6 +19,7 @@ N_VARIABLES=${N_VARIABLES:-2}
 MOD=${MOD:-5}
 MAX_COMPLEXITY=${MAX_COMPLEXITY:-5}
 MAX_BUILD_COMPLEXITY=${MAX_BUILD_COMPLEXITY:-$MAX_COMPLEXITY}
+BUILD_COMPLEXITY_SLACK=${BUILD_COMPLEXITY_SLACK:--1}
 MAX_DEGREE=${MAX_DEGREE:-5}
 MAX_STEPS=${MAX_STEPS:-12}
 
@@ -29,7 +30,7 @@ ON_PATH_NUM_ROUTES=${ON_PATH_NUM_ROUTES:-32}
 ON_PATH_PHI_MODE=${ON_PATH_PHI_MODE:-depth_weighted}
 ON_PATH_DEPTH_WEIGHT_POWER=${ON_PATH_DEPTH_WEIGHT_POWER:-1.0}
 ON_PATH_ROUTE_CONSISTENCY_MODE=${ON_PATH_ROUTE_CONSISTENCY_MODE:-best_route_phi}
-GRAPH_ONPATH_SHAPING_COEFF=${GRAPH_ONPATH_SHAPING_COEFF:-3.0}
+GRAPH_ONPATH_SHAPING_COEFF=${GRAPH_ONPATH_SHAPING_COEFF:-5.0}
 ON_ROUTE_BONUS_COEFF=${ON_ROUTE_BONUS_COEFF:-0.0}
 
 ITERATIONS=${ITERATIONS:-2000}
@@ -42,7 +43,10 @@ PPO_LOG_RATIO_CLIP=${PPO_LOG_RATIO_CLIP:-10.0}
 PPO_EPOCHS=${PPO_EPOCHS:-2}
 TARGET_KL=${TARGET_KL:-0.05}
 ENT_COEF=${ENT_COEF:-0.15}
-VF_COEF=${VF_COEF:-0.1}
+ENT_COEF_FINAL=${ENT_COEF_FINAL:-0.01}
+ENT_COEF_ANNEAL_FRACTION=${ENT_COEF_ANNEAL_FRACTION:-0.5}
+VF_COEF=${VF_COEF:-0.5}
+VALUE_CLIP_RANGE=${VALUE_CLIP_RANGE:-0.2}
 LOG_INTERVAL=${LOG_INTERVAL:-10}
 PROGRESS_BAR=${PROGRESS_BAR:-0}
 
@@ -55,9 +59,9 @@ CURRICULUM_WINDOW=${CURRICULUM_WINDOW:-3000}
 CURRICULUM_MIN_DWELL_ITERATIONS=${CURRICULUM_MIN_DWELL_ITERATIONS:-50}
 CURRICULUM_BACKOFF_PATIENCE_ITERATIONS=${CURRICULUM_BACKOFF_PATIENCE_ITERATIONS:-0}
 
-RESULTS_DIR=${RESULTS_DIR:-results/ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C5}
+RESULTS_DIR=${RESULTS_DIR:-results/onpath_2var_C1_C5}
 WANDB=${WANDB:-1}
-WANDB_RUN_NAME=${WANDB_RUN_NAME:-ppo-mcts-jax_clean_onpath_curriculum_2var_C1_C5}
+WANDB_RUN_NAME=${WANDB_RUN_NAME:-onpath_2var_C1_C5}
 FIXED_COMPLEXITIES=${FIXED_COMPLEXITIES:-}
 
 cd "$REPO_DIR"
@@ -79,6 +83,7 @@ echo "  cache_dir: $CACHE_DIR"
 echo "  results_dir: $RESULTS_DIR"
 echo "  max_complexity: $MAX_COMPLEXITY"
 echo "  max_build_complexity: $MAX_BUILD_COMPLEXITY"
+echo "  build_complexity_slack: $BUILD_COMPLEXITY_SLACK"
 echo "  max_steps: $MAX_STEPS"
 echo "  iterations: $ITERATIONS"
 echo "  mcts_batch_size: $MCTS_BATCH_SIZE"
@@ -89,7 +94,10 @@ echo "  ppo_log_ratio_clip: $PPO_LOG_RATIO_CLIP"
 echo "  ppo_epochs: $PPO_EPOCHS"
 echo "  target_kl: $TARGET_KL"
 echo "  ent_coef: $ENT_COEF"
+echo "  ent_coef_final: $ENT_COEF_FINAL"
+echo "  ent_coef_anneal_fraction: $ENT_COEF_ANNEAL_FRACTION"
 echo "  vf_coef: $VF_COEF"
+echo "  value_clip_range: $VALUE_CLIP_RANGE"
 echo "  on_path_phi_mode: $ON_PATH_PHI_MODE"
 echo "  on_route_bonus_coeff: $ON_ROUTE_BONUS_COEFF"
 echo "  on_path_depth_weight_power: $ON_PATH_DEPTH_WEIGHT_POWER"
@@ -132,6 +140,7 @@ apptainer exec --nv --bind /gscratch:/gscratch \
     --mod "$MOD" \
     --max-complexity "$MAX_COMPLEXITY" \
     --max-build-complexity "$MAX_BUILD_COMPLEXITY" \
+    --build-complexity-slack "$BUILD_COMPLEXITY_SLACK" \
     --starting-complexity "$STARTING_COMPLEXITY" \
     --advance-threshold "$ADVANCE_THRESHOLD" \
     --backoff-threshold "$BACKOFF_THRESHOLD" \
@@ -149,7 +158,10 @@ apptainer exec --nv --bind /gscratch:/gscratch \
     --ppo-log-ratio-clip "$PPO_LOG_RATIO_CLIP" \
     --target-kl "$TARGET_KL" \
     --ent-coef "$ENT_COEF" \
+    --ent-coef-final "$ENT_COEF_FINAL" \
+    --ent-coef-anneal-fraction "$ENT_COEF_ANNEAL_FRACTION" \
     --vf-coef "$VF_COEF" \
+    --value-clip-range "$VALUE_CLIP_RANGE" \
     --log-interval "$LOG_INTERVAL" \
     --reward-mode clean_onpath \
     --graph-onpath-cache-dir "$CACHE_DIR" \

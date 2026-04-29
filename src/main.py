@@ -108,6 +108,15 @@ def main() -> None:
         default=None,
         help="Operation-node budget per episode (default: max_complexity)",
     )
+    parser.add_argument(
+        "--build-complexity-slack",
+        type=int,
+        default=None,
+        help=(
+            "Extra operation budget beyond exact target depth; "
+            "-1 disables per-target active caps"
+        ),
+    )
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--hidden-dim", type=int, default=None)
     parser.add_argument("--device", type=str, default=None)
@@ -134,7 +143,18 @@ def main() -> None:
         help="Max degree per variable (default: auto = max_complexity)",
     )
     parser.add_argument("--ent-coef", type=float, default=None)
+    parser.add_argument("--ent-coef-final", type=float, default=None,
+                        help="Final entropy coefficient after annealing.")
+    parser.add_argument("--ent-coef-anneal-fraction", type=float, default=None,
+                        help="Fraction of training over which to linearly anneal "
+                             "ent_coef from initial to final.")
     parser.add_argument("--vf-coef", type=float, default=None)
+    parser.add_argument("--value-clip-range", type=float, default=None)
+    parser.add_argument("--no-value-clip", action="store_true",
+                        help="Disable PPO2-style value clipping.")
+    parser.add_argument("--no-adv-normalize-per-minibatch", action="store_true",
+                        help="Disable per-minibatch advantage normalization "
+                             "(falls back to per-rollout normalization).")
     parser.add_argument("--ppo-lr", type=float, default=None)
     parser.add_argument(
         "--ppo-epochs",
@@ -223,6 +243,8 @@ def main() -> None:
         config.max_complexity = args.max_complexity
     if args.max_build_complexity is not None:
         config.max_build_complexity = args.max_build_complexity
+    if args.build_complexity_slack is not None:
+        config.build_complexity_slack = args.build_complexity_slack
     if args.max_steps is not None:
         config.max_steps = args.max_steps
     if args.hidden_dim is not None:
@@ -254,8 +276,18 @@ def main() -> None:
         config.max_degree = args.max_degree
     if args.ent_coef is not None:
         config.ent_coef = args.ent_coef
+    if args.ent_coef_final is not None:
+        config.ent_coef_final = args.ent_coef_final
+    if args.ent_coef_anneal_fraction is not None:
+        config.ent_coef_anneal_fraction = args.ent_coef_anneal_fraction
     if args.vf_coef is not None:
         config.vf_coef = args.vf_coef
+    if args.value_clip_range is not None:
+        config.value_clip_range = args.value_clip_range
+    if args.no_value_clip:
+        config.value_clip_enabled = False
+    if args.no_adv_normalize_per_minibatch:
+        config.adv_normalize_per_minibatch = False
     if args.ppo_lr is not None:
         config.ppo_lr = args.ppo_lr
     if args.ppo_epochs is not None:
@@ -366,6 +398,7 @@ def main() -> None:
         f"Config: n_vars={config.n_variables}, mod={config.mod}, "
         f"max_complexity={config.max_complexity}, "
         f"max_build_complexity={config.effective_max_build_complexity}, "
+        f"build_complexity_slack={config.build_complexity_slack}, "
         f"device={config.device}, "
         f"reward_mode={config.reward_mode}"
     )

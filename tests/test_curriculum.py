@@ -7,10 +7,16 @@ from src.config import Config
 
 
 def test_max_build_complexity_controls_episode_capacity_separately():
-    config = Config(n_variables=2, max_complexity=3, max_build_complexity=5)
+    config = Config(
+        n_variables=2,
+        max_complexity=3,
+        max_build_complexity=5,
+        build_complexity_slack=2,
+    )
 
     assert config.max_complexity == 3
     assert config.effective_max_build_complexity == 5
+    assert config.build_complexity_slack == 2
     assert config.max_nodes == 8  # x0, x1, 1 plus five operation nodes.
     assert config.max_actions == 72
 

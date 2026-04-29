@@ -96,6 +96,8 @@ class EnvConfig(NamedTuple):
     mod: int
     max_degree: int
     max_complexity: int
+    max_build_complexity: int
+    build_complexity_slack: int
     max_steps: int
     max_nodes: int        # n_variables + 1 + max_complexity
     max_actions: int      # max_nodes * (max_nodes + 1)
@@ -151,6 +153,8 @@ def make_env_config(config) -> EnvConfig:
         mod=config.mod,
         max_degree=max_deg,
         max_complexity=config.max_complexity,
+        max_build_complexity=config.effective_max_build_complexity,
+        build_complexity_slack=config.build_complexity_slack,
         max_steps=config.max_steps,
         max_nodes=max_nodes,
         max_actions=config.max_actions,
@@ -233,6 +237,22 @@ def get_valid_actions_mask(num_nodes: jnp.ndarray, max_nodes: int,
         lambda a: decode_action(a, max_nodes)
     )(action_indices)
     return (i_arr < num_nodes) & (j_arr < num_nodes)
+
+
+def _active_max_nodes(env_config: EnvConfig, target_board_step: jnp.ndarray) -> jnp.ndarray:
+    """Per-episode node cap from exact target depth plus optional slack."""
+    static_max_nodes = jnp.int32(env_config.max_nodes)
+    if env_config.build_complexity_slack < 0:
+        return static_max_nodes
+
+    base_nodes = jnp.int32(env_config.n_variables + 1)
+    max_build = jnp.int32(env_config.max_build_complexity)
+    slack = jnp.int32(env_config.build_complexity_slack)
+    target_build = jnp.asarray(target_board_step, dtype=jnp.int32)
+    active_build = jnp.minimum(max_build, target_build + slack)
+    active_build = jnp.where(target_build > 0, active_build, max_build)
+    active_build = jnp.maximum(active_build, jnp.int32(1))
+    return jnp.minimum(static_max_nodes, base_nodes + active_build)
 
 
 # ---------------------------------------------------------------------------
@@ -890,7 +910,9 @@ def step(env_config: EnvConfig, state: EnvState,
     # Termination.
     at_max_steps = steps_taken >= env_config.max_steps
     at_max_nodes = num_nodes >= max_nodes
-    done = is_success | at_max_steps | at_max_nodes
+    active_max_nodes = _active_max_nodes(env_config, state.target_board_step)
+    at_active_max_nodes = num_nodes >= active_max_nodes
+    done = is_success | at_max_steps | at_max_nodes | at_active_max_nodes
 
     # Base reward.
     if env_config.reward_mode == "legacy" and env_config.use_reward_shaping:
@@ -1142,20 +1164,24 @@ def get_observation(env_config: EnvConfig, state: EnvState) -> dict:
     node_coeffs_norm = state.node_coeffs.astype(jnp.float32) / env_config.mod
     target_norm = state.target_coeffs.astype(jnp.float32) / env_config.mod
     max_steps = jnp.maximum(jnp.asarray(env_config.max_steps, dtype=jnp.float32), 1.0)
-    max_nodes = jnp.maximum(jnp.asarray(env_config.max_nodes, dtype=jnp.float32), 1.0)
+    active_max_nodes_i = _active_max_nodes(env_config, state.target_board_step)
+    active_max_nodes = jnp.maximum(active_max_nodes_i.astype(jnp.float32), 1.0)
     steps_taken = state.steps_taken.astype(jnp.float32)
-    remaining_steps = jnp.maximum(max_steps - steps_taken, 0.0)
+    remaining_steps = jnp.maximum(
+        jnp.minimum(max_steps - steps_taken, active_max_nodes - state.num_nodes),
+        0.0,
+    )
     global_features = jnp.array(
         [
             steps_taken / max_steps,
             remaining_steps / max_steps,
-            state.num_nodes.astype(jnp.float32) / max_nodes,
+            state.num_nodes.astype(jnp.float32) / active_max_nodes,
         ],
         dtype=jnp.float32,
     )
     mask = get_valid_actions_mask(
         state.num_nodes, env_config.max_nodes, env_config.max_actions
-    )
+    ) & (state.num_nodes < active_max_nodes_i)
     return {
         'node_features': state.node_features,
         'node_coeffs': node_coeffs_norm,

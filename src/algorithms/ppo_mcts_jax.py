@@ -845,14 +845,28 @@ class PPOMCTSJAXTrainer:
             "skipped_outer_iteration": int(skipped_outer),
         }
 
+    def _current_ent_coef(self, progress: float) -> float:
+        """Linearly anneal ent_coef from config.ent_coef -> config.ent_coef_final.
+
+        Anneal completes at progress = ent_coef_anneal_fraction; afterwards the
+        coefficient is held at ent_coef_final.
+        """
+        anneal_frac = max(1e-6, float(self.config.ent_coef_anneal_fraction))
+        frac = min(1.0, max(0.0, progress) / anneal_frac)
+        start = float(self.config.ent_coef)
+        end = float(self.config.ent_coef_final)
+        return start + (end - start) * frac
+
     def update(self, transitions: List[Transition],
-               advantages: np.ndarray, returns: np.ndarray) -> dict:
+               advantages: np.ndarray, returns: np.ndarray,
+               progress: float = 0.0) -> dict:
         """Run PPO clipped surrogate update.
 
         Args:
             transitions: Collected transitions.
             advantages: GAE advantages, shape (N,).
             returns: Target returns, shape (N,).
+            progress: Training progress in [0, 1], used for entropy annealing.
 
         Returns:
             Dict with mean pg_loss, vf_loss, entropy.
@@ -864,14 +878,17 @@ class PPOMCTSJAXTrainer:
         if not self._rollout_data_is_finite(transitions, advantages, returns):
             return self._empty_loss_info(skipped_outer=True)
 
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        if not np.all(np.isfinite(advantages)):
-            return self._empty_loss_info(skipped_outer=True)
+        if not self.config.adv_normalize_per_minibatch:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+            if not np.all(np.isfinite(advantages)):
+                return self._empty_loss_info(skipped_outer=True)
 
         adv_jax = jnp.array(advantages)
         ret_jax = jnp.array(returns)
         old_log_probs = jnp.array([t.network_log_prob for t in transitions])
+        old_values = jnp.array([t.value for t in transitions], dtype=jnp.float32)
         actions = jnp.array([t.action for t in transitions], dtype=jnp.int32)
+        ent_coef = jnp.float32(self._current_ent_coef(progress))
 
         # Pre-stack all observations into batched arrays.
         obs_keys = transitions[0].obs.keys()
@@ -912,10 +929,12 @@ class PPOMCTSJAXTrainer:
                 batch_adv = adv_jax[idx_jax]
                 batch_ret = ret_jax[idx_jax]
                 batch_old_lp = old_log_probs[idx_jax]
+                batch_old_v = old_values[idx_jax]
 
                 self.train_state, loss_info = self._ppo_step(
                     self.train_state, batch_obs, batch_actions,
-                    batch_adv, batch_ret, batch_old_lp,
+                    batch_adv, batch_ret, batch_old_lp, batch_old_v,
+                    ent_coef,
                 )
                 applied = bool(np.array(loss_info["applied"]))
                 kl_rejected = bool(np.array(loss_info["kl_rejected"]))
@@ -1002,8 +1021,12 @@ class PPOMCTSJAXTrainer:
         }
 
     @functools.partial(jax.jit, static_argnums=(0,))
-    def _ppo_step(self, state, obs, actions, advantages, returns, old_log_probs):
+    def _ppo_step(self, state, obs, actions, advantages, returns,
+                  old_log_probs, old_values, ent_coef):
         """Single JIT-compiled PPO gradient step."""
+
+        if self.config.adv_normalize_per_minibatch:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         def loss_fn(params):
             # vmap network over batch.
@@ -1034,12 +1057,22 @@ class PPOMCTSJAXTrainer:
             ) * advantages
             pg_loss = -jnp.minimum(surr1, surr2).mean()
 
-            # Value loss.
-            vf_loss = jnp.mean((values - returns) ** 2)
+            # Value loss with optional PPO2-style clipping around old values.
+            vf_unclipped = (values - returns) ** 2
+            if self.config.value_clip_enabled:
+                v_clipped = old_values + jnp.clip(
+                    values - old_values,
+                    -self.config.value_clip_range,
+                    self.config.value_clip_range,
+                )
+                vf_clipped = (v_clipped - returns) ** 2
+                vf_loss = jnp.mean(jnp.maximum(vf_unclipped, vf_clipped))
+            else:
+                vf_loss = jnp.mean(vf_unclipped)
 
             total = (pg_loss
                      + self.config.vf_coef * vf_loss
-                     - self.config.ent_coef * entropy)
+                     - ent_coef * entropy)
 
             aux = {
                 "pg_loss": pg_loss,
@@ -1285,8 +1318,11 @@ class PPOMCTSJAXTrainer:
                       "Running PPO update...", flush=True)
 
             advantages, returns = self.compute_gae(transitions)
+            progress = (iteration - 1) / max(num_iterations - 1, 1)
             if self._rollout_data_is_finite(transitions, advantages, returns):
-                loss_info = self.update(transitions, advantages, returns)
+                loss_info = self.update(
+                    transitions, advantages, returns, progress=progress
+                )
                 if loss_info["skipped_outer_iteration"]:
                     self.skipped_outer_iterations += 1
                     del self.success_history[success_len_before:]
