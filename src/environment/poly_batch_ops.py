@@ -20,6 +20,13 @@ from typing import Callable, Literal, Optional
 import numpy as np
 
 
+_CONV_DIM_NUMBERS = {
+    1: ("NCH", "OIH", "NCH"),
+    2: ("NCHW", "OIHW", "NCHW"),
+    3: ("NCDHW", "OIDHW", "NCDHW"),
+}
+
+
 class PolyBatchOps:
     """All-pairs polynomial add and (truncated) multiply over F_p.
 
@@ -102,16 +109,14 @@ class PolyBatchOps:
 
         D = self._D
         n = self.n_vars
+        if n not in _CONV_DIM_NUMBERS:
+            raise ValueError("JAX polynomial batching supports n_vars in {1, 2, 3}")
         mod = self.mod
         target_size = self.target_size
         grid_shape = self.grid_shape
         padding = tuple((D - 1, D - 1) for _ in range(n))
         strides = (1,) * n
-        dimension_numbers = (
-            (0, 1, tuple(range(2, 2 + n))),
-            (0, 1, tuple(range(2, 2 + n))),
-            (0, 1, tuple(range(2, 2 + n))),
-        )
+        dimension_numbers = _CONV_DIM_NUMBERS[n]
 
         @jax.jit
         def add_jit(left, right):
@@ -120,8 +125,8 @@ class PolyBatchOps:
         @jax.jit
         def mul_jit(left_flat, right_flat):
             pair_count = left_flat.shape[0]
-            left = left_flat.reshape((1, pair_count) + grid_shape)
-            right = right_flat.reshape((pair_count, 1) + grid_shape)
+            left = left_flat.reshape((1, pair_count) + grid_shape).astype(jnp.float32)
+            right = right_flat.reshape((pair_count, 1) + grid_shape).astype(jnp.float32)
             # lax.conv is cross-correlation; flipping the per-pair kernels gives
             # polynomial convolution. Grouping keeps each pair independent.
             right = jnp.flip(right, axis=tuple(range(2, 2 + n)))
@@ -134,7 +139,7 @@ class PolyBatchOps:
                 feature_group_count=pair_count,
             )
             truncated = conv[(0, slice(None)) + tuple(slice(0, D) for _ in range(n))]
-            return truncated.reshape((pair_count, target_size)) % mod
+            return truncated.astype(jnp.int32).reshape((pair_count, target_size)) % mod
 
         self._jax = jax
         self._jnp = jnp
