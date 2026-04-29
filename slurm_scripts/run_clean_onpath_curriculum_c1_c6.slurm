@@ -18,6 +18,7 @@ CONTAINER=${CONTAINER:-container_jax.sif}
 N_VARIABLES=${N_VARIABLES:-2}
 MOD=${MOD:-5}
 MAX_COMPLEXITY=${MAX_COMPLEXITY:-5}
+MAX_BUILD_COMPLEXITY=${MAX_BUILD_COMPLEXITY:-$MAX_COMPLEXITY}
 MAX_DEGREE=${MAX_DEGREE:-5}
 MAX_STEPS=${MAX_STEPS:-12}
 
@@ -77,6 +78,8 @@ echo "  repo: $REPO_DIR"
 echo "  cache_dir: $CACHE_DIR"
 echo "  results_dir: $RESULTS_DIR"
 echo "  max_complexity: $MAX_COMPLEXITY"
+echo "  max_build_complexity: $MAX_BUILD_COMPLEXITY"
+echo "  max_steps: $MAX_STEPS"
 echo "  iterations: $ITERATIONS"
 echo "  mcts_batch_size: $MCTS_BATCH_SIZE"
 echo "  mcts_simulations: $MCTS_SIMULATIONS"
@@ -128,6 +131,7 @@ apptainer exec --nv --bind /gscratch:/gscratch \
     --n-variables "$N_VARIABLES" \
     --mod "$MOD" \
     --max-complexity "$MAX_COMPLEXITY" \
+    --max-build-complexity "$MAX_BUILD_COMPLEXITY" \
     --starting-complexity "$STARTING_COMPLEXITY" \
     --advance-threshold "$ADVANCE_THRESHOLD" \
     --backoff-threshold "$BACKOFF_THRESHOLD" \

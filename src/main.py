@@ -102,6 +102,12 @@ def main() -> None:
     parser.add_argument("--n-variables", type=int, default=None)
     parser.add_argument("--mod", type=int, default=None)
     parser.add_argument("--max-complexity", type=int, default=None)
+    parser.add_argument(
+        "--max-build-complexity",
+        type=int,
+        default=None,
+        help="Operation-node budget per episode (default: max_complexity)",
+    )
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--hidden-dim", type=int, default=None)
     parser.add_argument("--device", type=str, default=None)
@@ -215,6 +221,8 @@ def main() -> None:
         config.mod = args.mod
     if args.max_complexity is not None:
         config.max_complexity = args.max_complexity
+    if args.max_build_complexity is not None:
+        config.max_build_complexity = args.max_build_complexity
     if args.max_steps is not None:
         config.max_steps = args.max_steps
     if args.hidden_dim is not None:
@@ -356,7 +364,9 @@ def main() -> None:
 
     print(
         f"Config: n_vars={config.n_variables}, mod={config.mod}, "
-        f"max_complexity={config.max_complexity}, device={config.device}, "
+        f"max_complexity={config.max_complexity}, "
+        f"max_build_complexity={config.effective_max_build_complexity}, "
+        f"device={config.device}, "
         f"reward_mode={config.reward_mode}"
     )
     print(
@@ -379,6 +389,13 @@ def main() -> None:
             if config.max_steps < needed + 4:
                 config.max_steps = needed + 4
             config.curriculum_enabled = False
+        required_build_complexity = max(fixed_c) if fixed_c else config.max_complexity
+        if config.effective_max_build_complexity < required_build_complexity:
+            raise ValueError(
+                "max_build_complexity must cover the largest trained target "
+                f"({config.effective_max_build_complexity} < "
+                f"{required_build_complexity})"
+            )
 
         trainer = PPOMCTSJAXTrainer(
             config,

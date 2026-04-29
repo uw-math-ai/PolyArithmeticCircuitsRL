@@ -6,6 +6,15 @@ from src.algorithms.ppo_mcts import PPOMCTSTrainer
 from src.config import Config
 
 
+def test_max_build_complexity_controls_episode_capacity_separately():
+    config = Config(n_variables=2, max_complexity=3, max_build_complexity=5)
+
+    assert config.max_complexity == 3
+    assert config.effective_max_build_complexity == 5
+    assert config.max_nodes == 8  # x0, x1, 1 plus five operation nodes.
+    assert config.max_actions == 72
+
+
 class _CurriculumHarness(SimpleNamespace):
     def _log(self, _msg: str) -> None:
         return None

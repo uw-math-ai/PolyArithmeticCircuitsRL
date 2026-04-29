@@ -19,7 +19,8 @@ class Config:
     # -------------------------------------------------------------------------
     n_variables: int = 2        # Number of polynomial input variables (e.g., 2 → F_p[x0,x1])
     mod: int = 5                # Prime modulus p for F_p arithmetic
-    max_complexity: int = 6     # Maximum number of operations allowed per episode
+    max_complexity: int = 6     # Maximum target/cache complexity used for training
+    max_build_complexity: int = -1  # Operation-node budget (-1 = max_complexity)
     max_steps: int = 10         # Hard step limit per episode (terminates if reached)
     max_degree: int = -1        # Max degree per variable in dense representation
                                 # (-1 = auto: set to max_complexity)
@@ -132,9 +133,18 @@ class Config:
         return self.max_degree if self.max_degree > 0 else self.max_complexity
 
     @property
+    def effective_max_build_complexity(self) -> int:
+        """Resolved operation-node budget for episode state/action arrays."""
+        return (
+            self.max_build_complexity
+            if self.max_build_complexity > 0
+            else self.max_complexity
+        )
+
+    @property
     def max_nodes(self) -> int:
-        """Maximum number of nodes: n_variables + 1 (constant) + max_complexity (ops)."""
-        return self.n_variables + 1 + self.max_complexity
+        """Maximum nodes: inputs + constant + operation-node budget."""
+        return self.n_variables + 1 + self.effective_max_build_complexity
 
     @property
     def max_actions(self) -> int:
