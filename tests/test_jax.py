@@ -397,6 +397,83 @@ class TestPPOMCTSJAXTrainer:
         assert target[7] == pytest.approx(1.0)
         assert float(target[~mask].sum()) == pytest.approx(0.0)
 
+    def test_load_checkpoint_warmstarts_expanded_architecture(self, tmp_path):
+        """Checkpoint loading should warm-start overlapping slices when shapes grow."""
+        config_small = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=4,
+            max_steps=6,
+            max_degree=4,
+            hidden_dim=16,
+            embedding_dim=16,
+            num_gnn_layers=1,
+            factor_library_enabled=False,
+            search="gumbel",
+            gumbel_num_simulations=4,
+            gumbel_max_num_considered_actions=4,
+            ppo_epochs=1,
+            seed=0,
+        )
+        trainer_small = PPOMCTSJAXTrainer(
+            config_small,
+            batch_size=1,
+            fixed_complexities=[3, 4],
+        )
+        trainer_small.train_state = trainer_small.train_state.replace(step=7)
+
+        ckpt_path = tmp_path / "warmstart_checkpoint.pkl"
+        trainer_small.save_checkpoint(str(ckpt_path))
+
+        old_params = trainer_small.train_state.params
+        old_policy_kernel = np.array(old_params["params"]["policy_1"]["kernel"])
+        old_target_kernel = np.array(old_params["params"]["target_enc_0"]["kernel"])
+
+        config_large = Config(
+            n_variables=2,
+            mod=5,
+            max_complexity=6,
+            max_steps=10,
+            max_degree=6,
+            hidden_dim=16,
+            embedding_dim=16,
+            num_gnn_layers=1,
+            factor_library_enabled=False,
+            search="gumbel",
+            gumbel_num_simulations=4,
+            gumbel_max_num_considered_actions=4,
+            ppo_epochs=1,
+            seed=1,
+        )
+        trainer_large = PPOMCTSJAXTrainer(
+            config_large,
+            batch_size=1,
+            fixed_complexities=[3, 4, 5, 6],
+        )
+        trainer_large.load_checkpoint(str(ckpt_path))
+
+        new_params = trainer_large.train_state.params
+        new_policy_kernel = np.array(new_params["params"]["policy_1"]["kernel"])
+        new_target_kernel = np.array(new_params["params"]["target_enc_0"]["kernel"])
+
+        np.testing.assert_allclose(
+            new_policy_kernel[: old_policy_kernel.shape[0], : old_policy_kernel.shape[1]],
+            old_policy_kernel,
+        )
+        np.testing.assert_allclose(
+            new_target_kernel[: old_target_kernel.shape[0], : old_target_kernel.shape[1]],
+            old_target_kernel,
+        )
+        assert int(trainer_large.train_state.step) == 7
+
+        target = jnp.zeros(trainer_large.env_config.target_size, dtype=jnp.int32)
+        state = reset(trainer_large.env_config, target)
+        obs = get_observation(trainer_large.env_config, state)
+        logits, value = trainer_large.network.apply(trainer_large.train_state.params, obs)
+
+        assert logits.shape == (trainer_large.env_config.max_actions,)
+        assert value.shape == ()
+
     def test_get_observation(self, env_config, initial_state):
         """Observation dict has expected keys and shapes."""
         obs = get_observation(env_config, initial_state)

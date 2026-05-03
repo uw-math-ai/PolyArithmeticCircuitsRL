@@ -116,6 +116,8 @@ def main():
     parser.add_argument("--no-curriculum", action="store_true")
     parser.add_argument("--max-degree", type=int, default=None,
                         help="Max degree per variable (default: auto = max_complexity)")
+    parser.add_argument("--use-reward-shaping", action="store_true",
+                        help="Enable potential-based reward shaping for the environment")
     parser.add_argument("--ent-coef", type=float, default=None,
                         help="Entropy coefficient for PPO (default: 0.01)")
     parser.add_argument("--ppo-lr", type=float, default=None,
@@ -212,6 +214,8 @@ def main():
         config.sac_target_entropy_scale = args.sac_target_entropy_scale
     if args.max_degree is not None:
         config.max_degree = args.max_degree
+    if args.use_reward_shaping:
+        config.use_reward_shaping = True
     if args.ent_coef is not None:
         config.ent_coef = args.ent_coef
     if args.ppo_lr is not None:

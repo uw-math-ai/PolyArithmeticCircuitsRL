@@ -138,6 +138,50 @@ def sample_target(config: Config, complexity: int,
     return entry["poly"], entry["step"]
 
 
+def _combine_nodes(nodes: List[FastPoly], op: int, i: int, j: int) -> FastPoly:
+    """Apply one arithmetic operation to two existing nodes."""
+    if op == 0:
+        return nodes[i] + nodes[j]
+    return nodes[i] * nodes[j]
+
+
+def _choose_connected_growth_action(
+    nodes: List[FastPoly],
+    seen_keys: set[bytes],
+    required_idx: Optional[int],
+) -> Tuple[int, int, int, FastPoly]:
+    """Choose the next action while keeping the circuit connected.
+
+    When ``required_idx`` is set, every candidate action must consume that node.
+    This guarantees the final node depends on all previously created operation
+    nodes rather than leaving random intermediate branches unused.
+
+    We prefer novel results to avoid obvious no-op expansions such as
+    multiplying by 1 or recreating an existing node, but we keep a connected
+    fallback if the reachable set is locally saturated.
+    """
+    n = len(nodes)
+    novel_candidates = []
+    fallback_candidates = []
+
+    if required_idx is None:
+        pairs = ((i, j) for i in range(n) for j in range(i, n))
+    else:
+        pairs = ((min(required_idx, other), max(required_idx, other))
+                 for other in range(n))
+
+    for i, j in pairs:
+        for op in (0, 1):
+            result = _combine_nodes(nodes, op, i, j)
+            candidate = (op, i, j, result)
+            fallback_candidates.append(candidate)
+            if result.canonical_key() not in seen_keys:
+                novel_candidates.append(candidate)
+
+    candidates = novel_candidates if novel_candidates else fallback_candidates
+    return random.choice(candidates)
+
+
 def generate_random_circuit(config: Config, complexity: int) -> Tuple[FastPoly, List[Tuple[int, int, int]]]:
     """Generate a random circuit of given complexity.
 
@@ -159,19 +203,19 @@ def generate_random_circuit(config: Config, complexity: int) -> Tuple[FastPoly, 
     nodes.append(FastPoly.constant(1, n_vars, max_deg, mod))
 
     actions = []
+    seen_keys = {poly.canonical_key() for poly in nodes}
+    current_output_idx: Optional[int] = None
 
     for _ in range(complexity):
-        n = len(nodes)
-        i = random.randint(0, n - 1)
-        j = random.randint(i, n - 1)
-        op = random.randint(0, 1)
-
-        if op == 0:
-            result = nodes[i] + nodes[j]
-        else:
-            result = nodes[i] * nodes[j]
+        op, i, j, result = _choose_connected_growth_action(
+            nodes,
+            seen_keys,
+            current_output_idx,
+        )
 
         nodes.append(result)
+        seen_keys.add(result.canonical_key())
         actions.append((op, i, j))
+        current_output_idx = len(nodes) - 1
 
     return nodes[-1], actions

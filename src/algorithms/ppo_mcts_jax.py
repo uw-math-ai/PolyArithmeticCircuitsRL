@@ -30,6 +30,7 @@ import math
 import os
 import pickle
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -39,6 +40,8 @@ import mctx
 import numpy as np
 import optax
 import flax.linen as nn
+from flax.core import freeze, unfreeze
+from flax.core.frozen_dict import FrozenDict
 from flax.training import train_state
 from tqdm import tqdm
 
@@ -977,6 +980,65 @@ class PPOMCTSJAXTrainer:
         with open(path, "wb") as f:
             pickle.dump(state_dict, f)
 
+    def _merge_checkpoint_params(self, loaded_params):
+        """Warm-start current params from a checkpoint with possible shape growth.
+
+        When the architecture expands (for example, a larger action head after
+        increasing ``max_complexity``), copy the overlapping slice from the
+        checkpoint into the freshly initialized parameter tensor and leave new
+        rows/columns at their random initialization.
+        """
+
+        adapted_paths: List[str] = []
+
+        def _merge(current, loaded, path: Tuple[str, ...]):
+            if isinstance(current, Mapping):
+                merged = {}
+                loaded_mapping = loaded if isinstance(loaded, Mapping) else {}
+                for key, current_value in current.items():
+                    child_path = path + (str(key),)
+                    if key in loaded_mapping:
+                        merged[key] = _merge(current_value, loaded_mapping[key], child_path)
+                    else:
+                        adapted_paths.append(".".join(child_path))
+                        merged[key] = current_value
+                extra_keys = set(loaded_mapping.keys()) - set(current.keys())
+                for key in extra_keys:
+                    adapted_paths.append(".".join(path + (str(key),)))
+                return merged
+
+            current_arr = jnp.asarray(current)
+            loaded_arr = jnp.asarray(loaded, dtype=current_arr.dtype)
+
+            if current_arr.shape == loaded_arr.shape:
+                return loaded_arr
+
+            adapted_paths.append(".".join(path))
+            if current_arr.ndim != loaded_arr.ndim:
+                return current_arr
+
+            overlap = tuple(
+                slice(0, min(curr_dim, load_dim))
+                for curr_dim, load_dim in zip(current_arr.shape, loaded_arr.shape)
+            )
+            return current_arr.at[overlap].set(loaded_arr[overlap])
+
+        current_params = self.train_state.params
+        current_tree = (
+            unfreeze(current_params)
+            if isinstance(current_params, FrozenDict)
+            else current_params
+        )
+        loaded_tree = (
+            unfreeze(loaded_params)
+            if isinstance(loaded_params, FrozenDict)
+            else loaded_params
+        )
+        merged_tree = _merge(current_tree, loaded_tree, ())
+        if isinstance(current_params, FrozenDict):
+            return freeze(merged_tree), adapted_paths
+        return merged_tree, adapted_paths
+
     def load_checkpoint(self, path: str) -> None:
         """Load model params and optimizer state from a pickle checkpoint.
 
@@ -985,11 +1047,31 @@ class PPOMCTSJAXTrainer:
         """
         with open(path, "rb") as f:
             state_dict = pickle.load(f)
-        self.train_state = self.train_state.replace(
-            params=state_dict["params"],
-            opt_state=state_dict["opt_state"],
-            step=state_dict["step"],
+        merged_params, adapted_paths = self._merge_checkpoint_params(
+            state_dict["params"]
         )
+        if adapted_paths:
+            preview = ", ".join(adapted_paths[:4])
+            if len(adapted_paths) > 4:
+                preview += ", ..."
+            print(
+                "Warm-starting checkpoint into the current architecture; "
+                "resetting optimizer state for adapted params: "
+                f"{preview}"
+            )
+            self.train_state = train_state.TrainState.create(
+                apply_fn=self.network.apply,
+                params=merged_params,
+                tx=self.tx,
+            ).replace(
+                step=state_dict["step"],
+            )
+        else:
+            self.train_state = self.train_state.replace(
+                params=state_dict["params"],
+                opt_state=state_dict["opt_state"],
+                step=state_dict["step"],
+            )
         self.current_complexity = state_dict.get(
             "current_complexity", self.current_complexity
         )

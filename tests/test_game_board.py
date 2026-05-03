@@ -12,6 +12,26 @@ from src.game_board.generator import (
 )
 
 
+def _count_used_operations(actions, n_base):
+    if not actions:
+        return 0
+
+    final_idx = n_base + len(actions) - 1
+    used = set()
+    stack = [final_idx]
+
+    while stack:
+        idx = stack.pop()
+        if idx < n_base or idx in used:
+            continue
+
+        used.add(idx)
+        _op, i, j = actions[idx - n_base]
+        stack.extend([i, j])
+
+    return len(used)
+
+
 class TestBuildGameBoard:
     def setup_method(self):
         self.config = Config(n_variables=2, mod=5, max_complexity=3)
@@ -110,6 +130,14 @@ class TestGenerateRandomCircuit:
         for _ in range(50):
             poly, actions = generate_random_circuit(config, complexity=4)
             assert poly is not None
+
+    def test_all_actions_contribute_to_final_output(self):
+        config = Config(n_variables=2, mod=5, max_complexity=8)
+        n_base = config.n_variables + 1
+
+        for _ in range(50):
+            _poly, actions = generate_random_circuit(config, complexity=6)
+            assert _count_used_operations(actions, n_base) == len(actions)
 
 
 if __name__ == "__main__":
