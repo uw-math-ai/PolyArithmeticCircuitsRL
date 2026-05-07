@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "decomp-rl"
+version = "0.1.0"
+description = "Split-based arithmetic circuit discovery over finite fields."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "sympy>=1.13",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+]
+train = [
+    "numpy>=1.26",
+    "torch>=2.4",
+    "wandb>=0.19",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
