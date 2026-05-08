@@ -15,7 +15,7 @@ The long-term objective is to improve exact-match success on harder polynomial t
 The split-point environment is best understood as a recursive **addition-first**
 search procedure.
 
-For a target polynomial \(f\), the agent does **not** directly choose arbitrary
+For a target polynomial `f`, the agent does **not** directly choose arbitrary
 `+` and `*` gates. Instead, its main decision is to choose an **addition split
 point**
 
@@ -148,7 +148,8 @@ flowchart TD
     ef2 --> slot2["factor slot 2"]
     s3{{agent splits x+y once}} --> x["x"]
     s3 --> y["y"]
-    s3 --> xyres["computed x+y"]
+    x --> xyres["computed x+y"]
+    y --> xyres
     xyres -. reused for .-> slot1
     xyres -. reused for .-> slot2
 ```
