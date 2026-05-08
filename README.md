@@ -144,12 +144,13 @@ flowchart TD
     s2 --> sq["(x+y)^2"]
     s2 --> one["1"]
     sq --> ef2{{environment factors}}
-    ef2 --> sum1["solve one x+y subgoal"]
-    ef2 --> sum2["second factor reuses x+y"]
-    sum1 --> s3{{agent splits x+y once}}
-    s3 --> x["x"]
+    ef2 --> slot1["factor slot 1"]
+    ef2 --> slot2["factor slot 2"]
+    s3{{agent splits x+y once}} --> x["x"]
     s3 --> y["y"]
-    s3 --> sum2
+    s3 --> xyres["computed x+y"]
+    xyres -. reused for .-> slot1
+    xyres -. reused for .-> slot2
 ```
 
 In other words, split-point-built circuits here should be read as recursive
