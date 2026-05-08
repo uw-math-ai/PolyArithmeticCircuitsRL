@@ -112,7 +112,7 @@ Why is this the optimal split point? Because it exposes a reusable additive
 subexpression `x+y`. After the split, the environment can factor the left side as
 
 \[
-\mathrm{Factors}((x+y)^2)=[x+y,\;x+y], \qquad \mathrm{Factors}(1)=[1].
+\mathrm{Factors}((x+y)^2)=[x+y, x+y], \qquad \mathrm{Factors}(1)=[1].
 \]
 
 The only remaining additive subproblem is therefore
