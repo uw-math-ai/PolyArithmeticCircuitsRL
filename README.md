@@ -146,7 +146,9 @@ flowchart TD
     sq --> ef2{{environment factors}}
     ef2 --> sum1["x+y"]
     ef2 --> sum2["x+y"]
-    sum1 --> s3{{agent splits reused subgoal}}
+    sum1 --> reuse["reuse solved subgoal x+y"]
+    sum2 --> reuse
+    reuse --> s3{{agent splits x+y once}}
     s3 --> x["x"]
     s3 --> y["y"]
 ```
