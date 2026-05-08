@@ -12,37 +12,44 @@ The long-term objective is to improve exact-match success on harder polynomial t
 
 ## Theory: Split-Point-Built Circuits
 
-In the scripts here, a circuit is built one node at a time from the base set
+The split-point environment is best understood as a recursive **addition-first**
+search procedure.
+
+For a target polynomial \(f\), the agent does **not** directly choose arbitrary
+`+` and `*` gates. Instead, its main decision is to choose an **addition split
+point**
 
 \[
-\mathcal L_0 = \{x_0,\dots,x_{n-1},1\}.
+f = g + h.
 \]
 
-At each later step, the code combines a newly reached node with any previously seen node using either addition or multiplication, then canonicalizes the result with SymPy expansion:
+Once that split is chosen, the environment automatically factors the two parts
+and returns them as multiplicative subexpressions that still need to be built.
+So the search alternates between:
+
+1. **agent choice:** pick an additive decomposition \(f=g+h\);
+2. **environment step:** factor \(g\) and \(h\) and hand back their factors as
+   subgoals.
+
+If we write `Factors(p)` for the factor list returned by the environment, then a
+state transition has the form
 
 \[
-\mathcal L_{t+1} =
-\left\{
-\operatorname{canon}(u+v),\ \operatorname{canon}(uv)
-\;:\;
-u\in\mathcal L_t,\;
-v\in\bigcup_{i=0}^{t}\mathcal L_i
-\right\}
-\setminus
-\bigcup_{i=0}^{t}\mathcal L_i.
+\text{split } f=g+h
+\quad\Longrightarrow\quad
+\bigl(\mathrm{Factors}(g),\mathrm{Factors}(h)\bigr).
 \]
 
-This is the layered game-board construction implemented in:
-- `src/environment/build_game_board.py` for the single-variable board
-- `Game-Board-Generation/interesting_polynomial_generator.py` for the multi-variable board and path analysis
+For example, if `g = (x+y)^2`, the environment can immediately expose the
+multiplicative structure `[(x+y), (x+y)]`; the agent then only needs to keep
+choosing addition split points for the remaining additive subproblems such as
+`x+y`.
 
-We can view the final gate of a circuit as a **split point**. For a target polynomial `f`, a split point is a choice of operator and predecessors
-
-\[
-f = g + h \quad\text{or}\quad f = gh
-\]
-
-where `g` and `h` are themselves already buildable by smaller subcircuits. In the graph files, that split information is stored on edges via `(source, operand, op)`. A polynomial can have:
+This viewpoint also matches the repository's use of canonicalized polynomials
+and multipath analysis in `Game-Board-Generation/interesting_polynomial_generator.py`:
+the same expanded target can admit several distinct recursive addition splits,
+and those correspond to different shortest paths/subcircuits. A polynomial can
+therefore have:
 
 - a **unique shortest split point**, giving one obvious minimal circuit, or
 - **multiple shortest split points**, giving several equally short circuits for the same target.
@@ -57,74 +64,97 @@ Take
 f(x_0,x_1,x_2)=x_0+x_1x_2.
 \]
 
-The natural top-level split is additive:
+Here the agent should choose the additive split
 
 \[
 f = x_0 + (x_1x_2).
 \]
 
-So a shortest circuit uses two operations:
+After that, the environment factors the two pieces into
 
-| Step | New node | Operation |
-| --- | --- | --- |
-| 0 | `n0 = x0` | input |
-| 0 | `n1 = x1` | input |
-| 0 | `n2 = x2` | input |
-| 1 | `n3 = x1*x2` | `multiply(n1, n2)` |
-| 2 | `n4 = x0 + x1*x2` | `add(n0, n3)` |
+\[
+\mathrm{Factors}(x_0)=[x_0], \qquad \mathrm{Factors}(x_1x_2)=[x_1,x_2].
+\]
+
+So the only nontrivial split decision is at the root:
+
+| Stage | Result |
+| --- | --- |
+| Agent split | `x0 + x1*x2` |
+| Environment factors left side | `[x0]` |
+| Environment factors right side | `[x1, x2]` |
 
 ```mermaid
-flowchart LR
-    n0["n0: x0"] --> add1((+))
-    n1["n1: x1"] --> mul1((&times;))
-    n2["n2: x2"] --> mul1
-    mul1 --> add1
-    add1 --> out1["n4: x0 + x1*x2"]
+flowchart TD
+    f1["x0 + x1*x2"] --> s1{{agent picks split}}
+    s1 --> l1["x0"]
+    s1 --> r1["x1*x2"]
+    r1 --> ef1{{environment factors}}
+    ef1 --> x1["x1"]
+    ef1 --> x2["x2"]
 ```
 
-### Worked Example 2: two shortest split points
+### Worked Example 2: splitting \(x^2 + 2xy + y^2 + 1\)
 
 Now consider
 
 \[
-f(x_0,x_1)=x_0x_1+x_0 = x_0(x_1+1).
+f(x,y)=x^2 + 2xy + y^2 + 1.
 \]
 
-This target has two equally short length-2 circuits because the last gate can split the polynomial in two different ways:
+The best top-level split is
 
 \[
-f = (x_0x_1) + x_0
-\qquad\text{or}\qquad
-f = x_0(x_1+1).
+f = (x+y)^2 + 1.
 \]
 
-So the game board contains two shortest predecessor chains to the same target node.
+Why is this the optimal split point? Because it exposes a reusable additive
+subexpression `x+y`. After the split, the environment can factor the left side as
 
-| Circuit | Step 1 | Step 2 |
-| --- | --- | --- |
-| A | `n3 = x1 + 1` | `n4 = x0 * n3` |
-| B | `n3 = x0 * x1` | `n4 = n3 + x0` |
+\[
+\mathrm{Factors}((x+y)^2)=[x+y,\;x+y], \qquad \mathrm{Factors}(1)=[1].
+\]
+
+The only remaining additive subproblem is therefore
+
+\[
+x+y = x + y.
+\]
+
+So the recursive construction is:
+
+| Stage | Result |
+| --- | --- |
+| Agent split at root | `(x+y)^2 + 1` |
+| Environment factors left side | `[x+y, x+y]` |
+| Environment factors right side | `[1]` |
+| Agent split reused subgoal | `x + y` |
+
+By contrast, a less structured split such as
+
+\[
+x^2 + (2xy + y^2 + 1)
+\]
+
+does not immediately expose the shared `(x+y)` building block.
 
 ```mermaid
 flowchart TD
-    subgraph A["Split A: build x1 + 1 first"]
-        ax0["x0"] --> amul((&times;))
-        ax1["x1"] --> aadd((+))
-        a1["1"] --> aadd
-        aadd --> amul
-        amul --> aout["x0*(x1 + 1)"]
-    end
-
-    subgraph B["Split B: build x0*x1 first"]
-        bx0["x0"] --> bmul((&times;))
-        bx1["x1"] --> bmul
-        bmul --> badd((+))
-        bx0b["x0"] --> badd
-        badd --> bout["x0*x1 + x0"]
-    end
+    f2["x^2 + 2xy + y^2 + 1"] --> s2{{agent picks split}}
+    s2 --> sq["(x+y)^2"]
+    s2 --> one["1"]
+    sq --> ef2{{environment factors}}
+    ef2 --> sum1["x+y"]
+    ef2 --> sum2["x+y"]
+    sum1 --> s3{{agent splits reused subgoal}}
+    s3 --> x["x"]
+    s3 --> y["y"]
 ```
 
-In other words, split-point-built circuits are the combinatorial objects that the repo searches over: each path through the board corresponds to a legal recursive factorization/addition plan, and multi-path targets are precisely the ones with several valid minimal plans.
+In other words, split-point-built circuits here should be read as recursive
+**additive decompositions whose multiplicative pieces are supplied by automatic
+factorization**. The agent searches over where to split sums; the environment
+reveals the product structure underneath those chosen pieces.
 
 ## What Is Implemented
 
