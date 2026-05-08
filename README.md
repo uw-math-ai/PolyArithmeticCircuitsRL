@@ -10,6 +10,122 @@ Given a target polynomial over variables `x0..x{n-1}`, learn a policy that const
 
 The long-term objective is to improve exact-match success on harder polynomial targets (higher complexity) while keeping circuits compact.
 
+## Theory: Split-Point-Built Circuits
+
+In the scripts here, a circuit is built one node at a time from the base set
+
+\[
+\mathcal L_0 = \{x_0,\dots,x_{n-1},1\}.
+\]
+
+At each later step, the code combines a newly reached node with any previously seen node using either addition or multiplication, then canonicalizes the result with SymPy expansion:
+
+\[
+\mathcal L_{t+1} =
+\left\{
+\operatorname{canon}(u+v),\ \operatorname{canon}(uv)
+\;:\;
+u\in\mathcal L_t,\;
+v\in\bigcup_{i=0}^{t}\mathcal L_i
+\right\}
+\setminus
+\bigcup_{i=0}^{t}\mathcal L_i.
+\]
+
+This is the layered game-board construction implemented in:
+- `src/environment/build_game_board.py` for the single-variable board
+- `Game-Board-Generation/interesting_polynomial_generator.py` for the multi-variable board and path analysis
+
+We can view the final gate of a circuit as a **split point**. For a target polynomial `f`, a split point is a choice of operator and predecessors
+
+\[
+f = g + h \quad\text{or}\quad f = gh
+\]
+
+where `g` and `h` are themselves already buildable by smaller subcircuits. In the graph files, that split information is stored on edges via `(source, operand, op)`. A polynomial can have:
+
+- a **unique shortest split point**, giving one obvious minimal circuit, or
+- **multiple shortest split points**, giving several equally short circuits for the same target.
+
+That second case is exactly what `interesting_polynomial_generator.py` measures with `shortest_path_count`, `multiple_shortest_paths`, and `shortest_path_samples`.
+
+### Worked Example 1: a unique shortest split point
+
+Take
+
+\[
+f(x_0,x_1,x_2)=x_0+x_1x_2.
+\]
+
+The natural top-level split is additive:
+
+\[
+f = x_0 + (x_1x_2).
+\]
+
+So a shortest circuit uses two operations:
+
+| Step | New node | Operation |
+| --- | --- | --- |
+| 0 | `n0 = x0` | input |
+| 0 | `n1 = x1` | input |
+| 0 | `n2 = x2` | input |
+| 1 | `n3 = x1*x2` | `multiply(n1, n2)` |
+| 2 | `n4 = x0 + x1*x2` | `add(n0, n3)` |
+
+```mermaid
+flowchart LR
+    n0["n0: x0"] --> add1((+))
+    n1["n1: x1"] --> mul1((&times;))
+    n2["n2: x2"] --> mul1
+    mul1 --> add1
+    add1 --> out1["n4: x0 + x1*x2"]
+```
+
+### Worked Example 2: two shortest split points
+
+Now consider
+
+\[
+f(x_0,x_1)=x_0x_1+x_0 = x_0(x_1+1).
+\]
+
+This target has two equally short length-2 circuits because the last gate can split the polynomial in two different ways:
+
+\[
+f = (x_0x_1) + x_0
+\qquad\text{or}\qquad
+f = x_0(x_1+1).
+\]
+
+So the game board contains two shortest predecessor chains to the same target node.
+
+| Circuit | Step 1 | Step 2 |
+| --- | --- | --- |
+| A | `n3 = x1 + 1` | `n4 = x0 * n3` |
+| B | `n3 = x0 * x1` | `n4 = n3 + x0` |
+
+```mermaid
+flowchart TD
+    subgraph A["Split A: build x1 + 1 first"]
+        ax0["x0"] --> amul((&times;))
+        ax1["x1"] --> aadd((+))
+        a1["1"] --> aadd
+        aadd --> amul
+        amul --> aout["x0*(x1 + 1)"]
+    end
+
+    subgraph B["Split B: build x0*x1 first"]
+        bx0["x0"] --> bmul((&times;))
+        bx1["x1"] --> bmul
+        bmul --> badd((+))
+        bx0b["x0"] --> badd
+        badd --> bout["x0*x1 + x0"]
+    end
+```
+
+In other words, split-point-built circuits are the combinatorial objects that the repo searches over: each path through the board corresponds to a legal recursive factorization/addition plan, and multi-path targets are precisely the ones with several valid minimal plans.
+
 ## What Is Implemented
 
 ### 1. PPO + Supervised Pretraining + Optional MCTS
