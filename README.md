@@ -10,6 +10,155 @@ Given a target polynomial over variables `x0..x{n-1}`, learn a policy that const
 
 The long-term objective is to improve exact-match success on harder polynomial targets (higher complexity) while keeping circuits compact.
 
+## Theory: Split-Point-Built Circuits
+
+The split-point environment is best understood as a recursive **addition-first**
+search procedure.
+
+For a target polynomial `f`, the agent does **not** directly choose arbitrary
+`+` and `*` gates. Instead, its main decision is to choose an **addition split
+point**
+
+\[
+f = g + h.
+\]
+
+Once that split is chosen, the environment automatically factors the two parts
+and returns them as multiplicative subexpressions that still need to be built.
+So the search alternates between:
+
+1. **agent choice:** pick an additive decomposition \(f=g+h\);
+2. **environment step:** factor \(g\) and \(h\) and hand back their factors as
+   subgoals.
+
+If we write `Factors(p)` for the factor list returned by the environment, then a
+state transition has the form
+
+\[
+\text{split } f=g+h
+\quad\Longrightarrow\quad
+\bigl(\mathrm{Factors}(g),\mathrm{Factors}(h)\bigr).
+\]
+
+For example, if `g = (x+y)^2`, the environment can immediately expose the
+multiplicative structure `[(x+y), (x+y)]`; the agent then only needs to keep
+choosing addition split points for the remaining additive subproblems such as
+`x+y`.
+
+This viewpoint also matches the repository's use of canonicalized polynomials
+and multipath analysis in `Game-Board-Generation/interesting_polynomial_generator.py`:
+the same expanded target can admit several distinct recursive addition splits,
+and those correspond to different shortest paths/subcircuits. A polynomial can
+therefore have:
+
+- a **unique shortest split point**, giving one obvious minimal circuit, or
+- **multiple shortest split points**, giving several equally short circuits for the same target.
+
+That second case is exactly what `interesting_polynomial_generator.py` measures with `shortest_path_count`, `multiple_shortest_paths`, and `shortest_path_samples`.
+
+### Worked Example 1: a unique shortest split point
+
+Take
+
+\[
+f(x_0,x_1,x_2)=x_0+x_1x_2.
+\]
+
+Here the agent should choose the additive split
+
+\[
+f = x_0 + (x_1x_2).
+\]
+
+After that, the environment factors the two pieces into
+
+\[
+\mathrm{Factors}(x_0)=[x_0], \qquad \mathrm{Factors}(x_1x_2)=[x_1,x_2].
+\]
+
+So the only nontrivial split decision is at the root:
+
+| Stage | Result |
+| --- | --- |
+| Agent split | `x0 + x1*x2` |
+| Environment factors left side | `[x0]` |
+| Environment factors right side | `[x1, x2]` |
+
+```mermaid
+flowchart TD
+    f1["x0 + x1*x2"] --> s1{{agent picks split}}
+    s1 --> l1["x0"]
+    s1 --> r1["x1*x2"]
+    r1 --> ef1{{environment factors}}
+    ef1 --> x1["x1"]
+    ef1 --> x2["x2"]
+```
+
+### Worked Example 2: splitting \(x^2 + 2xy + y^2 + 1\)
+
+Now consider
+
+\[
+f(x,y)=x^2 + 2xy + y^2 + 1.
+\]
+
+The best top-level split is
+
+\[
+f = (x+y)^2 + 1.
+\]
+
+Why is this the optimal split point? Because it exposes a reusable additive
+subexpression `x+y`. After the split, the environment can factor the left side as
+
+\[
+\mathrm{Factors}((x+y)^2)=[x+y, x+y], \qquad \mathrm{Factors}(1)=[1].
+\]
+
+The only remaining additive subproblem is therefore
+
+\[
+x+y = x + y.
+\]
+
+So the recursive construction is:
+
+| Stage | Result |
+| --- | --- |
+| Agent split at root | `(x+y)^2 + 1` |
+| Environment factors left side | `[x+y, x+y]` |
+| Environment factors right side | `[1]` |
+| Agent splits `x+y` (once) | `x + y` |
+
+By contrast, a less structured split such as
+
+\[
+x^2 + (2xy + y^2 + 1)
+\]
+
+does not immediately expose the shared `(x+y)` building block.
+
+```mermaid
+flowchart TD
+    f2["x^2 + 2xy + y^2 + 1"] --> s2{{agent picks split}}
+    s2 --> sq["(x+y)^2"]
+    s2 --> one["1"]
+    sq --> ef2{{environment factors}}
+    ef2 --> slot1["factor slot 1"]
+    ef2 --> slot2["factor slot 2"]
+    s3{{agent splits x+y once}} --> x["x"]
+    s3 --> y["y"]
+    x --> xyres["computed x+y"]
+    y --> xyres
+    xyres -. reused for .-> slot1
+    xyres -. reused for .-> slot2
+```
+
+In other words, split-point-built circuits here should be read as recursive
+**additive decompositions whose multiplicative pieces are supplied by automatic
+factorization**. The agent searches over where to split sums; the environment
+reveals the product structure underneath those chosen pieces.
+
 ## What Is Implemented
 
 ### 1. PPO + Supervised Pretraining + Optional MCTS
