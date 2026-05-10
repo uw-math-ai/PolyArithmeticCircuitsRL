@@ -1,5 +1,3 @@
-Michael's\ experiments/
-MCTS/
 __pycache__/
 .vscode/
 .streamlit/
@@ -8,9 +6,8 @@ MAIL/
 .DS_Store
 .DS_Store
 wandb/
-src/PPO RL/ppo.log
 .venv-jax-blackwell*/
 .venv-jaxdiag/
-results/nohup/
-results/ppo-mcts-jax_fl_C5_C8_blackwell*/
 tea_debug.log
+container_jax.sif
+container.sif
