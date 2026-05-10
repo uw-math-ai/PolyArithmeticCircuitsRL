@@ -29,7 +29,7 @@ class Config:
     # -------------------------------------------------------------------------
     success_reward: float = 10.0        # Reward given when the target is matched exactly
     step_penalty: float = -0.1          # Per-step penalty to encourage shorter circuits
-    use_reward_shaping: bool = False     # Enable potential-based shaping (Ng et al., 1999)
+    use_reward_shaping: bool = False     # Legacy/non-JAX shaping flag; ignored by JAX env
 
     # -------------------------------------------------------------------------
     # Factor library and subgoal rewards
@@ -55,10 +55,14 @@ class Config:
     completion_bonus: float = 3.0
 
     # Model
-    hidden_dim: int = 256
+    hidden_dim: int = 384
     embedding_dim: int = 256
-    num_gnn_layers: int = 4
+    num_gnn_layers: int = 5
     node_feature_dim: int = 4  # [is_input, is_constant, is_op, op_type_value]
+    poly_embedding_dim: int = 128
+    node_id_embedding_dim: int = 32
+    op_embedding_dim: int = 16
+    pair_hidden_dim: int = 384
 
     # PPO
     ppo_lr: float = 3e-4

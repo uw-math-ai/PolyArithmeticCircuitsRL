@@ -10,6 +10,7 @@ MAIL/
 wandb/
 src/PPO RL/ppo.log
 .venv-jax-blackwell*/
+.venv-jaxdiag/
 results/nohup/
 results/ppo-mcts-jax_fl_C5_C8_blackwell*/
 tea_debug.log

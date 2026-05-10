@@ -19,6 +19,7 @@ from src.config import Config
 from src.algorithms.jax_env import (
     EnvConfig, EnvState, make_env_config,
     reset, step, get_observation, get_valid_actions_mask,
+    get_valid_actions_mask_for_state,
     encode_action, decode_action,
     poly_add, poly_mul, make_initial_node_coeffs,
 )
@@ -44,6 +45,10 @@ def config():
         hidden_dim=32,
         embedding_dim=32,
         num_gnn_layers=2,
+        poly_embedding_dim=16,
+        node_id_embedding_dim=8,
+        op_embedding_dim=4,
+        pair_hidden_dim=32,
         seed=0,
     )
 
@@ -279,6 +284,36 @@ class TestEnvResetStep:
         next_state, reward, done, is_success, *_ = jit_step(initial_state, action)
         assert next_state.num_nodes.shape == ()
 
+    def test_duplicate_step_does_not_append(self, env_config, initial_state):
+        """Duplicate-result actions should leave node count unchanged."""
+        const_idx = env_config.n_variables
+        action = encode_action(jnp.int32(1), jnp.int32(0), jnp.int32(const_idx),
+                               env_config.max_nodes)
+        next_state, reward, done, is_success, *_ = step(env_config, initial_state, action)
+
+        assert int(next_state.num_nodes) == int(initial_state.num_nodes)
+        assert int(next_state.num_edges) == int(initial_state.num_edges)
+        assert float(reward) == pytest.approx(env_config.step_penalty)
+        assert not bool(done)
+        assert not bool(is_success)
+
+    def test_jax_step_ignores_term_similarity_shaping(self, config):
+        """Non-success JAX rewards should not include coefficient similarity shaping."""
+        config.use_reward_shaping = True
+        config.factor_library_enabled = False
+        ec = make_env_config(config)
+        d = ec.max_degree + 1
+        target_nd = np.zeros((d, d), dtype=np.int32)
+        target_nd[1, 1] = 1  # x0*x1
+        state = reset(ec, jnp.array(target_nd.flatten(), dtype=jnp.int32))
+
+        action = encode_action(jnp.int32(0), jnp.int32(0), jnp.int32(1),
+                               ec.max_nodes)
+        _next_state, reward, _done, is_success, *_ = step(ec, state, action)
+
+        assert not bool(is_success)
+        assert float(reward) == pytest.approx(ec.step_penalty)
+
 
 class TestPPOMCTSJAXTrainer:
     def test_compute_gae_separates_parallel_trajectories(self, config):
@@ -408,6 +443,10 @@ class TestPPOMCTSJAXTrainer:
             hidden_dim=16,
             embedding_dim=16,
             num_gnn_layers=1,
+            poly_embedding_dim=8,
+            node_id_embedding_dim=4,
+            op_embedding_dim=2,
+            pair_hidden_dim=16,
             factor_library_enabled=False,
             search="gumbel",
             gumbel_num_simulations=4,
@@ -426,7 +465,7 @@ class TestPPOMCTSJAXTrainer:
         trainer_small.save_checkpoint(str(ckpt_path))
 
         old_params = trainer_small.train_state.params
-        old_policy_kernel = np.array(old_params["params"]["policy_1"]["kernel"])
+        old_node_id_embed = np.array(old_params["params"]["node_id_embed"]["embedding"])
         old_target_kernel = np.array(old_params["params"]["target_enc_0"]["kernel"])
 
         config_large = Config(
@@ -438,6 +477,10 @@ class TestPPOMCTSJAXTrainer:
             hidden_dim=16,
             embedding_dim=16,
             num_gnn_layers=1,
+            poly_embedding_dim=8,
+            node_id_embedding_dim=4,
+            op_embedding_dim=2,
+            pair_hidden_dim=16,
             factor_library_enabled=False,
             search="gumbel",
             gumbel_num_simulations=4,
@@ -453,12 +496,12 @@ class TestPPOMCTSJAXTrainer:
         trainer_large.load_checkpoint(str(ckpt_path))
 
         new_params = trainer_large.train_state.params
-        new_policy_kernel = np.array(new_params["params"]["policy_1"]["kernel"])
+        new_node_id_embed = np.array(new_params["params"]["node_id_embed"]["embedding"])
         new_target_kernel = np.array(new_params["params"]["target_enc_0"]["kernel"])
 
         np.testing.assert_allclose(
-            new_policy_kernel[: old_policy_kernel.shape[0], : old_policy_kernel.shape[1]],
-            old_policy_kernel,
+            new_node_id_embed[: old_node_id_embed.shape[0], : old_node_id_embed.shape[1]],
+            old_node_id_embed,
         )
         np.testing.assert_allclose(
             new_target_kernel[: old_target_kernel.shape[0], : old_target_kernel.shape[1]],
@@ -481,6 +524,7 @@ class TestPPOMCTSJAXTrainer:
         max_edges = max_nodes * 4
 
         assert obs['node_features'].shape == (max_nodes, 4)
+        assert obs['node_coeffs'].shape == (max_nodes, env_config.target_size)
         assert obs['edge_src'].shape == (max_edges,)
         assert obs['edge_dst'].shape == (max_edges,)
         assert obs['num_nodes'].shape == ()
@@ -489,6 +533,7 @@ class TestPPOMCTSJAXTrainer:
         assert obs['mask'].shape == (env_config.max_actions,)
         # Target should be normalized to [0, 1]
         assert float(obs['target'].max()) <= 1.0
+        assert float(obs['node_coeffs'].max()) <= 1.0
 
     def test_valid_actions_mask(self, env_config):
         """Mask should be True only for pairs (i, j) with i, j < num_nodes."""
@@ -499,6 +544,21 @@ class TestPPOMCTSJAXTrainer:
         # With 3 nodes, valid pairs: (0,0),(0,1),(0,2),(1,1),(1,2),(2,2) = 6 pairs
         # times 2 ops = 12 valid actions.
         assert int(mask.sum()) == 12
+
+    def test_state_mask_rejects_duplicate_results(self, env_config, initial_state):
+        """State-aware mask should reject x0*1, x1*1, and 1*1 duplicates."""
+        mask = get_valid_actions_mask_for_state(env_config, initial_state)
+        const_idx = env_config.n_variables
+        duplicate_actions = [
+            encode_action(jnp.int32(1), jnp.int32(0), jnp.int32(const_idx),
+                          env_config.max_nodes),
+            encode_action(jnp.int32(1), jnp.int32(1), jnp.int32(const_idx),
+                          env_config.max_nodes),
+            encode_action(jnp.int32(1), jnp.int32(const_idx), jnp.int32(const_idx),
+                          env_config.max_nodes),
+        ]
+        for action in duplicate_actions:
+            assert not bool(mask[action])
 
 
 # ---------------------------------------------------------------------------
@@ -576,6 +636,40 @@ class TestJAXNet:
         assert logits.shape == (4, env_config.max_actions)
         assert values.shape == (4,)
 
+    def test_coefficients_distinguish_symbolic_states(self, config, env_config):
+        """x0^2 and x1^2 states should no longer collapse to identical outputs."""
+        net = create_network(config)
+        rng = jax.random.PRNGKey(0)
+        params = init_params(net, env_config, rng)
+
+        d = env_config.max_degree + 1
+        target_nd = np.zeros((d, d), dtype=np.int32)
+        target_nd[1, 1] = 1  # x0*x1, so both square states remain non-terminal.
+        state = reset(env_config, jnp.array(target_nd.flatten(), dtype=jnp.int32))
+        action_x0_sq = encode_action(
+            jnp.int32(1), jnp.int32(0), jnp.int32(0), env_config.max_nodes
+        )
+        action_x1_sq = encode_action(
+            jnp.int32(1), jnp.int32(1), jnp.int32(1), env_config.max_nodes
+        )
+        state_x0_sq = step(env_config, state, action_x0_sq)[0]
+        state_x1_sq = step(env_config, state, action_x1_sq)[0]
+        obs_x0_sq = get_observation(env_config, state_x0_sq)
+        obs_x1_sq = get_observation(env_config, state_x1_sq)
+
+        new_idx = int(state.num_nodes)
+        assert not bool(jnp.array_equal(
+            obs_x0_sq['node_coeffs'][new_idx],
+            obs_x1_sq['node_coeffs'][new_idx],
+        ))
+        logits_a, value_a = net.apply(params, obs_x0_sq)
+        logits_b, value_b = net.apply(params, obs_x1_sq)
+        output_delta = jnp.maximum(
+            jnp.max(jnp.abs(logits_a - logits_b)),
+            jnp.abs(value_a - value_b),
+        )
+        assert float(output_delta) > 1e-6
+
 
 # ---------------------------------------------------------------------------
 # jax_net: graph encoder
@@ -591,9 +685,10 @@ class TestGraphEncoder:
         edge_dst = jnp.array([1, 2], dtype=jnp.int32)
         params = enc.init(rng, x, edge_src, edge_dst,
                           jnp.int32(3), jnp.int32(2))
-        out = enc.apply(params, x, edge_src, edge_dst,
-                        jnp.int32(3), jnp.int32(2))
-        assert out.shape == (8,)
+        node_out, graph_out = enc.apply(params, x, edge_src, edge_dst,
+                                        jnp.int32(3), jnp.int32(2))
+        assert node_out.shape == (5, 8)
+        assert graph_out.shape == (8,)
 
     def test_no_edges(self):
         """GraphEncoder handles zero edges gracefully."""
@@ -604,10 +699,12 @@ class TestGraphEncoder:
         edge_dst = jnp.array([-1, -1], dtype=jnp.int32)
         params = enc.init(rng, x, edge_src, edge_dst,
                           jnp.int32(3), jnp.int32(0))
-        out = enc.apply(params, x, edge_src, edge_dst,
-                        jnp.int32(3), jnp.int32(0))
-        assert out.shape == (8,)
-        assert jnp.isfinite(out).all()
+        node_out, graph_out = enc.apply(params, x, edge_src, edge_dst,
+                                        jnp.int32(3), jnp.int32(0))
+        assert node_out.shape == (5, 8)
+        assert graph_out.shape == (8,)
+        assert jnp.isfinite(node_out).all()
+        assert jnp.isfinite(graph_out).all()
 
 
 # ---------------------------------------------------------------------------
@@ -620,6 +717,8 @@ class TestMCTXIntegration:
         config_small = Config(
             n_variables=2, mod=5, max_complexity=4, max_steps=4,
             hidden_dim=16, embedding_dim=16, num_gnn_layers=1,
+            poly_embedding_dim=8, node_id_embedding_dim=4,
+            op_embedding_dim=2, pair_hidden_dim=16,
             mcts_simulations=4, seed=0,
         )
         ec = make_env_config(config_small)
@@ -687,6 +786,8 @@ class TestMCTXIntegration:
         config_small = Config(
             n_variables=2, mod=5, max_complexity=4, max_steps=4,
             hidden_dim=16, embedding_dim=16, num_gnn_layers=1,
+            poly_embedding_dim=8, node_id_embedding_dim=4,
+            op_embedding_dim=2, pair_hidden_dim=16,
             search="gumbel",
             gumbel_num_simulations=4,
             gumbel_max_num_considered_actions=4,
@@ -769,6 +870,8 @@ class TestMCTXIntegration:
         config_small = Config(
             n_variables=2, mod=5, max_complexity=3, max_steps=3,
             hidden_dim=16, embedding_dim=16, num_gnn_layers=1,
+            poly_embedding_dim=8, node_id_embedding_dim=4,
+            op_embedding_dim=2, pair_hidden_dim=16,
             factor_library_enabled=False,
             search="gumbel",
             gumbel_num_simulations=4,
@@ -796,6 +899,8 @@ class TestMCTXIntegration:
         config_small = Config(
             n_variables=2, mod=5, max_complexity=4, max_steps=4,
             hidden_dim=16, embedding_dim=16, num_gnn_layers=1,
+            poly_embedding_dim=8, node_id_embedding_dim=4,
+            op_embedding_dim=2, pair_hidden_dim=16,
             batch_size=4, ppo_epochs=1, seed=0,
         )
         ec = make_env_config(config_small)

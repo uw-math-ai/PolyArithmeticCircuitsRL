@@ -26,6 +26,7 @@ Flow per iteration:
 """
 
 import functools
+import json
 import math
 import os
 import pickle
@@ -1100,6 +1101,10 @@ class PPOMCTSJAXTrainer:
             History dict with metric lists.
         """
         checkpoint_interval = 50
+        metrics_path = None
+        if results_dir:
+            os.makedirs(results_dir, exist_ok=True)
+            metrics_path = os.path.join(results_dir, "metrics.jsonl")
         history = {
             "pg_loss": [], "vf_loss": [], "entropy": [],
             "success_rate": [], "avg_reward": [], "complexity": [],
@@ -1121,6 +1126,23 @@ class PPOMCTSJAXTrainer:
 
         print("Iteration 1: JIT-compiling MCTS + env (this may take a few minutes)...",
               flush=True)
+        if metrics_path:
+            print(f"Per-iteration metrics JSONL: {metrics_path}", flush=True)
+            with open(metrics_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "event": "train_start",
+                    "num_iterations": int(num_iterations),
+                    "batch_size": int(self.batch_size),
+                    "max_steps": int(self.config.max_steps),
+                    "max_nodes": int(self.config.max_nodes),
+                    "max_actions": int(self.config.max_actions),
+                    "target_size": int(self.config.target_size),
+                    "search": self.config.search,
+                    "search_simulations": int(self._search_num_simulations()),
+                    "fixed_complexities": self.fixed_complexities,
+                    "current_complexity": int(self.current_complexity),
+                    "checkpoint_interval": int(checkpoint_interval),
+                }, sort_keys=True) + "\n")
 
         pbar = tqdm(range(1, num_iterations + 1), desc="Training", unit="iter")
         for iteration in pbar:
@@ -1220,6 +1242,29 @@ class PPOMCTSJAXTrainer:
                 log_dict["grad_norm"] = loss_info["grad_norm"]
                 log_dict["skipped_updates"] = loss_info["skipped_updates"]
                 wandb.log(log_dict, step=iteration)
+
+            if metrics_path:
+                metrics_row = {
+                    "event": "iteration",
+                    "iteration": int(iteration),
+                    "iteration_time_sec": float(iter_time),
+                    "transitions": int(len(transitions)),
+                    "train_state_step": int(self.train_state.step),
+                    "batch_size": int(self.batch_size),
+                    "max_steps": int(self.config.max_steps),
+                    "search_simulations": int(self._search_num_simulations()),
+                }
+                for k, v in loss_info.items():
+                    metrics_row[f"loss/{k}"] = float(v)
+                for k, v in rollout_info.items():
+                    if isinstance(v, (bool, int, float, str)):
+                        metrics_row[f"rollout/{k}"] = v
+                    elif isinstance(v, (np.integer, np.floating)):
+                        metrics_row[f"rollout/{k}"] = v.item()
+                    else:
+                        metrics_row[f"rollout/{k}"] = str(v)
+                with open(metrics_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(metrics_row, sort_keys=True) + "\n")
 
             if loss_info["skipped_updates"]:
                 tqdm.write(

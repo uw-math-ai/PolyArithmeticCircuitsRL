@@ -83,7 +83,6 @@ class EnvConfig(NamedTuple):
     success_reward: float
     step_penalty: float
     gamma: float
-    use_reward_shaping: bool
     factor_library_enabled: bool
     factor_subgoal_reward: float
     factor_library_bonus: float
@@ -122,7 +121,6 @@ def make_env_config(config) -> EnvConfig:
         success_reward=config.success_reward,
         step_penalty=config.step_penalty,
         gamma=config.gamma,
-        use_reward_shaping=config.use_reward_shaping,
         factor_library_enabled=config.factor_library_enabled,
         factor_subgoal_reward=config.factor_subgoal_reward,
         factor_library_bonus=config.factor_library_bonus,
@@ -292,38 +290,6 @@ def make_monomial_metadata(n_variables: int, max_degree: int):
     )
 
 
-# ---------------------------------------------------------------------------
-# Reward shaping helpers (potential-based, Ng et al. 1999)
-# ---------------------------------------------------------------------------
-
-def _term_similarity(node_coeffs: jnp.ndarray,
-                     target_coeffs: jnp.ndarray) -> jnp.ndarray:
-    """Fraction of matching nonzero target coefficients. Pure JAX scalar.
-
-    Mirrors FastPoly.term_similarity: counts positions where both the target
-    has a nonzero coefficient and the node matches it, divided by the total
-    number of nonzero target terms.
-    """
-    target_nonzero = target_coeffs != 0
-    total = jnp.maximum(target_nonzero.sum(), 1).astype(jnp.float32)
-    matching = ((node_coeffs == target_coeffs) & target_nonzero).sum().astype(jnp.float32)
-    return matching / total
-
-
-def _best_similarity(node_coeffs: jnp.ndarray, num_nodes: jnp.ndarray,
-                     target_coeffs: jnp.ndarray,
-                     max_nodes: int) -> jnp.ndarray:
-    """Max term_similarity across all active circuit nodes.
-
-    This is the shaping potential phi(s). A value of 1.0 means some node
-    already matches the target exactly.
-    """
-    sims = jax.vmap(lambda nc: _term_similarity(nc, target_coeffs))(node_coeffs)
-    mask = jnp.arange(max_nodes) < num_nodes
-    sims = jnp.where(mask, sims, 0.0)
-    return sims.max()
-
-
 def _poly_is_zero(poly: jnp.ndarray) -> jnp.ndarray:
     return ~jnp.any(poly != 0)
 
@@ -363,6 +329,58 @@ def _existing_node_contains(poly: jnp.ndarray, node_coeffs: jnp.ndarray,
                             num_nodes: jnp.ndarray) -> jnp.ndarray:
     mask = jnp.arange(node_coeffs.shape[0]) < num_nodes
     return _poly_equal_any(poly, node_coeffs, mask)
+
+
+def _action_result_coeffs(env_config: EnvConfig, state: EnvState,
+                          op: jnp.ndarray, i: jnp.ndarray,
+                          j: jnp.ndarray) -> jnp.ndarray:
+    """Compute the polynomial result for a decoded action."""
+    max_nodes = env_config.max_nodes
+    safe_i = jnp.clip(i, 0, max_nodes - 1)
+    safe_j = jnp.clip(j, 0, max_nodes - 1)
+    poly_i = state.node_coeffs[safe_i]
+    poly_j = state.node_coeffs[safe_j]
+    new_coeffs_add = poly_add(poly_i, poly_j, env_config.mod)
+    new_coeffs_mul = poly_mul(
+        poly_i, poly_j, env_config.mod,
+        env_config.n_variables, env_config.max_degree,
+    )
+    return jnp.where(op == 0, new_coeffs_add, new_coeffs_mul)
+
+
+def _action_is_valid(env_config: EnvConfig, state: EnvState,
+                     op: jnp.ndarray, i: jnp.ndarray,
+                     j: jnp.ndarray, result_coeffs: jnp.ndarray) -> jnp.ndarray:
+    """State-aware validity check for a decoded action."""
+    structurally_valid = (i < state.num_nodes) & (j < state.num_nodes)
+    has_capacity = state.num_nodes < env_config.max_nodes
+    duplicate_result = _existing_node_contains(
+        result_coeffs, state.node_coeffs, state.num_nodes
+    )
+    return structurally_valid & has_capacity & (~state.done) & (~duplicate_result)
+
+
+def get_valid_actions_mask_for_state(env_config: EnvConfig,
+                                     state: EnvState) -> jnp.ndarray:
+    """Boolean mask excluding inactive, terminal, full, and duplicate actions."""
+    action_indices = jnp.arange(env_config.max_actions, dtype=jnp.int32)
+    op_arr, i_arr, j_arr = jax.vmap(
+        lambda a: decode_action(a, env_config.max_nodes)
+    )(action_indices)
+
+    def _candidate(op, i, j):
+        return _action_result_coeffs(env_config, state, op, i, j)
+
+    result_coeffs = jax.vmap(_candidate)(op_arr, i_arr, j_arr)
+    active_mask = jnp.arange(env_config.max_nodes) < state.num_nodes
+
+    def _is_duplicate(poly):
+        return _poly_equal_any(poly, state.node_coeffs, active_mask)
+
+    duplicate_result = jax.vmap(_is_duplicate)(result_coeffs)
+    structurally_valid = (i_arr < state.num_nodes) & (j_arr < state.num_nodes)
+    has_capacity = state.num_nodes < env_config.max_nodes
+    return structurally_valid & has_capacity & (~state.done) & (~duplicate_result)
 
 
 def _first_free_index(mask: jnp.ndarray) -> jnp.ndarray:
@@ -595,185 +613,168 @@ def step(env_config: EnvConfig, state: EnvState,
         (next_state, reward, done, is_success, factor_hit, library_hit,
          additive_complete, mult_complete)
     """
-    mod = env_config.mod
     max_nodes = env_config.max_nodes
 
     op, i, j = decode_action(action, max_nodes)
+    new_coeffs = _action_result_coeffs(env_config, state, op, i, j)
+    valid_action = _action_is_valid(env_config, state, op, i, j, new_coeffs)
 
-    poly_i = state.node_coeffs[i]
-    poly_j = state.node_coeffs[j]
-
-    # Snapshot shaping potential *before* adding new node.
-    if env_config.use_reward_shaping:
-        phi_before = _best_similarity(
-            state.node_coeffs, state.num_nodes,
-            state.target_coeffs, max_nodes,
+    def _invalid_step(_):
+        reward = jnp.where(
+            state.done,
+            jnp.float32(0.0),
+            jnp.asarray(env_config.step_penalty, dtype=jnp.float32),
+        )
+        return (
+            state,
+            reward,
+            state.done,
+            state.is_success,
+            jnp.bool_(False),
+            jnp.bool_(False),
+            jnp.bool_(False),
+            jnp.bool_(False),
         )
 
-    # Compute new polynomial.
-    new_coeffs_add = poly_add(poly_i, poly_j, mod)
-    new_coeffs_mul = poly_mul(poly_i, poly_j, mod,
-                              env_config.n_variables, env_config.max_degree)
-    new_coeffs = jnp.where(op == 0, new_coeffs_add, new_coeffs_mul)
+    def _apply_step(_):
+        # Append new node.
+        new_idx = state.num_nodes
+        node_coeffs = state.node_coeffs.at[new_idx].set(new_coeffs)
 
-    # Append new node.
-    new_idx = state.num_nodes
-    node_coeffs = state.node_coeffs.at[new_idx].set(new_coeffs)
+        op_value = jnp.where(op == 0, 0.5, 1.0)
+        new_feature = jnp.array([0.0, 0.0, 1.0, op_value])
+        node_features = state.node_features.at[new_idx].set(new_feature)
 
-    op_value = jnp.where(op == 0, 0.5, 1.0)
-    new_feature = jnp.array([0.0, 0.0, 1.0, op_value])
-    node_features = state.node_features.at[new_idx].set(new_feature)
+        # Add bidirectional edges (4 new edges: i->new, new->i, j->new, new->j).
+        ne = state.num_edges
+        edge_src = state.edge_src.at[ne].set(i)
+        edge_dst = state.edge_dst.at[ne].set(new_idx)
+        edge_src = edge_src.at[ne + 1].set(new_idx)
+        edge_dst = edge_dst.at[ne + 1].set(i)
+        edge_src = edge_src.at[ne + 2].set(j)
+        edge_dst = edge_dst.at[ne + 2].set(new_idx)
+        edge_src = edge_src.at[ne + 3].set(new_idx)
+        edge_dst = edge_dst.at[ne + 3].set(j)
+        num_edges = ne + 4
 
-    # Add bidirectional edges (4 new edges: i->new, new->i, j->new, new->j).
-    ne = state.num_edges
-    edge_src = state.edge_src.at[ne].set(i)
-    edge_dst = state.edge_dst.at[ne].set(new_idx)
-    edge_src = edge_src.at[ne + 1].set(new_idx)
-    edge_dst = edge_dst.at[ne + 1].set(i)
-    edge_src = edge_src.at[ne + 2].set(j)
-    edge_dst = edge_dst.at[ne + 2].set(new_idx)
-    edge_src = edge_src.at[ne + 3].set(new_idx)
-    edge_dst = edge_dst.at[ne + 3].set(j)
-    num_edges = ne + 4
+        num_nodes = new_idx + 1
+        steps_taken = state.steps_taken + 1
 
-    num_nodes = new_idx + 1
-    steps_taken = state.steps_taken + 1
+        # Success check.
+        is_success = jnp.all(new_coeffs == state.target_coeffs)
 
-    # Success check.
-    is_success = jnp.all(new_coeffs == state.target_coeffs)
+        # Termination.
+        at_max_steps = steps_taken >= env_config.max_steps
+        at_max_nodes = num_nodes >= max_nodes
+        done = is_success | at_max_steps | at_max_nodes
 
-    # Termination.
-    at_max_steps = steps_taken >= env_config.max_steps
-    at_max_nodes = num_nodes >= max_nodes
-    done = is_success | at_max_steps | at_max_nodes
-
-    # Base reward: step_penalty + success_reward if success, else shaping delta.
-    if env_config.use_reward_shaping:
-        phi_after = _best_similarity(
-            node_coeffs, num_nodes, state.target_coeffs, max_nodes,
-        )
-        shaping = env_config.gamma * phi_after - phi_before
-        reward = env_config.step_penalty + jnp.where(
-            is_success, env_config.success_reward, shaping
-        )
-    else:
         reward = env_config.step_penalty + jnp.where(
             is_success, env_config.success_reward, 0.0
         )
 
-    factor_hit = jnp.bool_(False)
-    library_hit = jnp.bool_(False)
-    additive_complete = jnp.bool_(False)
-    mult_complete = jnp.bool_(False)
+        factor_hit = jnp.bool_(False)
+        library_hit = jnp.bool_(False)
+        additive_complete = jnp.bool_(False)
+        mult_complete = jnp.bool_(False)
 
-    subgoal_coeffs = state.subgoal_coeffs
-    subgoal_active = state.subgoal_active
-    subgoal_library_known = state.subgoal_library_known
-    subgoal_hit = state.subgoal_hit
-    additive_complete_hit = state.additive_complete_hit
-    mult_complete_hit = state.mult_complete_hit
+        subgoal_coeffs = state.subgoal_coeffs
+        subgoal_active = state.subgoal_active
+        subgoal_library_known = state.subgoal_library_known
+        subgoal_hit = state.subgoal_hit
+        additive_complete_hit = state.additive_complete_hit
+        mult_complete_hit = state.mult_complete_hit
 
-    if env_config.factor_library_enabled:
-        match_idx, has_subgoal_match = _poly_match_index(
-            new_coeffs, subgoal_coeffs, subgoal_active & (~subgoal_hit)
-        )
-        was_library_known = jnp.where(
-            has_subgoal_match, subgoal_library_known[match_idx], False
-        )
-        reward = reward + jnp.where(
-            has_subgoal_match, env_config.factor_subgoal_reward, 0.0
-        )
-        reward = reward + jnp.where(
-            has_subgoal_match & was_library_known,
-            env_config.factor_library_bonus,
-            0.0,
-        )
-        subgoal_hit = jax.lax.cond(
-            has_subgoal_match,
-            lambda arr: arr.at[match_idx].set(True),
-            lambda arr: arr,
-            subgoal_hit,
-        )
-        factor_hit = has_subgoal_match
-        library_hit = has_subgoal_match & was_library_known
-
-        residual = (state.target_coeffs - new_coeffs) % env_config.mod
-        residual_nonzero = ~_poly_is_zero(residual)
-
-        can_additive_complete = (
-            (~is_success)
-            & (~additive_complete_hit)
-            & residual_nonzero
-            & _existing_node_contains(residual, state.node_coeffs, state.num_nodes)
-        )
-        reward = reward + jnp.where(
-            can_additive_complete, env_config.completion_bonus, 0.0
-        )
-        additive_complete = can_additive_complete
-        additive_complete_hit = additive_complete_hit | can_additive_complete
-
-        new_is_library_known = _library_contains(
-            new_coeffs, library_coeffs, library_mask
-        )
-
-        def _dynamic_discovery(args):
-            sg_coeffs, sg_active, sg_known, sg_hit, reward_val, mult_hit = args
-
-            residual_library_known = _library_contains(
-                residual, library_coeffs, library_mask
+        if env_config.factor_library_enabled:
+            match_idx, has_subgoal_match = _poly_match_index(
+                new_coeffs, subgoal_coeffs, subgoal_active & (~subgoal_hit)
             )
-            valid_residual_subgoal = residual_nonzero & (~_is_base_poly(residual, env_config))
-            sg_coeffs, sg_active, sg_known, sg_hit = _add_subgoal_if_new(
-                sg_coeffs, sg_active, sg_known, sg_hit,
-                residual, residual_library_known, valid_residual_subgoal,
+            was_library_known = jnp.where(
+                has_subgoal_match, subgoal_library_known[match_idx], False
+            )
+            reward = reward + jnp.where(
+                has_subgoal_match, env_config.factor_subgoal_reward, 0.0
+            )
+            reward = reward + jnp.where(
+                has_subgoal_match & was_library_known,
+                env_config.factor_library_bonus,
+                0.0,
+            )
+            subgoal_hit = jax.lax.cond(
+                has_subgoal_match,
+                lambda arr: arr.at[match_idx].set(True),
+                lambda arr: arr,
+                subgoal_hit,
+            )
+            factor_hit = has_subgoal_match
+            library_hit = has_subgoal_match & was_library_known
+
+            residual = (state.target_coeffs - new_coeffs) % env_config.mod
+            residual_nonzero = ~_poly_is_zero(residual)
+
+            can_additive_complete = (
+                (~is_success)
+                & (~additive_complete_hit)
+                & residual_nonzero
+                & _existing_node_contains(residual, state.node_coeffs, state.num_nodes)
+            )
+            reward = reward + jnp.where(
+                can_additive_complete, env_config.completion_bonus, 0.0
+            )
+            additive_complete = can_additive_complete
+            additive_complete_hit = additive_complete_hit | can_additive_complete
+
+            new_is_library_known = _library_contains(
+                new_coeffs, library_coeffs, library_mask
             )
 
-            quotient, quotient_exact = exact_quotient(
-                state.target_coeffs, new_coeffs, env_config
-            )
-            quotient_in_existing = _existing_node_contains(
-                quotient, state.node_coeffs, state.num_nodes
-            )
-            can_mult_complete = (
-                (~mult_hit) & quotient_exact & quotient_in_existing
-            )
-            reward_val = reward_val + jnp.where(
-                can_mult_complete, env_config.completion_bonus, 0.0
-            )
-            quotient_library_known = _library_contains(
-                quotient, library_coeffs, library_mask
-            )
-            valid_quotient_subgoal = (
-                quotient_exact
-                & (~_poly_is_scalar(quotient))
-                & (~_is_base_poly(quotient, env_config))
-            )
-            sg_coeffs, sg_active, sg_known, sg_hit = _add_subgoal_if_new(
-                sg_coeffs, sg_active, sg_known, sg_hit,
-                quotient, quotient_library_known, valid_quotient_subgoal,
-            )
-            return (
-                sg_coeffs,
-                sg_active,
-                sg_known,
-                sg_hit,
-                reward_val,
-                mult_hit | can_mult_complete,
-                can_mult_complete,
-            )
+            def _dynamic_discovery(args):
+                sg_coeffs, sg_active, sg_known, sg_hit, reward_val, mult_hit = args
 
-        (
-            subgoal_coeffs,
-            subgoal_active,
-            subgoal_library_known,
-            subgoal_hit,
-            reward,
-            mult_complete_hit,
-            mult_complete,
-        ) = jax.lax.cond(
-            (~is_success) & new_is_library_known,
-            _dynamic_discovery,
-            lambda args: (*args[:5], args[5], jnp.bool_(False)),
+                residual_library_known = _library_contains(
+                    residual, library_coeffs, library_mask
+                )
+                valid_residual_subgoal = residual_nonzero & (
+                    ~_is_base_poly(residual, env_config)
+                )
+                sg_coeffs, sg_active, sg_known, sg_hit = _add_subgoal_if_new(
+                    sg_coeffs, sg_active, sg_known, sg_hit,
+                    residual, residual_library_known, valid_residual_subgoal,
+                )
+
+                quotient, quotient_exact = exact_quotient(
+                    state.target_coeffs, new_coeffs, env_config
+                )
+                quotient_in_existing = _existing_node_contains(
+                    quotient, state.node_coeffs, state.num_nodes
+                )
+                can_mult_complete = (
+                    (~mult_hit) & quotient_exact & quotient_in_existing
+                )
+                reward_val = reward_val + jnp.where(
+                    can_mult_complete, env_config.completion_bonus, 0.0
+                )
+                quotient_library_known = _library_contains(
+                    quotient, library_coeffs, library_mask
+                )
+                valid_quotient_subgoal = (
+                    quotient_exact
+                    & (~_poly_is_scalar(quotient))
+                    & (~_is_base_poly(quotient, env_config))
+                )
+                sg_coeffs, sg_active, sg_known, sg_hit = _add_subgoal_if_new(
+                    sg_coeffs, sg_active, sg_known, sg_hit,
+                    quotient, quotient_library_known, valid_quotient_subgoal,
+                )
+                return (
+                    sg_coeffs,
+                    sg_active,
+                    sg_known,
+                    sg_hit,
+                    reward_val,
+                    mult_hit | can_mult_complete,
+                    can_mult_complete,
+                )
+
             (
                 subgoal_coeffs,
                 subgoal_active,
@@ -781,36 +782,55 @@ def step(env_config: EnvConfig, state: EnvState,
                 subgoal_hit,
                 reward,
                 mult_complete_hit,
-            ),
+                mult_complete,
+            ) = jax.lax.cond(
+                (~is_success) & new_is_library_known,
+                _dynamic_discovery,
+                lambda args: (*args[:5], args[5], jnp.bool_(False)),
+                (
+                    subgoal_coeffs,
+                    subgoal_active,
+                    subgoal_library_known,
+                    subgoal_hit,
+                    reward,
+                    mult_complete_hit,
+                ),
+            )
+
+        next_state = EnvState(
+            node_coeffs=node_coeffs,
+            node_features=node_features,
+            edge_src=edge_src,
+            edge_dst=edge_dst,
+            num_nodes=num_nodes.astype(jnp.int32),
+            num_edges=num_edges.astype(jnp.int32),
+            target_coeffs=state.target_coeffs,
+            subgoal_coeffs=subgoal_coeffs,
+            subgoal_active=subgoal_active,
+            subgoal_library_known=subgoal_library_known,
+            subgoal_hit=subgoal_hit,
+            additive_complete_hit=additive_complete_hit,
+            mult_complete_hit=mult_complete_hit,
+            steps_taken=steps_taken.astype(jnp.int32),
+            done=done,
+            is_success=is_success,
+        )
+        return (
+            next_state,
+            reward.astype(jnp.float32),
+            done,
+            is_success,
+            factor_hit,
+            library_hit,
+            additive_complete,
+            mult_complete,
         )
 
-    next_state = EnvState(
-        node_coeffs=node_coeffs,
-        node_features=node_features,
-        edge_src=edge_src,
-        edge_dst=edge_dst,
-        num_nodes=num_nodes.astype(jnp.int32),
-        num_edges=num_edges.astype(jnp.int32),
-        target_coeffs=state.target_coeffs,
-        subgoal_coeffs=subgoal_coeffs,
-        subgoal_active=subgoal_active,
-        subgoal_library_known=subgoal_library_known,
-        subgoal_hit=subgoal_hit,
-        additive_complete_hit=additive_complete_hit,
-        mult_complete_hit=mult_complete_hit,
-        steps_taken=steps_taken.astype(jnp.int32),
-        done=done,
-        is_success=is_success,
-    )
-    return (
-        next_state,
-        reward.astype(jnp.float32),
-        done,
-        is_success,
-        factor_hit,
-        library_hit,
-        additive_complete,
-        mult_complete,
+    return jax.lax.cond(
+        valid_action,
+        _apply_step,
+        _invalid_step,
+        operand=jnp.int32(0),
     )
 
 
@@ -820,6 +840,7 @@ def get_observation(env_config: EnvConfig, state: EnvState) -> dict:
     Returns:
         Dict with:
           'node_features': (max_nodes, 4) float32
+          'node_coeffs': (max_nodes, target_size) float32, normalized to [0, 1]
           'edge_src': (max_edges,) int32
           'edge_dst': (max_edges,) int32
           'num_nodes': int32 scalar
@@ -828,11 +849,11 @@ def get_observation(env_config: EnvConfig, state: EnvState) -> dict:
           'mask': (max_actions,) bool
     """
     target_norm = state.target_coeffs.astype(jnp.float32) / env_config.mod
-    mask = get_valid_actions_mask(
-        state.num_nodes, env_config.max_nodes, env_config.max_actions
-    )
+    node_coeffs_norm = state.node_coeffs.astype(jnp.float32) / env_config.mod
+    mask = get_valid_actions_mask_for_state(env_config, state)
     return {
         'node_features': state.node_features,
+        'node_coeffs': node_coeffs_norm,
         'edge_src': state.edge_src,
         'edge_dst': state.edge_dst,
         'num_nodes': state.num_nodes,

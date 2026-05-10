@@ -27,6 +27,9 @@ Additional scripts:
   JAX PPO+MCTS with factor-library rewards for the 3-variable runs.
 - `run_jax_c5_c8.slurm`:
   JAX PPO+MCTS with factor-library rewards over fixed complexities 5, 6, 7, 8.
+- `run_jax_gumbel_2var_c1_c10_curriculum_debug.slurm`:
+  Manual Gumbel PPO+MCTS curriculum from C1 to C10 with heavy run metadata,
+  GPU monitoring, per-phase checkpoints, and optional per-phase evaluation.
 - `run_eval_ppo_mcts_2var_gpu.slurm`, `run_eval_ppo_mcts_gpu.slurm`:
   Evaluation scripts for JAX PPO+MCTS checkpoints.
 
