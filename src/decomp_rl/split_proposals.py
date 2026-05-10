@@ -41,6 +41,7 @@ def _candidate_hint(
     target: SparsePolynomial,
     action: SplitAction,
     baseline_model: BaselineCostModel,
+    library_score_bonus: float = 0.0,
 ) -> float:
     size_balance = abs(action.g.support_size - action.h.support_size)
     degree_balance = abs(action.g.total_degree - action.h.total_degree)
@@ -52,6 +53,7 @@ def _candidate_hint(
         - 0.1 * size_balance
         - 0.1 * degree_balance
         + horner_bonus
+        + library_score_bonus
     )
 
 
@@ -61,13 +63,14 @@ def _build_action(
     h: SparsePolynomial,
     source: str,
     baseline_model: BaselineCostModel,
+    library_score_bonus: float = 0.0,
 ) -> SplitAction | None:
     if g.is_zero or h.is_zero:
         return None
     if g + h != target:
         return None
     action = SplitAction(g=g, h=h, source=source)
-    hint = _candidate_hint(target, action, baseline_model)
+    hint = _candidate_hint(target, action, baseline_model, library_score_bonus)
     return SplitAction(
         g=action.ordered().g,
         h=action.ordered().h,
@@ -82,6 +85,7 @@ def _build_action(
 
 def _source_priority(source: str) -> int:
     ordering = {
+        "library_match": 6,
         "family_template": 5,
         "common_factor": 4,
         "horner": 3,
@@ -263,24 +267,59 @@ def _elementary_symmetric_poly(
     return result
 
 
+def _library_match_candidates(
+    target: SparsePolynomial,
+    budget: int,
+    baseline_model: BaselineCostModel,
+    library,  # FactorizableLibrary
+) -> list[SplitAction]:
+    """Generate splits by extracting known factorizable sub-polynomials from target."""
+    if budget <= 0:
+        return []
+    matches = library.find_matches(target)
+    actions: list[SplitAction] = []
+    for match in matches:
+        matched = match.matched_poly
+        complement = target - matched
+        if complement.is_zero or matched.is_zero:
+            continue
+        action = _build_action(
+            target,
+            matched,
+            complement,
+            "library_match",
+            baseline_model,
+            library_score_bonus=library.library_match_score_bonus,
+        )
+        if action is not None:
+            actions.append(action)
+        if len(actions) >= budget:
+            break
+    return actions
+
+
 def propose_splits(
     target: SparsePolynomial,
     k: int,
     config: ProposalConfig | None = None,
     baseline_model: BaselineCostModel | None = None,
+    library=None,  # FactorizableLibrary | None
 ) -> list[SplitAction]:
     config = config or ProposalConfig()
     baseline_model = baseline_model or BaselineCostModel()
     rng = Random(config.random_seed)
 
+    library_budget = max(0, int(round(k * 0.2))) if library is not None else 0
     support_budget = max(1, int(round(k * config.support_fraction)))
     horner_budget = max(1, int(round(k * config.horner_fraction)))
     common_budget = max(0, int(round(k * config.common_factor_fraction)))
     family_budget = max(0, int(round(k * config.family_fraction)))
-    remaining = max(0, k - support_budget - horner_budget - common_budget - family_budget)
+    remaining = max(0, k - library_budget - support_budget - horner_budget - common_budget - family_budget)
     random_budget = min(config.max_random_masks, max(1, remaining or int(round(k * config.random_fraction))))
 
     candidates = []
+    if library is not None:
+        candidates.extend(_library_match_candidates(target, library_budget, baseline_model, library))
     candidates.extend(_support_partition_candidates(target, support_budget, baseline_model))
     candidates.extend(_horner_candidates(target, horner_budget, baseline_model))
     candidates.extend(_common_factor_candidates(target, common_budget, baseline_model))

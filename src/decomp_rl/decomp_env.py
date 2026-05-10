@@ -27,6 +27,8 @@ class StepInfo:
     cache_hits: tuple[str, ...] = ()
     immediate_reward: int = 0
     direct_cost: int = 0
+    library_hits: tuple[str, ...] = ()
+    library_reward: float = 0.0
 
 
 @dataclass
@@ -45,9 +47,11 @@ class DecompEnv:
         config: DecompEnvConfig | None = None,
         factorizer: FiniteFieldFactorizer | None = None,
         baseline_model: BaselineCostModel | None = None,
+        library=None,  # FactorizableLibrary | None
     ) -> None:
         self.config = config or DecompEnvConfig()
-        self.factorizer = factorizer or FiniteFieldFactorizer()
+        self.library = library
+        self.factorizer = factorizer or FiniteFieldFactorizer(library=self.library)
         self.baseline_model = baseline_model or BaselineCostModel(
             exact_support_limit=self.config.exact_support_limit
         )
@@ -134,6 +138,16 @@ class DecompEnv:
         )
         reward = baseline_before - baseline_after
 
+        # Library reward: bonus when either split piece is a known factorizable poly
+        library_hits: list[str] = []
+        library_reward = 0.0
+        if self.library is not None:
+            lib_reward_per_hit = self.library.library_step_reward
+            for piece, label in ((action.g, "g"), (action.h, "h")):
+                if self.library.is_known(piece):
+                    library_hits.append(label)
+                    library_reward += lib_reward_per_hit
+
         next_state.frontier.extend(new_children)
         next_state.acc_cost += 1 + rebuild_g + rebuild_h + resolved_cost
         done = len(next_state.frontier) == 0
@@ -151,6 +165,8 @@ class DecompEnv:
             immediate_reward=reward,
             baseline_before=baseline_before,
             baseline_after=baseline_after,
+            library_hits=tuple(library_hits),
+            library_reward=library_reward,
         )
         next_state.history.append(info)
         return next_state, reward, done, info

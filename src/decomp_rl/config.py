@@ -23,6 +23,19 @@ class FactorizerConfig:
 
 
 @dataclass(frozen=True)
+class FactorizableLibraryConfig:
+    enabled: bool = True
+    max_degree: int = 6
+    max_entries: int = 1024
+    match_scalar: bool = True
+    match_permutations: bool = True
+    max_perm_vars: int = 5
+    library_match_score_bonus: float = 2.0
+    library_step_reward: float = 0.5
+    seed_on_init: bool = True
+
+
+@dataclass(frozen=True)
 class ProposalConfig:
     max_candidates: int = 32
     support_fraction: float = 0.5
@@ -37,6 +50,7 @@ class ProposalConfig:
 @dataclass(frozen=True)
 class DecompEnvConfig:
     proposal: ProposalConfig = field(default_factory=ProposalConfig)
+    library: FactorizableLibraryConfig = field(default_factory=FactorizableLibraryConfig)
     dedup_frontier: bool = True
     exact_support_limit: int = 3
 

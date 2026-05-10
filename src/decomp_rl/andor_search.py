@@ -97,8 +97,10 @@ class AndOrSearch:
         baseline_model: BaselineCostModel | None = None,
         model: PolicyValueModel | None = None,
         search_config: SearchConfig | None = None,
+        library=None,  # FactorizableLibrary | None
     ) -> None:
-        self.factorizer = factorizer or FiniteFieldFactorizer()
+        self.library = library
+        self.factorizer = factorizer or FiniteFieldFactorizer(library=library)
         self.baseline_model = baseline_model or BaselineCostModel()
         self.model = model or HeuristicPolicyValueModel(self.baseline_model)
         self.search_config = search_config or SearchConfig()
@@ -152,7 +154,7 @@ class AndOrSearch:
 
     def _expand(self, poly: SparsePolynomial) -> NodeStats:
         baseline = float(self.baseline_model.direct_construction_cost(poly))
-        candidates = propose_splits(poly, self.search_config.expand_top_k, baseline_model=self.baseline_model)
+        candidates = propose_splits(poly, self.search_config.expand_top_k, baseline_model=self.baseline_model, library=self.library)
         priors, value_estimate = self.model.score_candidates(poly, candidates)
         actions = []
         for prior, candidate in zip(priors, candidates):

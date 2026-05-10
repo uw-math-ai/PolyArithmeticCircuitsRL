@@ -3,6 +3,7 @@
 from .andor_search import AndOrSearch, SearchResult
 from .config import (
     DecompEnvConfig,
+    FactorizableLibraryConfig,
     FactorizerConfig,
     ProjectConfig,
     ProposalConfig,
@@ -10,6 +11,7 @@ from .config import (
 )
 from .decomp_env import DecompEnv, EnvState, StepInfo
 from .factor_fp import FactorizationResult, FiniteFieldFactorizer
+from .factor_library import FactorizableLibrary, LibraryEntry, LibraryMatch
 from .model import HeuristicPolicyValueModel, PolicyValueModel
 from .polynomial import SparsePolynomial
 from .split_proposals import SplitAction, propose_splits
@@ -19,10 +21,14 @@ __all__ = [
     "DecompEnv",
     "DecompEnvConfig",
     "EnvState",
+    "FactorizableLibrary",
+    "FactorizableLibraryConfig",
     "FactorizationResult",
     "FactorizerConfig",
     "FiniteFieldFactorizer",
     "HeuristicPolicyValueModel",
+    "LibraryEntry",
+    "LibraryMatch",
     "PolicyValueModel",
     "ProjectConfig",
     "ProposalConfig",

@@ -30,8 +30,13 @@ class FactorizationResult:
 class FiniteFieldFactorizer:
     """Wrap CAS-backed factorization and normalize results for reuse."""
 
-    def __init__(self, config: FactorizerConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: FactorizerConfig | None = None,
+        library=None,  # FactorizableLibrary | None
+    ) -> None:
         self.config = config or FactorizerConfig()
+        self.library = library
         self._cache: dict[str, FactorizationResult] = {}
         self._sage_worker: _SageFactorWorker | None = None
         self.cache_requests = 0
@@ -52,6 +57,13 @@ class FiniteFieldFactorizer:
         result = self._factor_uncached(poly)
         if self.config.cache_enabled:
             self._cache[key] = result
+        if self.library is not None and not poly.is_zero and not poly.is_constant:
+            try:
+                from .baseline_cost import BaselineCostModel
+                direct = BaselineCostModel().direct_construction_cost(poly)
+                self.library.maybe_add_from_factorization(poly, result, direct)
+            except Exception:
+                pass
         return result
 
     def _factor_uncached(self, poly: SparsePolynomial) -> FactorizationResult:
