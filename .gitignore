@@ -13,3 +13,8 @@ __pycache__/
 wandb/
 results/slurm/
 slurm_scripts/results/
+
+container_jax.sif
+container.sif
+
+results/
