@@ -1,0 +1,4 @@
+# Force LF line endings for shell scripts so they run on Linux/macOS
+# regardless of what platform they were edited on.
+*.sh text eol=lf
+*.bash text eol=lf

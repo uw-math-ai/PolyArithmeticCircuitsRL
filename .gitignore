@@ -1,14 +1,29 @@
-Michael's\ experiments/
-MCTS/
-__pycache__/
+# Editor / IDE
 .vscode/
 .streamlit/
+.claude/
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtualenvs / tooling caches
+.venv/
+.cas_env/
+.sage_home/
+.tools/
 .env
-MAIL/
-.DS_Store
-.DS_Store
+
+# Experiment artifacts
+artifacts/
 wandb/
-<<<<<<< HEAD
-=======
-src/PPO RL/ppo.log
->>>>>>> 11b48741e682c6fc7ea309bcbc3750e60bf7594b
+*.pt
+*.metrics.jsonl
+
+# Legacy work directories
+Michael's\ experiments/
+MCTS/
+MAIL/
