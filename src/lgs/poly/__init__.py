@@ -1,0 +1,51 @@
+"""Finite-field polynomial backend and exact polynomial utilities."""
+
+from lgs.poly.fast_poly import (
+    FastPoly,
+    Polynomial,
+    PolynomialDegreeError,
+    PolynomialDomainError,
+    PolynomialError,
+    PolynomialOverflowError,
+    assert_i64_accumulation_safe,
+    is_prime,
+)
+from lgs.poly.poly_utils import (
+    additive_residual,
+    assert_degree_cap,
+    canonical_key,
+    coefficients,
+    exact_divides,
+    make_variables,
+    max_per_variable_degree,
+    multiplicative_quotient,
+    per_variable_degrees,
+    poly_from_terms,
+    support,
+    support_size,
+    total_degree,
+)
+
+__all__ = [
+    "Polynomial",
+    "FastPoly",
+    "PolynomialDegreeError",
+    "PolynomialDomainError",
+    "PolynomialError",
+    "PolynomialOverflowError",
+    "additive_residual",
+    "assert_i64_accumulation_safe",
+    "assert_degree_cap",
+    "canonical_key",
+    "coefficients",
+    "exact_divides",
+    "is_prime",
+    "make_variables",
+    "max_per_variable_degree",
+    "multiplicative_quotient",
+    "per_variable_degrees",
+    "poly_from_terms",
+    "support",
+    "support_size",
+    "total_degree",
+]
