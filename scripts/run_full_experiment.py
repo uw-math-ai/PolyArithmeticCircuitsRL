@@ -51,7 +51,11 @@ def main() -> None:
     parser.add_argument("--output-dir", default="")
     parser.add_argument("--prime", type=int, default=3)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--resume-checkpoint", default="")
+    parser.add_argument("--resume-checkpoint", default="",
+                        help="Path to a checkpoint .pt file, or 'latest' to auto-detect the "
+                             "newest cycle checkpoint inside --output-dir/checkpoints/.")
+    parser.add_argument("--auto-resume", action=argparse.BooleanOptionalAction, default=False,
+                        help="Equivalent to --resume-checkpoint latest; useful for SLURM requeue.")
     parser.add_argument("--initial-supervised-count", type=int, default=96)
     parser.add_argument("--holdout-count", type=int, default=24)
     parser.add_argument("--cycles", type=int, default=8)
@@ -107,6 +111,18 @@ def main() -> None:
     metrics_path = output_dir / "metrics.jsonl"
     checkpoints_dir = output_dir / "checkpoints"
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
+
+    # Resolve auto-resume: --auto-resume or --resume-checkpoint latest both
+    # search for the newest cycle checkpoint already saved in this output dir.
+    if args.auto_resume and not args.resume_checkpoint:
+        args.resume_checkpoint = "latest"
+    if args.resume_checkpoint == "latest":
+        found = find_latest_cycle_checkpoint(checkpoints_dir)
+        args.resume_checkpoint = str(found) if found else ""
+        if args.resume_checkpoint:
+            print({"stage": "auto_resume_detected", "checkpoint": args.resume_checkpoint}, flush=True)
+        else:
+            print({"stage": "auto_resume_no_checkpoint_found", "starting_fresh": True}, flush=True)
 
     runtime_config = configure_runtime(args)
     config_payload = vars(args).copy()
@@ -184,6 +200,7 @@ def main() -> None:
     best_holdout = None
     best_cycle = 0
     start_cycle = 1
+    current_optimizer_state: dict | None = None
     if args.resume_checkpoint:
         checkpoint = load_checkpoint(Path(args.resume_checkpoint), network)
         network = checkpoint["network"]
@@ -194,6 +211,7 @@ def main() -> None:
         best_holdout = resume_holdout_eval(metadata)
         best_cycle = int(metadata.get("source_cycle", 0) or 0)
         start_cycle = max(1, best_cycle + 1)
+        current_optimizer_state = checkpoint.get("optimizer_state_dict")
         print(
             {
                 "stage": "resume",
@@ -204,6 +222,7 @@ def main() -> None:
                 "resume_is_approximate": best_cycle > 0,
                 "best_cycle_so_far": best_cycle,
                 "best_holdout": best_holdout,
+                "optimizer_state_restored": current_optimizer_state is not None,
             },
             flush=True,
         )
@@ -239,6 +258,7 @@ def main() -> None:
             ),
             network=network,
         )
+        current_optimizer_state = trained.optimizer_state_dict
 
         holdout_before = evaluate_search_model(
             heuristic_wrapper,
@@ -263,6 +283,7 @@ def main() -> None:
                 "holdout_after": holdout_after,
                 "batch_size": trained.batch_size_stats.__dict__,
             },
+            optimizer_state_dict=trained.optimizer_state_dict,
         )
         best_holdout = holdout_after
         best_cycle = 0
@@ -477,7 +498,9 @@ def main() -> None:
                 cache_dataset_on_device=args.cache_dataset_on_device,
             ),
             network=network,
+            optimizer_state_dict=current_optimizer_state,
         )
+        current_optimizer_state = trained.optimizer_state_dict
         wrapper = trained.wrapper
         network = trained.network
 
@@ -512,6 +535,7 @@ def main() -> None:
             checkpoints_dir / f"cycle_{cycle:03d}.pt",
             network,
             metric_row,
+            optimizer_state_dict=current_optimizer_state,
         )
         if is_better_eval(cycle_eval, best_holdout):
             best_holdout = cycle_eval
@@ -618,13 +642,30 @@ def resolve_model_device(device: str) -> str:
 
 
 def load_checkpoint(path: Path, network) -> dict[str, object]:
-    payload = torch.load(path, map_location="cpu")
+    payload = torch.load(path, map_location="cpu", weights_only=False)
     network.load_state_dict(payload["model_state_dict"])
     return {
         "network": network,
         "metadata": payload.get("metadata", {}),
         "saved_at_utc": payload.get("saved_at_utc"),
+        "optimizer_state_dict": payload.get("optimizer_state_dict"),
     }
+
+
+def find_latest_cycle_checkpoint(checkpoints_dir: Path) -> Path | None:
+    """Return the highest-numbered cycle_NNN.pt in checkpoints_dir, or None."""
+    import re
+    pattern = re.compile(r"^cycle_(\d+)\.pt$")
+    best_num, best_path = -1, None
+    if not checkpoints_dir.is_dir():
+        return None
+    for p in checkpoints_dir.iterdir():
+        m = pattern.match(p.name)
+        if m:
+            num = int(m.group(1))
+            if num > best_num:
+                best_num, best_path = num, p
+    return best_path
 
 
 def resume_holdout_eval(metadata: dict[str, object]) -> dict[str, float]:
@@ -852,12 +893,14 @@ def is_better_eval(candidate: dict[str, float], incumbent: dict[str, float]) -> 
     return candidate.get("average_best_cost", float("inf")) < incumbent.get("average_best_cost", float("inf"))
 
 
-def save_checkpoint(path: Path, network, metadata: dict) -> None:
+def save_checkpoint(path: Path, network, metadata: dict, optimizer_state_dict=None) -> None:
     payload = {
         "model_state_dict": network.state_dict(),
         "metadata": metadata,
         "saved_at_utc": datetime.utcnow().isoformat() + "Z",
     }
+    if optimizer_state_dict is not None:
+        payload["optimizer_state_dict"] = optimizer_state_dict
     torch.save(payload, path)
 
 

@@ -96,6 +96,7 @@ class TorchTrainResult:
     history: tuple[TorchEpochMetrics, ...]
     final_metrics: SupervisedMetrics
     batch_size_stats: "BatchSizeStats"
+    optimizer_state_dict: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -197,6 +198,7 @@ def train_torch_model(
     examples: list[PolicyValueTrainingExample],
     config: TorchTrainConfig | None = None,
     network: object | None = None,
+    optimizer_state_dict: dict | None = None,
 ) -> TorchTrainResult:
     if torch is None or F is None:
         raise RuntimeError("Torch is not installed. Install the training dependencies first.")
@@ -221,6 +223,11 @@ def train_torch_model(
         lr=config.learning_rate,
         weight_decay=config.weight_decay,
     )
+    if optimizer_state_dict is not None:
+        try:
+            optimizer.load_state_dict(optimizer_state_dict)
+        except (ValueError, RuntimeError):
+            pass  # Incompatible state (e.g. model architecture changed); start fresh
     scaler = torch.amp.GradScaler("cuda", enabled=device.startswith("cuda") and config.use_amp)
     amp_enabled = device.startswith("cuda") and config.use_amp
     amp_dtype = torch.bfloat16 if device.startswith("cuda") and torch.cuda.is_bf16_supported() else torch.float16
@@ -311,6 +318,7 @@ def train_torch_model(
         history=tuple(history),
         final_metrics=final_metrics,
         batch_size_stats=batch_size_stats,
+        optimizer_state_dict=optimizer.state_dict(),
     )
 
 
