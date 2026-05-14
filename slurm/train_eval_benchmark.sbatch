@@ -11,8 +11,8 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="${REPO_ROOT:-/mmfs1/gscratch/stf/kj66/learn-guided-search}"
+SCRIPT_DIR="${REPO_ROOT}/slurm"
 cd "${REPO_ROOT}"
 
 RUN_NAME="${RUN_NAME:-train_eval_$(date +%Y%m%d_%H%M%S)}"

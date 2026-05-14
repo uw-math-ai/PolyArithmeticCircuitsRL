@@ -11,6 +11,7 @@ htmlcov/
 venv/
 env/
 .cache/
+*.egg-info/
 
 results/
 *.pt

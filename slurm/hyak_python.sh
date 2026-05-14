@@ -72,7 +72,7 @@ PY
 
   if [[ ! -x "${VENV_DIR}/bin/python" ]]; then
     echo "Creating Python venv: ${VENV_DIR}" >&2
-    "${base_python}" -m venv "${VENV_DIR}"
+    "${base_python}" -m venv "${VENV_DIR}" >&2
   fi
 
   local venv_python="${VENV_DIR}/bin/python"
@@ -90,9 +90,9 @@ ${check_imports}
 PY
   then
     echo "Installing learn-guided-search dependencies into ${VENV_DIR}" >&2
-    "${venv_python}" -m pip install --upgrade pip setuptools wheel
-    "${venv_python}" -m pip install --no-cache-dir -e "${REPO_ROOT}"
-    "${venv_python}" -m pip install --no-cache-dir torch
+    "${venv_python}" -m pip install --upgrade pip setuptools wheel >&2
+    "${venv_python}" -m pip install --no-cache-dir -e "${REPO_ROOT}" >&2
+    "${venv_python}" -m pip install --no-cache-dir torch >&2
   fi
 
   printf '%s\n' "${venv_python}"
