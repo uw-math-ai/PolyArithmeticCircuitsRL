@@ -36,6 +36,7 @@ except ImportError:  # pragma: no cover - optional dependency
     torch = None
     F = None
 
+from .baselines import BaselineBundle
 from .decomp_env import DecompEnv
 from .model import (
     candidate_feature_vector,
@@ -60,6 +61,11 @@ class PPOConfig:
     max_episode_steps: int = 32
     library_reward_weight: float = 1.0
     grad_clip_norm: float = 0.5
+    # Terminal bonus shaping: if the completed episode's accumulated circuit
+    # cost beats the min of all five baselines on the original target, add
+    # ``weight * (min_baseline - acc_cost)`` to the final transition's reward.
+    # Set to 0.0 to disable.
+    terminal_bonus_weight: float = 10.0
     seed: int | None = None
     # MCTS guidance (AlphaZero-style). When use_mcts is True, action selection
     # is driven by AndOrSearch visit counts and the visit distribution is added
@@ -81,6 +87,7 @@ class Transition:
     reward: float
     done: bool
     library_reward: float = 0.0
+    terminal_bonus: float = 0.0
     mcts_policy: tuple[float, ...] | None = None
 
 
@@ -95,6 +102,7 @@ class TrainingMetrics:
     entropy: float
     approx_kl: float
     distill_loss: float = 0.0
+    mean_terminal_bonus: float = 0.0
 
 
 def collect_episode(
@@ -103,6 +111,7 @@ def collect_episode(
     target: SparsePolynomial,
     config: PPOConfig,
     rng=None,
+    baselines: BaselineBundle | None = None,
 ) -> list[Transition]:
     """Run one episode on ``target``, sampling splits from the policy.
 
@@ -113,6 +122,10 @@ def collect_episode(
     If ``config.use_mcts`` is True, action selection runs ``AndOrSearch`` at
     each step and samples from the resulting visit distribution; the visit
     distribution is stored on the transition for distillation in the update.
+
+    If ``baselines`` is provided and ``config.terminal_bonus_weight > 0``, the
+    final transition gets a proportional bonus reward when the completed
+    episode beats the min cost across all five baselines on ``target``.
     """
     if torch is None:
         raise RuntimeError("PyTorch is required for PPO training")
@@ -159,6 +172,24 @@ def collect_episode(
         )
         if done:
             break
+
+    # Terminal bonus: only when the circuit is fully constructed (frontier empty)
+    # and the discovered cost beats the tightest baseline upper bound.
+    if (
+        baselines is not None
+        and config.terminal_bonus_weight > 0.0
+        and transitions
+        and not state.frontier
+    ):
+        min_baseline = baselines.min_cost(target)
+        if state.acc_cost < min_baseline:
+            bonus = config.terminal_bonus_weight * float(
+                min_baseline - state.acc_cost
+            )
+            last = transitions[-1]
+            last.terminal_bonus = bonus
+            last.reward += bonus
+
     return transitions
 
 
@@ -419,6 +450,10 @@ def train_ppo(
         rng = torch.Generator(device=next(model.parameters()).device)
         rng.manual_seed(config.seed)
 
+    # Shared bundle so per-baseline memoisation accumulates across rollouts;
+    # reuses the env's BaselineCostModel to keep sparse/horner caches aligned.
+    baselines = BaselineBundle(baseline_model=env.baseline_model)
+
     target_iter = _cycle(targets)
     metrics_log: list[TrainingMetrics] = []
 
@@ -426,11 +461,13 @@ def train_ppo(
         all_tr: list[Transition] = []
         all_adv: list[float] = []
         all_ret: list[float] = []
-        ep_rewards, ep_lengths, ep_savings = [], [], []
+        ep_rewards, ep_lengths, ep_savings, ep_bonuses = [], [], [], []
 
         for _ in range(config.rollouts_per_update):
             target = next(target_iter)
-            transitions = collect_episode(env, model, target, config, rng=rng)
+            transitions = collect_episode(
+                env, model, target, config, rng=rng, baselines=baselines
+            )
             if not transitions:
                 continue
             advs, rets = compute_gae(transitions, config.gamma, config.gae_lambda)
@@ -441,10 +478,13 @@ def train_ppo(
             ep_lengths.append(len(transitions))
             ep_savings.append(
                 sum(
-                    t.reward - config.library_reward_weight * t.library_reward
+                    t.reward
+                    - config.library_reward_weight * t.library_reward
+                    - t.terminal_bonus
                     for t in transitions
                 )
             )
+            ep_bonuses.append(sum(t.terminal_bonus for t in transitions))
 
         update_stats = ppo_update(model, optimizer, all_tr, all_adv, all_ret, config)
         metrics = TrainingMetrics(
@@ -457,6 +497,7 @@ def train_ppo(
             entropy=update_stats["entropy"],
             approx_kl=update_stats["approx_kl"],
             distill_loss=update_stats.get("distill_loss", 0.0),
+            mean_terminal_bonus=_mean(ep_bonuses),
         )
         metrics_log.append(metrics)
         if log_callback is not None:

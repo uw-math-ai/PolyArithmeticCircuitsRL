@@ -1,6 +1,11 @@
 """MVP implementation of decomposition-based arithmetic circuit discovery."""
 
 from .andor_search import AndOrSearch, SearchResult
+from .baselines import (
+    BivariateHornerBaseline,
+    CSEBaseline,
+    TopDownSearchBaseline,
+)
 from .config import (
     DecompEnvConfig,
     FactorizableLibraryConfig,
@@ -18,6 +23,8 @@ from .split_proposals import SplitAction, propose_splits
 
 __all__ = [
     "AndOrSearch",
+    "BivariateHornerBaseline",
+    "CSEBaseline",
     "DecompEnv",
     "DecompEnvConfig",
     "EnvState",
@@ -37,6 +44,7 @@ __all__ = [
     "SparsePolynomial",
     "SplitAction",
     "StepInfo",
+    "TopDownSearchBaseline",
     "propose_splits",
 ]
 
