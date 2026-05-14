@@ -8,8 +8,8 @@ htmlcov/
 
 .venv/
 .venv-hyak-*/
-venv/
-env/
+/venv/
+/env/
 .cache/
 *.egg-info/
 
