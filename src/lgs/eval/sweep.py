@@ -49,6 +49,7 @@ class SweepRow:
     expansions: int
     runtime_sec: float
     intended_complexity: int | None = None
+    generative_ops: int | None = None
 
 
 def run_search_sweep(
@@ -97,12 +98,16 @@ def run_search_sweep(
 
 
 def summarize_sweep(rows: Sequence[SweepRow]) -> list[dict[str, Any]]:
-    grouped: dict[tuple[str, str, int, int, int], list[SweepRow]] = defaultdict(list)
+    grouped: dict[
+        tuple[str, str, int | None, int, int, int],
+        list[SweepRow],
+    ] = defaultdict(list)
     for row in rows:
         grouped[
             (
                 row.method,
                 row.family,
+                row.intended_complexity,
                 row.beam_width,
                 row.candidate_k,
                 row.tier2_m,
@@ -110,9 +115,15 @@ def summarize_sweep(rows: Sequence[SweepRow]) -> list[dict[str, Any]]:
         ].append(row)
 
     summaries: list[dict[str, Any]] = []
-    solve_rates: dict[tuple[str, int, int, int], dict[str, float]] = defaultdict(dict)
-    for key, group in sorted(grouped.items()):
-        method, family, beam_width, candidate_k, tier2_m = key
+    solve_rates: dict[
+        tuple[str, int | None, int, int, int],
+        dict[str, float],
+    ] = defaultdict(dict)
+    for key, group in sorted(
+        grouped.items(),
+        key=lambda item: _summary_group_sort_key(item[0]),
+    ):
+        method, family, intended_complexity, beam_width, candidate_k, tier2_m = key
         successes = [row for row in group if row.success]
         solve_rate = len(successes) / len(group)
         best_ops = [row.best_ops for row in successes if row.best_ops is not None]
@@ -121,6 +132,7 @@ def summarize_sweep(rows: Sequence[SweepRow]) -> list[dict[str, Any]]:
         summary = {
             "method": method,
             "family": family,
+            "intended_complexity": intended_complexity,
             "beam_width": beam_width,
             "candidate_k": candidate_k,
             "tier2_m": tier2_m,
@@ -133,12 +145,15 @@ def summarize_sweep(rows: Sequence[SweepRow]) -> list[dict[str, Any]]:
             "solved_by_complexity": _solved_by_complexity(group),
         }
         summaries.append(summary)
-        solve_rates[(family, beam_width, candidate_k, tier2_m)][method] = solve_rate
+        solve_rates[
+            (family, intended_complexity, beam_width, candidate_k, tier2_m)
+        ][method] = solve_rate
 
     for summary in summaries:
         rates = solve_rates[
             (
                 summary["family"],
+                summary["intended_complexity"],
                 summary["beam_width"],
                 summary["candidate_k"],
                 summary["tier2_m"],
@@ -226,6 +241,7 @@ def _run_one(
         expansions=len(history.records),
         runtime_sec=runtime_sec,
         intended_complexity=_metadata_int(instance, "intended_complexity"),
+        generative_ops=_metadata_int(instance, "generative_ops"),
     )
 
 
@@ -254,6 +270,14 @@ def _failure_group_sort_key(
     family, complexity, method, beam_width, candidate_k, tier2_m = key
     normalized_complexity = -1 if complexity is None else complexity
     return (family, normalized_complexity, method, beam_width, candidate_k, tier2_m)
+
+
+def _summary_group_sort_key(
+    key: tuple[str, str, int | None, int, int, int],
+) -> tuple[str, str, int, int, int, int]:
+    method, family, complexity, beam_width, candidate_k, tier2_m = key
+    normalized_complexity = -1 if complexity is None else complexity
+    return (method, family, normalized_complexity, beam_width, candidate_k, tier2_m)
 
 
 def _validate_positive_int_tuple(name: str, values: tuple[int, ...]) -> None:

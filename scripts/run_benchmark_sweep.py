@@ -19,43 +19,66 @@ from lgs.eval.sweep import (
     summarize_failures,
     summarize_sweep,
 )
+from lgs.eval.wandb_logging import (
+    add_wandb_args,
+    finish_wandb,
+    init_wandb,
+    log_sweep_outputs,
+)
 from lgs.training.train_ranker import load_ranker
 
 
 def main() -> None:
     args = _parse_args()
-    benchmark = make_structured_benchmark(
-        field_p=args.field_p,
-        degree_cap=args.degree_cap,
-        max_instances_per_family=args.max_instances_per_family,
+    run = init_wandb(
+        args,
+        default_run_name=Path(args.output_dir).name,
+        config=vars(args),
+        tags=("benchmark-sweep", "guided" if args.checkpoint else "heuristic"),
     )
-    ranker = None
-    encoder = None
-    if args.checkpoint:
-        ranker, encoder = load_ranker(args.checkpoint)
+    try:
+        benchmark = make_structured_benchmark(
+            field_p=args.field_p,
+            degree_cap=args.degree_cap,
+            max_instances_per_family=args.max_instances_per_family,
+        )
+        ranker = None
+        encoder = None
+        if args.checkpoint:
+            ranker, encoder = load_ranker(args.checkpoint)
 
-    config = SweepConfig(
-        beam_widths=_parse_int_tuple(args.beam_widths),
-        candidate_ks=_parse_int_tuple(args.candidate_ks),
-        tier2_ms=_parse_int_tuple(args.tier2_ms),
-        lambda_model=args.lambda_model,
-    )
-    rows = run_search_sweep(
-        benchmark.instances,
-        ranker=ranker,
-        encoder=encoder,
-        config=config,
-    )
-    summary = summarize_sweep(rows)
-    failures = summarize_failures(rows)
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    _write_jsonl(output_dir / "sweep_rows.jsonl", [asdict(row) for row in rows])
-    _write_json(output_dir / "sweep_summary.json", summary)
-    _write_json(output_dir / "sweep_failures.json", failures)
-    _print_summary(summary)
-    _print_failures(failures)
-    print(f"wrote {len(rows)} rows to {output_dir}")
+        config = SweepConfig(
+            beam_widths=_parse_int_tuple(args.beam_widths),
+            candidate_ks=_parse_int_tuple(args.candidate_ks),
+            tier2_ms=_parse_int_tuple(args.tier2_ms),
+            lambda_model=args.lambda_model,
+        )
+        rows = run_search_sweep(
+            benchmark.instances,
+            ranker=ranker,
+            encoder=encoder,
+            config=config,
+        )
+        summary = summarize_sweep(rows)
+        failures = summarize_failures(rows)
+        output_dir = Path(args.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        _write_jsonl(output_dir / "sweep_rows.jsonl", [asdict(row) for row in rows])
+        _write_json(output_dir / "sweep_summary.json", summary)
+        _write_json(output_dir / "sweep_failures.json", failures)
+        log_sweep_outputs(
+            run,
+            rows=rows,
+            summary=summary,
+            failures=failures,
+            output_dir=output_dir,
+            artifact_name=f"{Path(args.output_dir).name}-sweep",
+        )
+        _print_summary(summary)
+        _print_failures(failures)
+        print(f"wrote {len(rows)} rows to {output_dir}")
+    finally:
+        finish_wandb(run)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -69,6 +92,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--lambda-model", type=float, default=1.0)
     parser.add_argument("--checkpoint", type=str, default="")
     parser.add_argument("--output-dir", type=str, default="results")
+    add_wandb_args(parser)
     return parser.parse_args()
 
 

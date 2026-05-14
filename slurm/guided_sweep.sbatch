@@ -26,6 +26,12 @@ LAMBDA_MODEL="${LAMBDA_MODEL:-1.0}"
 ROUNDS="${ROUNDS:-not-used}"
 EPOCHS_PER_ROUND="${EPOCHS_PER_ROUND:-not-used}"
 SEED="${SEED:-not-used}"
+ENABLE_WANDB="${ENABLE_WANDB:-1}"
+WANDB_PROJECT="${WANDB_PROJECT:-PolyArithmeticCircuitsRL}"
+WANDB_ENTITY="${WANDB_ENTITY:-zengrf-university-of-washington}"
+WANDB_MODE_DEFAULT="${WANDB_MODE_DEFAULT:-online}"
+
+source "${SCRIPT_DIR}/hyak_python.sh"
 
 if [[ -z "${CHECKPOINT}" ]]; then
   echo "CHECKPOINT must be set for guided_sweep.sbatch" >&2
@@ -46,34 +52,8 @@ log_kv() {
   printf '%s=%s\n' "$1" "$2" | tee -a "${METADATA_FILE}"
 }
 
-find_python() {
-  if [[ -n "${PYTHON_BIN:-}" ]]; then
-    if [[ -x "${PYTHON_BIN}" ]] || command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
-      command -v "${PYTHON_BIN}" 2>/dev/null || printf '%s\n' "${PYTHON_BIN}"
-      return 0
-    fi
-    echo "PYTHON_BIN is set but not executable/found: ${PYTHON_BIN}" >&2
-    return 1
-  fi
-  if [[ -x "${REPO_ROOT}/.venv/bin/python" ]]; then
-    printf '%s\n' "${REPO_ROOT}/.venv/bin/python"
-    return 0
-  fi
-  command -v python3 2>/dev/null || command -v python 2>/dev/null || {
-    echo "No usable Python interpreter found. Set PYTHON_BIN or create .venv." >&2
-    return 1
-  }
-}
-
-PYTHON="$(find_python)"
-if ! "${PYTHON}" - <<'PY' >/dev/null 2>&1
-import sys
-raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
-PY
-then
-  echo "Python 3.10+ is required; found $("${PYTHON}" --version 2>&1)" >&2
-  exit 1
-fi
+PYTHON="$(bootstrap_lgs_python)"
+export WANDB_MODE="${WANDB_MODE:-${WANDB_MODE_DEFAULT}}"
 
 CMD=(
   "${PYTHON}" scripts/run_benchmark_sweep.py
@@ -85,6 +65,18 @@ CMD=(
   --tier2-ms "${TIER2_MS}"
   --output-dir "${OUTPUT_DIR}"
 )
+if [[ "${ENABLE_WANDB}" == "1" ]]; then
+  CMD+=(
+    --wandb
+    --wandb-project "${WANDB_PROJECT}"
+    --wandb-run-name "${RUN_NAME}"
+  )
+  if [[ -n "${WANDB_ENTITY}" ]]; then
+    CMD+=(--wandb-entity "${WANDB_ENTITY}")
+  fi
+else
+  CMD+=(--no-wandb)
+fi
 
 log_environment() {
   log_kv "run_name" "${RUN_NAME}"
@@ -97,9 +89,12 @@ log_environment() {
   log_kv "git_status_summary" "$(git status --short 2>/dev/null | tr '\n' ';' || printf 'unavailable')"
   log_kv "python_path" "${PYTHON}"
   log_kv "python_version" "$("${PYTHON}" --version 2>&1)"
+  log_kv "hyak_python_module" "${HYAK_PYTHON_MODULE:-auto}"
+  log_kv "venv_dir" "${VENV_DIR:-not-used}"
+  log_kv "bootstrap_venv" "${BOOTSTRAP_VENV:-1}"
   log_kv "package_versions" "$("${PYTHON}" - <<'PY'
 import importlib.metadata as md
-for name in ("torch", "numpy", "pytest"):
+for name in ("torch", "numpy", "pytest", "wandb"):
     try:
         print(f"{name}:{md.version(name)}", end=" ")
     except md.PackageNotFoundError:
@@ -121,6 +116,10 @@ PY
   log_kv "tier2_ms" "${TIER2_MS}"
   log_kv "lambda_model" "${LAMBDA_MODEL}"
   log_kv "checkpoint" "${CHECKPOINT}"
+  log_kv "enable_wandb" "${ENABLE_WANDB}"
+  log_kv "wandb_project" "${WANDB_PROJECT}"
+  log_kv "wandb_entity" "${WANDB_ENTITY}"
+  log_kv "wandb_mode" "${WANDB_MODE}"
   log_kv "output_dir" "${OUTPUT_DIR}"
   printf 'Command:\n' | tee -a "${METADATA_FILE}"
   printf '  %q' "${CMD[@]}" | tee -a "${METADATA_FILE}"
@@ -148,6 +147,9 @@ echo "Date: $(date)"
 echo "Repo root: ${REPO_ROOT}"
 echo "Python: ${PYTHON} ($("${PYTHON}" --version 2>&1))"
 echo "Output dir: ${OUTPUT_DIR}"
+if [[ "${ENABLE_WANDB}" == "1" ]]; then
+  echo "W&B target: ${WANDB_ENTITY:+${WANDB_ENTITY}/}${WANDB_PROJECT} (mode=${WANDB_MODE})"
+fi
 log_environment
 
 set +e

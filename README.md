@@ -105,6 +105,8 @@ sbatch slurm/heuristic_sweep.sbatch
 CHECKPOINT=results/server_runs/server_run_001/ranker.pt sbatch slurm/guided_sweep.sbatch
 ```
 
+The experiment scripts and Slurm wrappers enable W&B by default. Set
+`ENABLE_WANDB=0` or pass `--no-wandb` to run without it.
 See [slurm/README.md](slurm/README.md) for array jobs, metadata logging, and output layout.
 
 ## Key Concepts

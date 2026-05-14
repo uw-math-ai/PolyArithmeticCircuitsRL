@@ -20,69 +20,102 @@ from lgs.eval.sweep import (
     summarize_failures,
     summarize_sweep,
 )
+from lgs.eval.wandb_logging import (
+    add_wandb_args,
+    finish_wandb,
+    init_wandb,
+    log_bootstrap_metrics,
+    log_sweep_outputs,
+)
 from lgs.training.bootstrap_loop import BootstrapConfig, run_bootstrap_training
 from lgs.training.train_ranker import save_ranker
 
 
 def main() -> None:
     args = _parse_args()
-    benchmark = make_structured_benchmark(
-        field_p=args.field_p,
-        degree_cap=args.degree_cap,
-        max_instances_per_family=args.max_instances_per_family,
+    run = init_wandb(
+        args,
+        default_run_name=Path(args.output_dir).name,
+        config=vars(args),
+        tags=("train-eval", "bootstrap", "benchmark-sweep"),
     )
-    train_instances, validation_instances, eval_instances = _split_instances(
-        benchmark.instances
-    )
-    curriculum = FixedCurriculum(
-        train_instances=train_instances,
-        validation_instances=validation_instances,
-    )
-    bootstrap_config = BootstrapConfig(
-        num_rounds=args.rounds,
-        beam_width=args.train_beam_width,
-        candidate_k=args.train_candidate_k,
-        tier2_m=args.train_tier2_m,
-        epochs_per_round=args.epochs_per_round,
-        batch_size=args.batch_size,
-        seed=args.seed,
-    )
-    result = run_bootstrap_training(curriculum, bootstrap_config)
+    try:
+        benchmark = make_structured_benchmark(
+            field_p=args.field_p,
+            degree_cap=args.degree_cap,
+            max_instances_per_family=args.max_instances_per_family,
+        )
+        train_instances, validation_instances, eval_instances = _split_instances(
+            benchmark.instances
+        )
+        if run is not None:
+            run.config.update(
+                {
+                    "num_train_instances": len(train_instances),
+                    "num_validation_instances": len(validation_instances),
+                    "num_eval_instances": len(eval_instances),
+                }
+            )
+        curriculum = FixedCurriculum(
+            train_instances=train_instances,
+            validation_instances=validation_instances,
+        )
+        bootstrap_config = BootstrapConfig(
+            num_rounds=args.rounds,
+            beam_width=args.train_beam_width,
+            candidate_k=args.train_candidate_k,
+            tier2_m=args.train_tier2_m,
+            epochs_per_round=args.epochs_per_round,
+            batch_size=args.batch_size,
+            seed=args.seed,
+        )
+        result = run_bootstrap_training(curriculum, bootstrap_config)
 
-    sweep_config = SweepConfig(
-        beam_widths=_parse_int_tuple(args.beam_widths),
-        candidate_ks=_parse_int_tuple(args.candidate_ks),
-        tier2_ms=_parse_int_tuple(args.tier2_ms),
-        lambda_model=result.final_lambda_model,
-    )
-    rows = run_search_sweep(
-        eval_instances,
-        ranker=result.ranker,
-        encoder=result.encoder,
-        config=sweep_config,
-    )
-    summary = summarize_sweep(rows)
-    failures = summarize_failures(rows)
+        sweep_config = SweepConfig(
+            beam_widths=_parse_int_tuple(args.beam_widths),
+            candidate_ks=_parse_int_tuple(args.candidate_ks),
+            tier2_ms=_parse_int_tuple(args.tier2_ms),
+            lambda_model=result.final_lambda_model,
+        )
+        rows = run_search_sweep(
+            eval_instances,
+            ranker=result.ranker,
+            encoder=result.encoder,
+            config=sweep_config,
+        )
+        summary = summarize_sweep(rows)
+        failures = summarize_failures(rows)
 
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    _write_jsonl(output_dir / "sweep_rows.jsonl", [asdict(row) for row in rows])
-    _write_json(output_dir / "sweep_summary.json", summary)
-    _write_json(output_dir / "sweep_failures.json", failures)
-    _write_json(
-        output_dir / "bootstrap_metrics.json",
-        [asdict(metric) for metric in result.metrics],
-    )
-    save_ranker(output_dir / "ranker.pt", result.ranker, result.encoder)
+        output_dir = Path(args.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        _write_jsonl(output_dir / "sweep_rows.jsonl", [asdict(row) for row in rows])
+        _write_json(output_dir / "sweep_summary.json", summary)
+        _write_json(output_dir / "sweep_failures.json", failures)
+        _write_json(
+            output_dir / "bootstrap_metrics.json",
+            [asdict(metric) for metric in result.metrics],
+        )
+        save_ranker(output_dir / "ranker.pt", result.ranker, result.encoder)
+        log_bootstrap_metrics(run, result.metrics)
+        log_sweep_outputs(
+            run,
+            rows=rows,
+            summary=summary,
+            failures=failures,
+            output_dir=output_dir,
+            artifact_name=f"{Path(args.output_dir).name}-train-eval",
+        )
 
-    print(
-        f"split train={len(train_instances)} validation={len(validation_instances)} "
-        f"eval={len(eval_instances)} final_lambda={result.final_lambda_model:.2f}"
-    )
-    _print_bootstrap_metrics(result.metrics)
-    _print_summary(summary)
-    _print_failures(failures)
-    print(f"wrote benchmark outputs to {output_dir}")
+        print(
+            f"split train={len(train_instances)} validation={len(validation_instances)} "
+            f"eval={len(eval_instances)} final_lambda={result.final_lambda_model:.2f}"
+        )
+        _print_bootstrap_metrics(result.metrics)
+        _print_summary(summary)
+        _print_failures(failures)
+        print(f"wrote benchmark outputs to {output_dir}")
+    finally:
+        finish_wandb(run)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -101,6 +134,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--candidate-ks", default="4,8,16")
     parser.add_argument("--tier2-ms", default="128")
     parser.add_argument("--output-dir", default="results")
+    add_wandb_args(parser)
     return parser.parse_args()
 
 

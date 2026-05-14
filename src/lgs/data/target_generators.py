@@ -153,7 +153,7 @@ def make_xy_symmetric_instance(
         family="common_factor",
         target_id=f"common_factor_symmetric_{'_'.join(names)}",
         description=f"{names[0]}^2{names[1]} + {names[0]}{names[1]}^2",
-        intended_complexity=4,
+        intended_complexity=3,
     )
 
 
@@ -255,6 +255,7 @@ def make_random_circuit_instance(
             description=f"random structured circuit with {n_vars} variables and {num_ops} ops",
             intended_complexity=num_ops,
             extra_metadata={
+                "complexity_note": "generative construction size, not proven optimal",
                 "generative_ops": num_ops,
                 "generating_trace": tuple(trace),
                 "seed": seed,

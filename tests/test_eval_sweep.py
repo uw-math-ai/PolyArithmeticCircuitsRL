@@ -64,9 +64,38 @@ def test_heuristic_sweep_produces_rows():
     for row in rows:
         assert row.instance_id
         assert row.family
+        assert row.intended_complexity is not None
+        assert row.intended_complexity > 0
         assert isinstance(row.success, bool)
         assert row.expansions >= 0
         assert row.runtime_sec >= 0.0
+
+
+def test_sweep_row_includes_random_circuit_generative_ops():
+    random_instance = [
+        instance
+        for instance in make_structured_benchmark(
+            field_p=17,
+            degree_cap=8,
+            max_instances_per_family=1,
+        ).instances
+        if instance.metadata["family"] == "random_circuit"
+    ][0]
+
+    rows = run_search_sweep(
+        [random_instance],
+        ranker=None,
+        encoder=None,
+        config=SweepConfig(
+            beam_widths=(1,),
+            candidate_ks=(4,),
+            tier2_ms=(16,),
+        ),
+    )
+
+    assert len(rows) == 1
+    assert rows[0].intended_complexity == random_instance.metadata["generative_ops"]
+    assert rows[0].generative_ops == random_instance.metadata["generative_ops"]
 
 
 def test_summarize_sweep_returns_aggregate_metrics():
@@ -85,6 +114,7 @@ def test_summarize_sweep_returns_aggregate_metrics():
 
     assert summary
     for row in summary:
+        assert row["intended_complexity"] is not None
         assert 0.0 <= row["solve_rate"] <= 1.0
         assert row["avg_expansions"] >= 0.0
         assert row["median_expansions"] >= 0.0
@@ -102,10 +132,19 @@ def test_summarize_sweep_delta_matches_family_budget_groups():
     ]
 
     summary = summarize_sweep(rows)
-    fam_a_guided = [
+    fam_a_c2_guided = [
         row
         for row in summary
-        if row["family"] == "fam_a" and row["method"] == "guided"
+        if row["family"] == "fam_a"
+        and row["intended_complexity"] == 2
+        and row["method"] == "guided"
+    ][0]
+    fam_a_c3_guided = [
+        row
+        for row in summary
+        if row["family"] == "fam_a"
+        and row["intended_complexity"] == 3
+        and row["method"] == "guided"
     ][0]
     fam_b_guided = [
         row
@@ -113,7 +152,10 @@ def test_summarize_sweep_delta_matches_family_budget_groups():
         if row["family"] == "fam_b" and row["method"] == "guided"
     ][0]
 
-    assert fam_a_guided["guided_minus_heuristic_solve_rate"] == 0.5
+    assert fam_a_c2_guided["count"] == 1
+    assert fam_a_c2_guided["guided_minus_heuristic_solve_rate"] == 0.0
+    assert fam_a_c3_guided["count"] == 1
+    assert fam_a_c3_guided["guided_minus_heuristic_solve_rate"] == 1.0
     assert fam_b_guided["guided_minus_heuristic_solve_rate"] is None
 
 
@@ -121,6 +163,7 @@ def test_summarize_failures_groups_failed_rows():
     rows = [
         SweepRow("heuristic", "b", "a1", "fam_a", 1, 4, 16, False, None, 10, 0.1, 2),
         SweepRow("heuristic", "b", "a2", "fam_a", 1, 4, 16, False, None, 12, 0.1, 2),
+        SweepRow("heuristic", "b", "a4", "fam_a", 1, 4, 16, False, None, 14, 0.1, 3),
         SweepRow("guided", "b", "a3", "fam_a", 1, 4, 16, True, 2, 8, 0.1, 2),
     ]
 
@@ -137,7 +180,18 @@ def test_summarize_failures_groups_failed_rows():
             "failure_count": 2,
             "avg_expansions": 11.0,
             "instance_ids": ["a1", "a2"],
-        }
+        },
+        {
+            "family": "fam_a",
+            "intended_complexity": 3,
+            "method": "heuristic",
+            "beam_width": 1,
+            "candidate_k": 4,
+            "tier2_m": 16,
+            "failure_count": 1,
+            "avg_expansions": 14.0,
+            "instance_ids": ["a4"],
+        },
     ]
 
 

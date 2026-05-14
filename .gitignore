@@ -7,8 +7,10 @@ __pycache__/
 htmlcov/
 
 .venv/
+.venv-hyak-*/
 venv/
 env/
+.cache/
 
 results/
 *.pt

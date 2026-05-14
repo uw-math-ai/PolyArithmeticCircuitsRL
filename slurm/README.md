@@ -1,8 +1,8 @@
 # Slurm Benchmark Jobs
 
 These scripts run `learn-guided-search` benchmark sweeps on CPU nodes. They
-intentionally avoid W&B, containers, GPUs, old `gumbel` logic, and any external
-logging service.
+enable W&B logging by default and intentionally avoid containers, GPUs, old
+`gumbel` logic, and PID waiting.
 
 Outputs go to:
 
@@ -42,14 +42,44 @@ task, and no GPU. Override Slurm resources with `sbatch` flags if the cluster
 requires different account, partition, time, memory, or CPU settings. Do not
 request a GPU unless a future model actually needs it.
 
-The scripts find Python in this order:
+The scripts bootstrap Python inside the Slurm job. They first try to load a Hyak
+Python module, then create/reuse a repo-local venv, and install this package,
+W&B, and PyTorch if they are missing.
 
-1. `$PYTHON_BIN`
-2. `.venv/bin/python`
-3. `python3`
-4. `python`
+Python selection order:
 
-Python 3.10+ is required. Jobs do not install dependencies.
+1. `$HYAK_PYTHON_MODULE`, if set, through `module load`
+2. auto module attempts: `python/3.12`, `python/3.11`, `python/3.10`, `python`
+3. `$PYTHON_BIN`, if set
+4. `python3.13`, `python3.12`, `python3.11`, `python3.10`, `python3`, `python`
+
+Python 3.10+ is required. The default venv is:
+
+```text
+.venv-hyak-<python-binary-name>/
+```
+
+Useful overrides:
+
+```bash
+HYAK_PYTHON_MODULE=python/3.11.4   # exact module if Hyak's default name differs
+VENV_DIR=/gscratch/scrubbed/$USER/lgs-venv
+BOOTSTRAP_VENV=0                   # use selected Python directly; deps must already exist
+PIP_CACHE_DIR=/gscratch/scrubbed/$USER/pip-cache
+```
+
+W&B is enabled by default in the Slurm wrappers, matching the sibling `gumbel`
+launch scripts:
+
+```bash
+ENABLE_WANDB=1
+WANDB_PROJECT=PolyArithmeticCircuitsRL
+WANDB_ENTITY=zengrf-university-of-washington
+WANDB_MODE=online
+```
+
+Set `ENABLE_WANDB=0` or pass `--no-wandb` to disable it, or override
+`WANDB_PROJECT`, `WANDB_ENTITY`, or `WANDB_MODE`.
 
 ## Train And Evaluate
 
@@ -63,6 +93,7 @@ Override settings:
 
 ```bash
 RUN_NAME=server_run_001 \
+ENABLE_WANDB=1 \
 MAX_INSTANCES_PER_FAMILY=100 \
 ROUNDS=8 \
 EPOCHS_PER_ROUND=50 \
@@ -88,6 +119,7 @@ With overrides:
 
 ```bash
 RUN_NAME=heuristic_full_001 \
+ENABLE_WANDB=1 \
 MAX_INSTANCES_PER_FAMILY=100 \
 BEAM_WIDTHS=1,2,4,8,16 \
 CANDIDATE_KS=4,8,16,32,64 \
@@ -107,6 +139,7 @@ With overrides:
 ```bash
 RUN_NAME=guided_full_001 \
 CHECKPOINT=results/server_runs/server_run_001/ranker.pt \
+ENABLE_WANDB=1 \
 LAMBDA_MODEL=1.0 \
 MAX_INSTANCES_PER_FAMILY=100 \
 BEAM_WIDTHS=1,2,4,8,16 \
@@ -160,6 +193,8 @@ PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -
 ## Notes
 
 - The Slurm wrappers are CPU-only by default.
-- There is no W&B, container, PID waiting, or old `gumbel` integration.
+- W&B logging is controlled by `ENABLE_WANDB`; no W&B import happens when it is disabled.
+- There is no container, PID waiting, or old `gumbel` integration.
 - `run_metadata.txt` records the git commit/status, Python/package versions,
-  full command, run parameters, exit code, elapsed seconds, and generated files.
+  W&B settings, full command, run parameters, exit code, elapsed seconds, and
+  generated files.

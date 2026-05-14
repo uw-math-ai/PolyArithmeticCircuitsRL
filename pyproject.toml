@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Exact core abstractions for learned symbolic search."
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["wandb>=0.16"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

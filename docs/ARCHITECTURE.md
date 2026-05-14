@@ -209,7 +209,7 @@ Purpose: server launch wrappers.
 - `guided_sweep.sbatch`
 - `array_sweep.sbatch`
 
-These scripts are CPU-first, write run metadata, and avoid W&B, containers, GPUs, and old `gumbel` logic.
+These scripts are CPU-first, write run metadata, enable W&B logging by default, and avoid containers, GPUs, and old `gumbel` logic.
 
 ## `tests/`
 
