@@ -18,4 +18,6 @@ results/
 *.pth
 *.ckpt
 
+wandb/
+
 .DS_Store

@@ -165,6 +165,14 @@ def test_bootstrap_does_not_extract_validation_preferences_and_guided_traces_ver
         "extract_preferences",
         recording_extract_preferences,
     )
+    # _collect_val_preferences_heuristic legitimately calls extract_preferences on
+    # validation instances for anti-heuristic diagnostics only (never enters training
+    # buffer). Stub it out so the recording below only sees training extractions.
+    monkeypatch.setattr(
+        bootstrap_loop,
+        "_collect_val_preferences_heuristic",
+        lambda *args, **kwargs: [],
+    )
 
     result = run_bootstrap_training(curriculum, config)
     train_ids = {instance.metadata["target_id"] for instance in curriculum.train_instances}
