@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 
 import torch
@@ -29,6 +30,7 @@ class BootstrapConfig:
     lambda_values: tuple[float, ...] = (0.0, 0.25, 0.5, 1.0)
     preference_delta_start: float = 5.0
     preference_delta_end: float = 1.0
+    randomize_labels: bool = False
 
     def __post_init__(self) -> None:
         _require_non_negative_int("num_rounds", self.num_rounds)
@@ -54,6 +56,8 @@ class BootstrapConfig:
             normalized.append(as_float)
             previous = as_float
         self.lambda_values = tuple(normalized)
+        if not isinstance(self.randomize_labels, bool):
+            raise ValueError("randomize_labels must be a bool")
 
 
 @dataclass
@@ -64,6 +68,9 @@ class RoundMetrics:
     total_preferences: int
     train_loss_final: float | None
     train_accuracy_final: float | None
+    anti_heuristic_count: int
+    anti_heuristic_accuracy_final: float | None
+    anti_heuristic_accuracy_val: float | None
     heuristic_val_success_rate: float
     guided_val_success_rate: float
     heuristic_val_avg_best_ops: float | None
@@ -145,6 +152,9 @@ def run_bootstrap_training(
 
         train_loss_final: float | None = None
         train_accuracy_final: float | None = None
+        anti_h_count: int = 0
+        anti_h_acc: float | None = None
+        anti_h_acc_val: float | None = None
         if preference_buffer:
             train_history = train_ranker_on_preferences(
                 ranker,
@@ -158,6 +168,11 @@ def run_bootstrap_training(
             )
             train_loss_final = train_history["loss"][-1]
             train_accuracy_final = train_history["accuracy"][-1]
+            anti_h_count = train_history.get("anti_heuristic_count", 0)
+            anti_h_acc_list = train_history.get("anti_heuristic_accuracy", [])
+            anti_h_acc = anti_h_acc_list[-1] if anti_h_acc_list else None
+            val_prefs = _collect_val_preferences_heuristic(curriculum, config, delta)
+            anti_h_acc_val = _compute_anti_heuristic_accuracy(ranker, encoder, val_prefs)
 
         validation_instances = curriculum.validation_set()
         heuristic_metrics = evaluate_beam_search(
@@ -200,6 +215,9 @@ def run_bootstrap_training(
                 total_preferences=len(preference_buffer),
                 train_loss_final=train_loss_final,
                 train_accuracy_final=train_accuracy_final,
+                anti_heuristic_count=anti_h_count,
+                anti_heuristic_accuracy_final=anti_h_acc,
+                anti_heuristic_accuracy_val=anti_h_acc_val,
                 heuristic_val_success_rate=heuristic_metrics.success_rate,
                 guided_val_success_rate=guided_metrics.success_rate,
                 heuristic_val_avg_best_ops=heuristic_metrics.avg_best_ops,
@@ -228,6 +246,7 @@ def _collect_preferences(
     delta: float,
 ) -> list[PreferenceExample]:
     preferences: list[PreferenceExample] = []
+    rng = random.Random(config.seed + round_idx) if config.randomize_labels else None
     for instance in curriculum.sample_training_instances(round_idx):
         history = beam_search(
             instance,
@@ -238,8 +257,58 @@ def _collect_preferences(
             candidate_k=config.candidate_k,
             tier2_m=config.tier2_m,
         )
+        new_prefs = extract_preferences(history, delta=delta)
+        if rng is not None:
+            for pref in new_prefs:
+                if rng.random() < 0.5:
+                    pref.better, pref.worse = pref.worse, pref.better
+                    pref.return_better, pref.return_worse = pref.return_worse, pref.return_better
+        preferences.extend(new_prefs)
+    return preferences
+
+
+def _collect_val_preferences_heuristic(
+    curriculum: FixedCurriculum,
+    config: BootstrapConfig,
+    delta: float,
+) -> list[PreferenceExample]:
+    preferences: list[PreferenceExample] = []
+    for instance in curriculum.validation_set():
+        history = beam_search(
+            instance,
+            ranker=None,
+            encoder=None,
+            lambda_model=0.0,
+            beam_width=config.beam_width,
+            candidate_k=config.candidate_k,
+            tier2_m=config.tier2_m,
+        )
         preferences.extend(extract_preferences(history, delta=delta))
     return preferences
+
+
+def _compute_anti_heuristic_accuracy(
+    ranker: CandidateRanker,
+    encoder: CandidateFeatureEncoder,
+    preferences: list[PreferenceExample],
+) -> float | None:
+    anti_h = [
+        p for p in preferences
+        if p.metadata.get("better_heuristic_score", 0.0)
+           < p.metadata.get("worse_heuristic_score", 0.0)
+    ]
+    if not anti_h:
+        return None
+    device = next(ranker.parameters()).device
+    better_rows = [encoder.encode(p.instance, p.state, p.better) for p in anti_h]
+    worse_rows = [encoder.encode(p.instance, p.state, p.worse) for p in anti_h]
+    better_feats = torch.tensor(better_rows, dtype=torch.float32, device=device)
+    worse_feats = torch.tensor(worse_rows, dtype=torch.float32, device=device)
+    ranker.eval()
+    with torch.no_grad():
+        b_scores = ranker(better_feats)
+        w_scores = ranker(worse_feats)
+    return float((b_scores > w_scores).float().mean().item())
 
 
 def _require_positive_int(name: str, value: int) -> None:

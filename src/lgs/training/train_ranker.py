@@ -56,11 +56,18 @@ def train_ranker_on_preferences(
         device=device,
     )
 
+    anti_h_flags = [
+        p.metadata.get("better_heuristic_score", 0.0)
+        < p.metadata.get("worse_heuristic_score", 0.0)
+        for p in preferences
+    ]
+    anti_h_count = sum(anti_h_flags)
+
     optimizer = torch.optim.Adam(ranker.parameters(), lr=lr)
     generator = torch.Generator(device="cpu")
     generator.manual_seed(seed)
-    history = {"loss": [], "accuracy": []}
-    _append_metrics(history, ranker, better_features, worse_features, weights, margin)
+    history: dict = {"loss": [], "accuracy": [], "anti_heuristic_accuracy": [], "anti_heuristic_count": anti_h_count}
+    _append_metrics(history, ranker, better_features, worse_features, weights, margin, anti_h_flags, anti_h_count)
 
     n = better_features.shape[0]
     for _ in range(epochs):
@@ -79,7 +86,7 @@ def train_ranker_on_preferences(
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-        _append_metrics(history, ranker, better_features, worse_features, weights, margin)
+        _append_metrics(history, ranker, better_features, worse_features, weights, margin, anti_h_flags, anti_h_count)
 
     return history
 
@@ -131,12 +138,14 @@ def _encode_preferences(
 
 
 def _append_metrics(
-    history: dict[str, list[float]],
+    history: dict,
     ranker: CandidateRanker,
     better_features: torch.Tensor,
     worse_features: torch.Tensor,
     weights: torch.Tensor,
     margin: float,
+    anti_h_flags: list[bool] | None = None,
+    anti_h_count: int = 0,
 ) -> None:
     ranker.eval()
     with torch.no_grad():
@@ -149,5 +158,12 @@ def _append_metrics(
             margin=margin,
         )
         accuracy = (better_scores > worse_scores).float().mean()
+        if anti_h_count > 0 and anti_h_flags is not None:
+            mask = torch.tensor(anti_h_flags, dtype=torch.bool, device=better_scores.device)
+            anti_acc = float((better_scores[mask] > worse_scores[mask]).float().mean().item())
+        else:
+            anti_acc = float("nan")
     history["loss"].append(float(loss.item()))
     history["accuracy"].append(float(accuracy.item()))
+    if "anti_heuristic_accuracy" in history:
+        history["anti_heuristic_accuracy"].append(anti_acc)

@@ -79,6 +79,8 @@ def extract_preferences(
                         "worse_action": _action_string(other.action),
                         "better_tags": tuple(sorted(better.source_tags)),
                         "worse_tags": tuple(sorted(other.source_tags)),
+                        "better_heuristic_score": float(better.heuristic_score),
+                        "worse_heuristic_score": float(other.heuristic_score),
                     },
                 )
             )

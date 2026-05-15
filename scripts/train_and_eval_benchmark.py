@@ -68,6 +68,7 @@ def main() -> None:
             epochs_per_round=args.epochs_per_round,
             batch_size=args.batch_size,
             seed=args.seed,
+            randomize_labels=args.random_labels,
         )
         result = run_bootstrap_training(curriculum, bootstrap_config)
 
@@ -125,6 +126,8 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--field-p", type=int, default=268435399)
     parser.add_argument("--degree-cap", type=int, default=8)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--random-labels", action="store_true",
+                        help="Randomly flip 50%% of preference labels (sanity check for leakage)")
     parser.add_argument("--epochs-per-round", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--train-beam-width", type=int, default=8)
@@ -164,7 +167,7 @@ def _write_json(path: Path, value: object) -> None:
 
 
 def _print_bootstrap_metrics(metrics) -> None:
-    print("round lambda prefs total loss accuracy h_succ g_succ h_exp g_exp")
+    print("round lambda prefs total loss accuracy anti_h_cnt anti_h_acc anti_h_val h_succ g_succ h_exp g_exp")
     for metric in metrics:
         loss = "None" if metric.train_loss_final is None else f"{metric.train_loss_final:.4f}"
         accuracy = (
@@ -172,10 +175,21 @@ def _print_bootstrap_metrics(metrics) -> None:
             if metric.train_accuracy_final is None
             else f"{metric.train_accuracy_final:.4f}"
         )
+        anti_h_acc = (
+            "None"
+            if metric.anti_heuristic_accuracy_final is None
+            else f"{metric.anti_heuristic_accuracy_final:.4f}"
+        )
+        anti_h_val = (
+            "None"
+            if metric.anti_heuristic_accuracy_val is None
+            else f"{metric.anti_heuristic_accuracy_val:.4f}"
+        )
         print(
             f"{metric.round_idx:>5} {metric.lambda_model:>6.2f} "
             f"{metric.num_preferences_added:>5} {metric.total_preferences:>5} "
             f"{loss:>8} {accuracy:>8} "
+            f"{metric.anti_heuristic_count:>10} {anti_h_acc:>10} {anti_h_val:>10} "
             f"{metric.heuristic_val_success_rate:>6.2f} "
             f"{metric.guided_val_success_rate:>6.2f} "
             f"{metric.heuristic_val_avg_expansions:>6.1f} "

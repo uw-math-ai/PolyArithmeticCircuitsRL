@@ -26,6 +26,7 @@ TIER2_MS="${TIER2_MS:-64,128}"
 SEED="${SEED:-0}"
 LAMBDA_MODEL="${LAMBDA_MODEL:-}"
 CHECKPOINT="${CHECKPOINT:-}"
+RANDOM_LABELS="${RANDOM_LABELS:-0}"
 ENABLE_WANDB="${ENABLE_WANDB:-1}"
 WANDB_PROJECT="${WANDB_PROJECT:-PolyArithmeticCircuitsRL}"
 WANDB_ENTITY="${WANDB_ENTITY:-zengrf-university-of-washington}"
@@ -57,6 +58,9 @@ CMD=(
   --output-dir "${OUTPUT_DIR}"
   --seed "${SEED}"
 )
+if [[ "${RANDOM_LABELS}" == "1" ]]; then
+  CMD+=(--random-labels)
+fi
 if [[ "${ENABLE_WANDB}" == "1" ]]; then
   CMD+=(
     --wandb
@@ -108,6 +112,7 @@ PY
   log_kv "tier2_ms" "${TIER2_MS}"
   log_kv "lambda_model" "${LAMBDA_MODEL:-not-used}"
   log_kv "checkpoint" "${CHECKPOINT:-not-used}"
+  log_kv "random_labels" "${RANDOM_LABELS}"
   log_kv "enable_wandb" "${ENABLE_WANDB}"
   log_kv "wandb_project" "${WANDB_PROJECT}"
   log_kv "wandb_entity" "${WANDB_ENTITY}"
