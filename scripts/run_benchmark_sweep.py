@@ -52,6 +52,8 @@ def main() -> None:
             candidate_ks=_parse_int_tuple(args.candidate_ks),
             tier2_ms=_parse_int_tuple(args.tier2_ms),
             lambda_model=args.lambda_model,
+            learned_only=args.learned_only,
+            noise_sigma=args.noise_sigma,
         )
         rows = run_search_sweep(
             benchmark.instances,
@@ -90,6 +92,10 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--candidate-ks", default="4,8,16")
     parser.add_argument("--tier2-ms", default="128")
     parser.add_argument("--lambda-model", type=float, default=1.0)
+    parser.add_argument("--learned-only", action="store_true",
+                        help="Rank candidates by model score alone, ignoring heuristic")
+    parser.add_argument("--noise-sigma", type=float, default=0.0,
+                        help="Std dev of Gaussian noise added to heuristic score (0 = off)")
     parser.add_argument("--checkpoint", type=str, default="")
     parser.add_argument("--output-dir", type=str, default="results")
     add_wandb_args(parser)

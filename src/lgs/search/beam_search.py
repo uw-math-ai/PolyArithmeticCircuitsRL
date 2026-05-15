@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import random as _random
 from typing import Any, Hashable
 
 import torch
@@ -24,12 +26,15 @@ def beam_search(
     ranker: Any | None = None,
     encoder: Any | None = None,
     lambda_model: float = 0.0,
+    learned_only: bool = False,
     beam_width: int = 16,
     candidate_k: int = 64,
     tier2_m: int = 128,
     max_depth: int | None = None,
     exploration_eps: float = 0.0,
     stop_on_first_success: bool = False,
+    noise_sigma: float = 0.0,
+    noise_base_seed: int = 0,
 ) -> SearchHistory:
     _validate_inputs(
         instance=instance,
@@ -41,6 +46,8 @@ def beam_search(
         ranker=ranker,
         encoder=encoder,
         lambda_model=lambda_model,
+        learned_only=learned_only,
+        noise_sigma=noise_sigma,
     )
     depth_limit = instance.op_budget if max_depth is None else max_depth
     history = SearchHistory(instance=instance)
@@ -69,6 +76,9 @@ def beam_search(
                 ranker=ranker,
                 encoder=encoder,
                 lambda_model=float(lambda_model),
+                learned_only=learned_only,
+                noise_sigma=float(noise_sigma),
+                noise_base_seed=noise_base_seed,
             )
             candidates = sorted(candidates, key=_candidate_sort_key)
             for candidate in candidates:
@@ -109,6 +119,12 @@ def _score_next_state(candidate_score: float, next_state: CircuitState) -> float
     return candidate_score - STATE_COST_ALPHA * next_state.num_ops()
 
 
+def _stable_seed(*parts: object, base: int = 0) -> int:
+    text = "|".join(str(p) for p in parts)
+    digest = hashlib.blake2b(text.encode(), digest_size=8).digest()
+    return (int.from_bytes(digest, "little") + base) % (2 ** 32)
+
+
 def _score_candidates_with_model(
     *,
     instance: ProblemInstance,
@@ -117,7 +133,24 @@ def _score_candidates_with_model(
     ranker: Any | None,
     encoder: Any | None,
     lambda_model: float,
+    learned_only: bool = False,
+    noise_sigma: float = 0.0,
+    noise_base_seed: int = 0,
 ) -> None:
+    if ranker is None and noise_sigma > 0.0:
+        state_sig = tuple((a.op, a.i, a.j) for a in state.actions)
+        instance_id = str(instance.metadata.get("id", instance.metadata.get("target_id", "")))
+        for candidate in candidates:
+            seed = _stable_seed(
+                instance_id,
+                state_sig,
+                candidate.action.op, candidate.action.i, candidate.action.j,
+                base=noise_base_seed,
+            )
+            candidate.model_score = _random.Random(seed).gauss(0.0, noise_sigma)
+            candidate.total_score = candidate.heuristic_score + candidate.model_score
+        return
+
     if lambda_model == 0.0 or ranker is None:
         for candidate in candidates:
             candidate.model_score = 0.0
@@ -133,10 +166,13 @@ def _score_candidates_with_model(
                 features = encoder.encode(instance, state, candidate)
                 feature_tensor = torch.tensor([features], dtype=torch.float32, device=device)
                 candidate.model_score = float(ranker(feature_tensor).item())
-                candidate.total_score = (
-                    candidate.heuristic_score
-                    + lambda_model * candidate.model_score
-                )
+                if learned_only:
+                    candidate.total_score = candidate.model_score
+                else:
+                    candidate.total_score = (
+                        candidate.heuristic_score
+                        + lambda_model * candidate.model_score
+                    )
     finally:
         if was_training:
             ranker.train()
@@ -185,6 +221,8 @@ def _validate_inputs(
     ranker: Any | None,
     encoder: Any | None,
     lambda_model: float,
+    learned_only: bool = False,
+    noise_sigma: float = 0.0,
 ) -> None:
     if not isinstance(instance, ProblemInstance):
         raise TypeError("instance must be a ProblemInstance")
@@ -208,5 +246,13 @@ def _validate_inputs(
         raise ValueError("ranker is required when lambda_model > 0")
     if float(lambda_model) > 0.0 and encoder is None:
         raise ValueError("encoder is required when lambda_model > 0")
+    if not isinstance(learned_only, bool):
+        raise TypeError("learned_only must be a bool")
+    if learned_only and float(lambda_model) == 0.0:
+        raise ValueError("learned_only requires lambda_model > 0")
+    if isinstance(noise_sigma, bool) or not isinstance(noise_sigma, (int, float)):
+        raise ValueError("noise_sigma must be numeric")
+    if float(noise_sigma) < 0.0:
+        raise ValueError("noise_sigma must be >= 0")
     initial = CircuitState.initial(instance)
     require_same_domain(instance.target, initial.nodes[0])

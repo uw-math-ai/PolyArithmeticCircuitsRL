@@ -1,6 +1,6 @@
-# run_namemodecheckpointmax_instances_per_familybeam_widthscandidate_kstier2_mslambda_model
-guided_bw1guidedresults/server_runs/server_train_eval_full_001/ranker.pt10014,8,16,32,6464,1281.0
-guided_bw2guidedresults/server_runs/server_train_eval_full_001/ranker.pt10024,8,16,32,6464,1281.0
-guided_bw4guidedresults/server_runs/server_train_eval_full_001/ranker.pt10044,8,16,32,6464,1281.0
-guided_bw8guidedresults/server_runs/server_train_eval_full_001/ranker.pt10084,8,16,32,6464,1281.0
-guided_bw16guidedresults/server_runs/server_train_eval_full_001/ranker.pt100164,8,16,32,6464,1281.0
+# run_name	mode	checkpoint	max_instances_per_family	beam_widths	candidate_ks	tier2_ms	lambda_model
+guided_bw1	guided	results/server_runs/server_train_eval_full_001/ranker.pt	100	1	4,8,16,32,64	64,128	1.0
+guided_bw2	guided	results/server_runs/server_train_eval_full_001/ranker.pt	100	2	4,8,16,32,64	64,128	1.0
+guided_bw4	guided	results/server_runs/server_train_eval_full_001/ranker.pt	100	4	4,8,16,32,64	64,128	1.0
+guided_bw8	guided	results/server_runs/server_train_eval_full_001/ranker.pt	100	8	4,8,16,32,64	64,128	1.0
+guided_bw16	guided	results/server_runs/server_train_eval_full_001/ranker.pt	100	16	4,8,16,32,64	64,128	1.0

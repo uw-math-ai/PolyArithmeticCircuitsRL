@@ -62,12 +62,11 @@ def make_structured_benchmark(
             make_sum_square_plus_linear_instance(("x", "y", "z"), "w", field_p=field_p, degree_cap=degree_cap, op_budget=5),
             make_product_of_sums_instance(("a", "b"), ("a", "c"), field_p=field_p, degree_cap=degree_cap, op_budget=3),
         ],
-        "random_circuit": [
-            make_random_circuit_instance(3, 3, field_p=field_p, degree_cap=degree_cap, seed=101),
-            make_random_circuit_instance(4, 4, field_p=field_p, degree_cap=degree_cap, seed=102),
-            make_random_circuit_instance(5, 5, field_p=field_p, degree_cap=degree_cap, seed=103),
-            make_random_circuit_instance(5, 6, field_p=field_p, degree_cap=degree_cap, seed=104),
-        ],
+        "random_circuit": _make_random_circuit_instances(
+            count=4 if max_instances_per_family is None else max(4, max_instances_per_family),
+            field_p=field_p,
+            degree_cap=degree_cap,
+        ),
     }
 
     instances: list[ProblemInstance] = []
@@ -89,6 +88,41 @@ def make_structured_benchmark(
         degree_cap=degree_cap,
         instances=instances,
     )
+
+
+_BASE_RANDOM_CIRCUITS: tuple[tuple[int, int, int], ...] = (
+    (3, 3, 101),
+    (4, 4, 102),
+    (5, 5, 103),
+    (5, 6, 104),
+)
+
+
+def _make_random_circuit_instances(
+    count: int,
+    *,
+    field_p: int,
+    degree_cap: int,
+) -> list[ProblemInstance]:
+    # The first 4 entries are fixed to preserve stable instance IDs across runs.
+    # Extra instances beyond the base 4 use incrementing seeds.
+    specs: list[tuple[int, int, int]] = list(_BASE_RANDOM_CIRCUITS[:count])
+    next_seed = _BASE_RANDOM_CIRCUITS[-1][2] + 1
+    for i in range(len(specs), count):
+        num_vars = 3 + (i % 3)
+        num_ops = 3 + (i % 4)
+        specs.append((num_vars, num_ops, next_seed))
+        next_seed += 1
+    return [
+        make_random_circuit_instance(
+            num_vars,
+            num_ops,
+            field_p=field_p,
+            degree_cap=degree_cap,
+            seed=seed,
+        )
+        for num_vars, num_ops, seed in specs
+    ]
 
 
 def _with_benchmark_metadata(

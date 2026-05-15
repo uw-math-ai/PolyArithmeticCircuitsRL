@@ -21,6 +21,8 @@ class SweepConfig:
     candidate_ks: tuple[int, ...] = (4, 8, 16, 32, 64)
     tier2_ms: tuple[int, ...] = (128,)
     lambda_model: float = 1.0
+    learned_only: bool = False
+    noise_sigma: float = 0.0
 
     def __post_init__(self) -> None:
         _validate_positive_int_tuple("beam_widths", self.beam_widths)
@@ -33,6 +35,12 @@ class SweepConfig:
             raise ValueError("lambda_model must be numeric")
         if float(self.lambda_model) < 0.0:
             raise ValueError("lambda_model must be non-negative")
+        if not isinstance(self.learned_only, bool):
+            raise ValueError("learned_only must be a bool")
+        if isinstance(self.noise_sigma, bool) or not isinstance(self.noise_sigma, (int, float)):
+            raise ValueError("noise_sigma must be numeric")
+        if float(self.noise_sigma) < 0.0:
+            raise ValueError("noise_sigma must be non-negative")
 
 
 @dataclass
@@ -72,13 +80,14 @@ def run_search_sweep(
                     rows.append(
                         _run_one(
                             instance,
-                            method="heuristic",
+                            method="noisy_heuristic" if config.noise_sigma > 0.0 else "heuristic",
                             beam_width=beam_width,
                             candidate_k=candidate_k,
                             tier2_m=tier2_m,
                             ranker=None,
                             encoder=None,
                             lambda_model=0.0,
+                            noise_sigma=config.noise_sigma,
                         )
                     )
                     if ranker is not None and encoder is not None:
@@ -92,6 +101,7 @@ def run_search_sweep(
                                 ranker=ranker,
                                 encoder=encoder,
                                 lambda_model=config.lambda_model,
+                                learned_only=config.learned_only,
                             )
                         )
     return rows
@@ -215,6 +225,8 @@ def _run_one(
     ranker: CandidateRanker | None,
     encoder: CandidateFeatureEncoder | None,
     lambda_model: float,
+    learned_only: bool = False,
+    noise_sigma: float = 0.0,
 ) -> SweepRow:
     start = time.perf_counter()
     history = beam_search(
@@ -222,9 +234,11 @@ def _run_one(
         ranker=ranker,
         encoder=encoder,
         lambda_model=lambda_model,
+        learned_only=learned_only,
         beam_width=beam_width,
         candidate_k=candidate_k,
         tier2_m=tier2_m,
+        noise_sigma=noise_sigma,
     )
     runtime_sec = time.perf_counter() - start
     best = history.best_finished()
