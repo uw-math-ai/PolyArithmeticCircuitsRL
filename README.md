@@ -1,215 +1,266 @@
 # Decomposition-Search RL for Arithmetic Circuit Discovery
 
-This repository contains an MVP implementation of the split-based arithmetic
-circuit discovery program described in
-[`AlphaZero RL Circuit Discovery Plan.md`](./AlphaZero%20RL%20Circuit%20Discovery%20Plan.md).
+This branch implements a top-down reinforcement-learning stack for discovering
+low-cost arithmetic circuits for sparse polynomials over finite fields.
 
-The current implementation focuses on the early phases of the roadmap:
+The central idea is to build a circuit by repeatedly decomposing a polynomial
+`f` into additive split pieces `f = g + h`. Each split piece is automatically
+factored over a finite field, cheap factored parts are rebuilt immediately, and
+unresolved factors are pushed onto a frontier for later expansion. The learner
+is trained to choose splits that reduce the final circuit cost.
 
-- sparse finite-field polynomial arithmetic with canonical hashing,
-- finite-field factorization through a CAS-backed Sage worker with SymPy fallback,
-- baseline and rebuild cost models,
-- split proposals, decomposition environment, and memoized AND/OR search,
-- synthetic trace generators and lightweight training/evaluation utilities.
+## What Is Included
 
-## Quick start
+- Sparse finite-field polynomial arithmetic with canonical hashing.
+- Finite-field factorization through a persistent Sage worker, with SymPy
+  fallback when Sage is unavailable.
+- A split-based decomposition environment, `DecompEnv`.
+- Candidate split generation from support partitions, Horner pivots, common
+  factors, family templates, random masks, and factorizable-library matches.
+- A live `FactorizableLibrary` of useful discovered factorizations, including
+  exact/scalar/permutation subset matching.
+- Memoized AND/OR PUCT search over decomposition traces.
+- A policy/value model for variable-sized split candidate sets.
+- Supervised warm-start, search distillation, prioritized replay, elite
+  self-imitation, and PPO/PPO+MCTS fine-tuning.
+- Evaluation utilities against multiple closed-form/search baselines.
+
+## Quick Start
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e '.[dev]'
+pip install -e '.[train,dev]'
 pytest
 ```
 
-## Running on a cloud machine
+For a CPU-only development setup, `pip install -e '.[dev]'` is enough for the
+core symbolic pipeline and tests. The `train` extra installs PyTorch and W&B.
 
-The fastest path on a fresh Linux VM (Ubuntu 22.04 / 24.04, AWS / GCP / Lambda
-/ vast.ai / RunPod / etc.) is:
+## Optional Sage CAS Setup
 
-```bash
-git clone https://github.com/uw-math-ai/PolyArithmeticCircuitsRL.git
-cd PolyArithmeticCircuitsRL
-git checkout top-down-branch
-./scripts/setup_cloud.sh
-```
-
-The script creates `.venv/`, installs PyTorch (CPU build by default) plus the
-`[train,dev]` extras, and runs `pytest` as a smoke test. It is idempotent — re-run
-to upgrade dependencies. Flags:
-
-- `--gpu` — install the CUDA 12.1 PyTorch wheel instead of CPU.
-- `--with-sage` — also bootstrap the optional Sage CAS environment via
-  `scripts/setup_cas_env.sh` (slower but recommended for serious training; the
-  SymPy fallback works without it).
-- `--skip-tests` — skip the pytest smoke run.
-
-### Train PPO + MCTS
-
-After setup, activate the venv and launch a short run:
-
-```bash
-source .venv/bin/activate
-python scripts/run_ppo_finetune.py --use-mcts --iterations 10 --seed 0
-```
-
-This runs AlphaZero-style PPO on the split-based decomposition environment:
-the policy proposes additive splits `f = g + h`, the environment auto-factors
-each half via `FiniteFieldFactorizer` (backed by `FactorizableLibrary`), and an
-`AndOrSearch` rollout at each step produces an improved policy target that is
-distilled into the model alongside the clipped PPO surrogate.
-
-Key CLI flags (full list: `python scripts/run_ppo_finetune.py --help`):
-
-| Flag | Default | Meaning |
-| --- | --- | --- |
-| `--prime` / `--variables` | `3` / `x y` | Base field and variable names |
-| `--iterations` | `50` | Number of PPO update iterations |
-| `--rollouts-per-update` | `8` | Episodes collected before each update |
-| `--candidates-per-step` | `16` | Top-k splits proposed per state |
-| `--library-reward-weight` | `1.0` | Bonus for hitting a `FactorizableLibrary` entry |
-| `--use-mcts` | off | Enable AlphaZero-style MCTS guidance |
-| `--mcts-simulations` | `32` | PUCT rollouts per action step (MCTS only) |
-| `--mcts-distill-coef` | `1.0` | Weight on the visit-distribution KL term |
-| `--checkpoint-in` | — | Warm-start from a search-distill checkpoint |
-| `--checkpoint-out` | `artifacts/ppo/finetuned.pt` | Where to save the trained network |
-| `--metrics-out` | `artifacts/ppo/finetuned.metrics.jsonl` | Per-iteration JSONL metrics |
-
-For a detached long-running job on a cloud machine:
-
-```bash
-nohup setsid /bin/bash -lc \
-  'cd $PWD; source .venv/bin/activate; \
-   python scripts/run_ppo_finetune.py --use-mcts --iterations 1000 \
-     --checkpoint-out artifacts/ppo_long.pt \
-     --metrics-out artifacts/ppo_long.metrics.jsonl' \
-  > artifacts/ppo_long.log 2>&1 </dev/null &
-```
-
-`nohup setsid` is required on some cloud Linux images — plain `nohup &` exits
-when the parent shell returns.
-
-## CAS Environment
-
-The factorizer auto-detects a Sage CAS environment at `.cas_env/bin/python` and
-uses a persistent helper subprocess for multivariate factorization. If that
-environment is unavailable, the code falls back to the SymPy prototype backend
-(used by all the tests; works for the PPO+MCTS demo above).
-
-To create the Sage environment locally:
+The factorizer automatically looks for a Sage-capable Python at
+`.cas_env/bin/python`. If it exists, multivariate factorization is handled by a
+persistent helper process. If it does not exist, the code falls back to SymPy,
+which is enough for tests and small local runs.
 
 ```bash
 ./scripts/setup_cas_env.sh
 ```
 
-## Scripts
+## Core Architecture
 
-- `scripts/setup_cloud.sh` — one-shot bootstrap for a fresh Linux/macOS VM
-- `scripts/setup_cas_env.sh` — optional Sage CAS environment via micromamba
-- `scripts/run_ppo_finetune.py` — PPO (and optional PPO+MCTS) fine-tuning on `DecompEnv`
-- `scripts/generate_pretrain_dataset.py`
-- `scripts/queue_strategic_fixed_prime_v10_resume_nohup.sh`
-- `scripts/start_strategic_fixed_prime_v10_resume_nohup.sh`
-- `scripts/start_strategic_fixed_prime_v9_nohup.sh`
-- `scripts/start_strategic_fixed_prime_v8_nohup.sh`
-- `scripts/launch_strategic_fixed_prime_v7.sh`
-- `scripts/run_supervised_pretrain.py`
-- `scripts/run_search_distill.py`
-- `scripts/run_full_experiment.py`
-- `scripts/run_training_smoke.py`
-- `scripts/run_eval_suite.py`
-- `scripts/demo_environment.py`
+### Environment
 
-The training stack defaults to a heuristic policy/value model so the symbolic
-pipeline works immediately. Install the optional `train` extra to experiment
-with the Torch MLP baseline in `src/decomp_rl/model.py`.
+`src/decomp_rl/decomp_env.py` defines `DecompEnv`. An episode starts with a
+frontier containing the target polynomial. At each step:
 
-### PPO + MCTS
+1. The active frontier polynomial is selected.
+2. The policy chooses an additive split `f = g + h`.
+3. `FiniteFieldFactorizer` factors `g` and `h`.
+4. Rebuild costs are charged for factored pieces.
+5. unresolved child factors are added back to the frontier.
+6. The reward is the cost saving against the current baseline estimate.
 
-`src/decomp_rl/train_ppo.py` implements the split-point-built circuits theory
-as an RL trainer. With `use_mcts=False` it is plain PPO (clipped surrogate +
-GAE + value MSE + entropy). With `use_mcts=True` it runs `AndOrSearch` at every
-action step using the current network as prior/value, samples from the visit
-distribution, and adds a cross-entropy distillation term to the loss
-(AlphaZero-style). Both modes consume `info.library_reward` from `DecompEnv` so
-the live `FactorizableLibrary` shapes reward and, in MCTS mode, also biases
-candidate proposal scoring.
+The environment memoizes solved subproblems, deduplicates frontier children, and
+can add an extra shaping reward when a split piece hits the `FactorizableLibrary`.
 
-## Repo Layout
+### Policy/Value Model
 
-- `src/decomp_rl/`: core library code for polynomials, factorization, search, generators, and training
-- `scripts/run_full_experiment.py`: main end-to-end training entrypoint
-- `scripts/start_strategic_fixed_prime_v10_resume_nohup.sh`: resume from the last strong stage-A checkpoint and relaunch detached
-- `scripts/queue_strategic_fixed_prime_v10_resume_nohup.sh`: wait for GPU memory to free up, then launch the resumed detached run
-- `scripts/start_strategic_fixed_prime_v8_nohup.sh`: validated detached GPU launcher
-- `artifacts/<run_id>/`: logs, config, checkpoints, and metrics for each run
-
-## Detached GPU Training
-
-The validated detached-launch pattern on this machine is:
-
-```bash
-nohup setsid /bin/bash -lc 'cd /home/ec2-user/Polynomial2; exec env ... .venv/bin/python scripts/run_full_experiment.py ...' > artifacts/<run_id>/nohup.log 2>&1 </dev/null &
-```
-
-Plain `nohup ... &` was not sufficient in this environment; the trainer would
-exit immediately after the parent shell returned. Using `nohup` together with
-`setsid` keeps the training process alive and produces a reliable log file.
-
-For the current fixed-prime large run, use the checked-in launcher:
-
-```bash
-./scripts/start_strategic_fixed_prime_v10_resume_nohup.sh
-```
-
-It writes the detached process id to `artifacts/<run_id>/nohup.pid` and the
-live log to `artifacts/<run_id>/nohup.log`.
-
-The runner also supports checkpoint resume directly:
-
-```bash
-HOME=/home/ec2-user/Polynomial2/.sage_home \
-XDG_CACHE_HOME=/home/ec2-user/Polynomial2/.sage_home/.cache \
-.venv/bin/python scripts/run_full_experiment.py \
-  --resume-checkpoint artifacts/<old_run>/checkpoints/stage_a.pt \
-  --output-dir artifacts/<new_run> ...
-```
-
-The current resume path is exact for `stage_a.pt` / `best_holdout.pt` from
-cycle 0 because the initial supervised set, holdout set, and replay bootstrap
-are regenerated deterministically from the saved config. Resuming from later
-cycle checkpoints reloads model weights but rebuilds replay and elite state
-approximately.
-
-W&B is now configured to default to:
+`src/decomp_rl/model.py` contains the model interface and Torch MLP baseline.
+The action space is variable-sized: each state exposes a fresh list of candidate
+splits. For each candidate, the network receives handcrafted features
 
 ```text
-p-agi/PolyArithmeticCircuitsRL
+[target_features, g_features, h_features]
 ```
 
-The detached `v10` launcher reads credentials from `/home/ec2-user/.netrc`, so
-it should come up online automatically as long as that file contains a valid
-API key.
+and emits one policy logit. A separate value head predicts normalized expected
+improvement for the target polynomial.
 
-If the GPU is busy with another job, queue the detached relaunch instead of
-starting immediately:
+### Search
+
+`src/decomp_rl/andor_search.py` implements memoized AND/OR search with
+cost-minimizing PUCT selection. Nodes are polynomials, actions are additive
+splits, and child nodes are unresolved factors produced after factoring the
+split pieces. Search returns:
+
+- the best cost found,
+- the best decomposition trace,
+- the root candidate list,
+- root visit-count policy targets,
+- value estimates and search/cache statistics.
+
+### Factorizable Library
+
+`src/decomp_rl/factor_library.py` stores polynomials with confirmed non-trivial
+factorizations that save at least one operation over direct construction. The
+library can match entries inside a target polynomial by exact term inclusion,
+finite-field scalar multiples, and variable permutations. Matching can guide
+split proposals, and exact library hits can shape RL reward.
+
+### Baselines
+
+`src/decomp_rl/baselines.py` defines `BaselineBundle`, used for reward shaping
+and evaluation. It takes the minimum cost across:
+
+- sparse direct construction,
+- the simple baseline Horner upper bound,
+- multivariate/gap-aware Horner,
+- common-subexpression style shared powers,
+- memoized top-down power-pivot search.
+
+PPO can apply a terminal bonus when a completed episode beats this five-baseline
+minimum.
+
+## Training Modes
+
+### Full ExIt-Style Training
+
+The main training entrypoint is:
 
 ```bash
-BLOCKING_PID=<other_gpu_pid> \
-MIN_FREE_MIB=70000 \
-./scripts/queue_strategic_fixed_prime_v10_resume_nohup.sh
+python scripts/run_full_experiment.py --help
 ```
 
-For an interactive foreground run, the canonical entrypoint is:
+The full loop is:
+
+1. Generate synthetic curriculum examples from planted factorizations, Horner
+   forms, elementary symmetric polynomials, and exact-small decompositions.
+2. Train a supervised policy/value model from these traces.
+3. Run `AndOrSearch` on curriculum targets using the current model as prior and
+   value guide.
+4. Distill root search policies and values back into supervised examples.
+5. Mix recent search-distill examples, prioritized replay, elite traces, and
+   fresh synthetic examples.
+6. Continue training, evaluate holdout targets, log metrics, and checkpoint.
+
+Useful outputs live under `artifacts/<run_id>/`:
+
+- `config.json`
+- `metrics.jsonl`
+- `checkpoints/stage_a.pt`
+- `checkpoints/cycle_NNN.pt`
+- `checkpoints/best_holdout.pt`
+- `checkpoints/final.pt`
+
+Checkpoint payloads include model weights, metadata, timestamp, and, when
+available, optimizer state for resume.
+
+### PPO and PPO+MCTS Fine-Tuning
+
+For a short PPO+MCTS run:
 
 ```bash
-HOME=/home/ec2-user/Polynomial2/.sage_home \
-XDG_CACHE_HOME=/home/ec2-user/Polynomial2/.sage_home/.cache \
-.venv/bin/python scripts/run_full_experiment.py ...
+python scripts/run_ppo_finetune.py --use-mcts --iterations 10 --seed 0
 ```
 
-Cycle search is now run with a fresh search/factorizer instance per target plus
-target-level progress logging, which avoids silent state buildup across the
-whole target batch and makes failures much easier to localize. Training batches
-are also packed once per phase instead of rebuilding feature tensors every
-epoch, and the trainer can cache that packed dataset on GPU to reduce host-side
-stalling during larger CUDA runs.
+Plain PPO samples from the network policy over the current candidate split set.
+PPO+MCTS runs `AndOrSearch` at each action step, samples from the root visit
+distribution, and adds a cross-entropy distillation term from MCTS visits to the
+PPO loss.
+
+Important flags:
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--iterations` | `50` | PPO update iterations |
+| `--rollouts-per-update` | `8` | Episodes before each update |
+| `--candidates-per-step` | `16` | Split candidates per active polynomial |
+| `--library-reward-weight` | `1.0` | Weight for factorizable-library reward |
+| `--use-mcts` | off | Enable AlphaZero-style MCTS guidance |
+| `--mcts-simulations` | `32` | PUCT simulations per action step |
+| `--mcts-distill-coef` | `1.0` | MCTS policy distillation weight |
+| `--checkpoint-in` | unset | Warm-start checkpoint |
+| `--checkpoint-out` | `artifacts/ppo/finetuned.pt` | Output checkpoint |
+
+## Evaluation
+
+Evaluate checkpoints on a fixed 20-polynomial suite:
+
+```bash
+python scripts/evaluate_checkpoints.py \
+  --checkpoint-dir artifacts/<run_id>/checkpoints \
+  --search-sims 96
+```
+
+The evaluator reports greedy rollout and `AndOrSearch` costs for each
+checkpoint. A run is counted as successful on a polynomial when its discovered
+cost is less than or equal to the `BaselineBundle` minimum.
+
+The full training loop also logs a uniform random split-policy evaluator. This
+baseline samples random candidates from the same proposal set, rolls out for a
+bounded number of split steps, then directly solves any remaining frontier
+polynomials. Metrics appear in `metrics.jsonl` and W&B as `holdout_random/*`
+and `cycle_random/*`; tune it with `--random-rollouts-per-target`,
+`--random-rollout-max-steps`, and `--random-rollout-candidates`.
+
+## W&B Logging
+
+`scripts/run_full_experiment.py` logs to W&B when the `train` extra is installed
+and W&B credentials are available. Defaults:
+
+```text
+entity:  p-agi
+project: PolyArithmeticCircuitsRL
+mode:    auto
+```
+
+For a cluster run, set one of these before submission:
+
+```bash
+export WANDB_API_KEY=<your-key>
+# or run once in the same environment:
+wandb login
+```
+
+The trainer writes local metrics regardless of W&B status. If W&B initialization
+fails in `auto` mode, it falls back to offline/disabled behavior and writes a
+warning file in the run directory.
+
+## Slurm Training
+
+The repository includes Slurm launchers for long runs:
+
+- `scripts/run_hyak.slurm` for Hyak-style Slurm environments.
+- `scripts/run_tilicum.slurm` for UW Tilicum. Tilicum uses QoS instead of
+  Klone-style account/partition selection, and jobs must request at least one
+  GPU.
+
+Typical submission shape:
+
+```bash
+RUN_ID=decomp-rl-tilicum-001 \
+OUT_DIR=/path/to/artifacts/decomp-rl-tilicum-001 \
+WANDB_MODE=online \
+WANDB_API_KEY=<your-key> \
+WANDB_ENTITY=p-agi \
+WANDB_PROJECT=PolyArithmeticCircuitsRL \
+sbatch scripts/run_tilicum.slurm
+```
+
+Use a stable `OUT_DIR` for preemptible or requeued jobs. The Slurm launcher
+auto-detects the newest `cycle_NNN.pt` in `OUT_DIR/checkpoints/` and resumes
+from it.
+
+The Tilicum launcher defaults to `--qos=normal`, `--gres=gpu:1`,
+`--cpus-per-task=8`, `--mem=200G`, and `--time=24:00:00`. Set `WANDB_API_KEY`
+or run `wandb login` before submitting with `WANDB_MODE=online`; otherwise the
+job exits before training starts so missing W&B credentials are not missed.
+
+## Repository Layout
+
+- `src/decomp_rl/polynomial.py`: sparse polynomial representation.
+- `src/decomp_rl/factor_fp.py`: finite-field factorization and Sage worker.
+- `src/decomp_rl/factor_library.py`: factorizable polynomial library.
+- `src/decomp_rl/split_proposals.py`: candidate split generation.
+- `src/decomp_rl/decomp_env.py`: RL decomposition environment.
+- `src/decomp_rl/andor_search.py`: memoized AND/OR PUCT search.
+- `src/decomp_rl/model.py`: heuristic and Torch policy/value models.
+- `src/decomp_rl/evaluate.py`: search, supervision, and random-rollout metrics.
+- `src/decomp_rl/train_supervised.py`: supervised policy/value training.
+- `src/decomp_rl/train_search_distill.py`: search distillation and elite traces.
+- `src/decomp_rl/train_ppo.py`: PPO and PPO+MCTS fine-tuning.
+- `scripts/run_full_experiment.py`: main end-to-end training loop.
+- `scripts/evaluate_checkpoints.py`: fixed-suite checkpoint evaluation.
+- `tests/`: regression tests for the symbolic, search, and training stack.

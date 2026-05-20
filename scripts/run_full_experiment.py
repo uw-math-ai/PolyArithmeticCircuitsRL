@@ -6,11 +6,15 @@ from __future__ import annotations
 import argparse
 import gc
 import json
+import multiprocessing
 import os
 import time
+from collections import Counter
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from random import Random
+from typing import Callable
 
 import torch
 
@@ -18,7 +22,12 @@ from decomp_rl.andor_search import AndOrSearch
 from decomp_rl.baseline_cost import BaselineCostModel
 from decomp_rl.config import SearchConfig
 from decomp_rl.elite_buffer import EliteBuffer
-from decomp_rl.evaluate import summarize_search_results, summarize_supervised
+from decomp_rl.evaluate import (
+    evaluate_random_rollouts,
+    summarize_search_results,
+    summarize_supervised,
+)
+from decomp_rl.factor_fp import FiniteFieldFactorizer
 from decomp_rl.family_generators import (
     elementary_symmetric_example,
     exact_small_example,
@@ -63,16 +72,25 @@ def main() -> None:
     parser.add_argument("--recent-distill-sample-size", type=int, default=24)
     parser.add_argument("--replay-sample-size", type=int, default=24)
     parser.add_argument("--elite-sample-size", type=int, default=16)
+    parser.add_argument("--elite-max-training-examples", type=int, default=4096)
+    parser.add_argument("--elite-max-nodes-per-trace", type=int, default=64)
     parser.add_argument("--synthetic-sample-size", type=int, default=24)
+    parser.add_argument("--synthetic-workers", type=int, default=1)
+    parser.add_argument("--synthetic-progress-interval", type=int, default=512)
+    parser.add_argument("--synthetic-factor-cache-clear-interval", type=int, default=512)
     parser.add_argument("--replay-capacity", type=int, default=2048)
     parser.add_argument("--elite-capacity", type=int, default=256)
     parser.add_argument("--supervised-epochs", type=int, default=12)
     parser.add_argument("--cycle-epochs", type=int, default=6)
+    parser.add_argument("--min-mixed-examples", type=int, default=0)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--cycle-learning-rate", type=float, default=0.0)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument("--value-loss-weight", type=float, default=0.25)
     parser.add_argument("--search-simulations", type=int, default=96)
+    parser.add_argument("--random-rollouts-per-target", type=int, default=1)
+    parser.add_argument("--random-rollout-max-steps", type=int, default=32)
+    parser.add_argument("--random-rollout-candidates", type=int, default=16)
     parser.add_argument("--cycle-search-retries", type=int, default=1)
     parser.add_argument("--cycle-search-fresh-search-per-target", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--cycle-search-progress-interval", type=int, default=8)
@@ -181,6 +199,14 @@ def main() -> None:
         max_inner_support=args.curriculum_max_inner_support,
     )
     holdout_targets = [example.target for example in holdout_examples]
+    holdout_random_eval = evaluate_random_policy(
+        holdout_targets,
+        baseline_model,
+        rollouts_per_target=args.random_rollouts_per_target,
+        seed=args.seed + 4242,
+        k_candidates=args.random_rollout_candidates,
+        max_steps=args.random_rollout_max_steps,
+    )
 
     supervised_training = make_training_examples(initial_examples)
     for example in supervised_training:
@@ -209,7 +235,9 @@ def main() -> None:
         wrapper = TorchPolicyValueWrapper(network, device=resume_device)
         metadata = checkpoint["metadata"]
         best_holdout = resume_holdout_eval(metadata)
-        best_cycle = int(metadata.get("source_cycle", 0) or 0)
+        best_cycle = int(
+            metadata.get("source_cycle", metadata.get("cycle", 0)) or 0
+        )
         start_cycle = max(1, best_cycle + 1)
         current_optimizer_state = checkpoint.get("optimizer_state_dict")
         print(
@@ -281,6 +309,7 @@ def main() -> None:
                 "supervised_after": summarize_supervised(trained.final_metrics),
                 "holdout_before": holdout_before,
                 "holdout_after": holdout_after,
+                "holdout_random": holdout_random_eval,
                 "batch_size": trained.batch_size_stats.__dict__,
             },
             optimizer_state_dict=trained.optimizer_state_dict,
@@ -305,6 +334,7 @@ def main() -> None:
                 "supervised_after": summarize_supervised(trained.final_metrics),
                 "holdout_before": holdout_before,
                 "holdout_after": holdout_after,
+                "holdout_random": holdout_random_eval,
                 "replay_size": len(replay),
                 "elite_size": len(elite),
                 "wandb_mode": wandb_mode,
@@ -321,6 +351,7 @@ def main() -> None:
                 "supervised_after": summarize_supervised(trained.final_metrics),
                 "holdout_before": holdout_before,
                 "holdout_after": holdout_after,
+                "holdout_random": holdout_random_eval,
                 "replay_size": len(replay),
                 "elite_size": len(elite),
                 "batch_size": trained.batch_size_stats.__dict__,
@@ -333,6 +364,7 @@ def main() -> None:
                 "stage": "supervised",
                 "holdout_before": holdout_before,
                 "holdout_after": holdout_after,
+                "holdout_random": holdout_random_eval,
                 "batch_size": trained.batch_size_stats.__dict__,
                 "wandb_path": config_payload["wandb_path"],
                 "wandb_mode": wandb_mode,
@@ -385,14 +417,13 @@ def main() -> None:
             nonlocal last_progress_time
             if payload.get("status") != "done":
                 if payload.get("status") == "error":
-                    print(
-                        {
-                            "stage": "cycle_search_error",
-                            "cycle": cycle,
-                            **payload,
-                        },
-                        flush=True,
-                    )
+                    event = {
+                        "stage": "cycle_search_error",
+                        "cycle": cycle,
+                        **payload,
+                    }
+                    print(event, flush=True)
+                    log_progress_to_wandb(wandb_run, event, cycle * 100_000)
                 return
 
             target_index = int(payload["target_index"])
@@ -404,18 +435,17 @@ def main() -> None:
             )
             if should_log:
                 now = time.perf_counter()
-                print(
-                    {
-                        "stage": "cycle_search_progress",
-                        "cycle": cycle,
-                        "completed": completed,
-                        "total_targets": len(cycle_targets),
-                        "elapsed_sec": round(now - cycle_search_started_at, 2),
-                        "since_last_log_sec": round(now - last_progress_time, 2),
-                        **payload,
-                    },
-                    flush=True,
-                )
+                event = {
+                    "stage": "cycle_search_progress",
+                    "cycle": cycle,
+                    "completed": completed,
+                    "total_targets": len(cycle_targets),
+                    "elapsed_sec": round(now - cycle_search_started_at, 2),
+                    "since_last_log_sec": round(now - last_progress_time, 2),
+                    **payload,
+                }
+                print(event, flush=True)
+                log_progress_to_wandb(wandb_run, event, cycle * 100_000 + completed)
                 last_progress_time = now
 
         distilled = distill_targets(
@@ -427,8 +457,38 @@ def main() -> None:
             progress_callback=cycle_search_progress,
         )
         search.close()
+        print(
+            {
+                "stage": "cycle_post_search",
+                "cycle": cycle,
+                "phase": "distillation_complete",
+                "distilled": len(distilled),
+                "elite_size": len(elite),
+                "elapsed_sec": round(time.perf_counter() - cycle_search_started_at, 2),
+            },
+            flush=True,
+        )
+        gc_started_at = time.perf_counter()
         gc.collect()
+        print(
+            {
+                "stage": "cycle_post_search",
+                "cycle": cycle,
+                "phase": "gc_complete",
+                "elapsed_sec": round(time.perf_counter() - gc_started_at, 2),
+            },
+            flush=True,
+        )
         recent_distill_examples = make_distillation_training_examples(distilled)
+        print(
+            {
+                "stage": "cycle_post_search",
+                "cycle": cycle,
+                "phase": "recent_distill_examples",
+                "examples": len(recent_distill_examples),
+            },
+            flush=True,
+        )
         for distilled_example, training_example in zip(distilled, recent_distill_examples):
             baseline = float(baseline_model.direct_construction_cost(distilled_example.target))
             replay.add(
@@ -445,13 +505,47 @@ def main() -> None:
             args.replay_sample_size,
             uniform_fraction=args.replay_uniform_fraction,
         )
+        print(
+            {
+                "stage": "cycle_post_search",
+                "cycle": cycle,
+                "phase": "replay_sample",
+                "examples": len(replay_examples),
+                "replay_size": len(replay),
+            },
+            flush=True,
+        )
         elite_examples = make_elite_training_examples(
             elite.sample(args.elite_sample_size),
             baseline_model=baseline_model,
             k_candidates=16,
+            max_examples=args.elite_max_training_examples,
+            max_nodes_per_trace=args.elite_max_nodes_per_trace,
         )
+        print(
+            {
+                "stage": "cycle_post_search",
+                "cycle": cycle,
+                "phase": "elite_examples",
+                "examples": len(elite_examples),
+                "elite_size": len(elite),
+            },
+            flush=True,
+        )
+
+        def synthetic_progress(payload: dict[str, object]) -> None:
+            completed = int(payload.get("completed", 0) or 0)
+            event = {
+                "stage": "cycle_post_search",
+                "cycle": cycle,
+                "phase": "synthetic_examples",
+                **payload,
+            }
+            print(event, flush=True)
+            log_progress_to_wandb(wandb_run, event, cycle * 100_000 + 10_000 + completed)
+
         synthetic_examples = make_training_examples(
-            generate_curriculum_examples(
+            generate_curriculum_examples_parallel(
                 cycle_rng,
                 args.synthetic_sample_size,
                 progress=progress,
@@ -462,7 +556,20 @@ def main() -> None:
                 max_degree=args.curriculum_max_degree,
                 max_horner_degree=args.curriculum_max_horner_degree,
                 max_inner_support=args.curriculum_max_inner_support,
+                progress_callback=synthetic_progress,
+                progress_interval=args.synthetic_progress_interval,
+                factor_cache_clear_interval=args.synthetic_factor_cache_clear_interval,
+                workers=args.synthetic_workers,
             )
+        )
+        print(
+            {
+                "stage": "cycle_post_search",
+                "cycle": cycle,
+                "phase": "synthetic_examples_complete",
+                "examples": len(synthetic_examples),
+            },
+            flush=True,
         )
 
         mixed_examples = (
@@ -471,17 +578,19 @@ def main() -> None:
             + elite_examples[: args.elite_sample_size]
             + synthetic_examples
         )
-        print(
-            {
-                "stage": "cycle_train",
-                "cycle": cycle,
-                "examples": len(mixed_examples),
-                "epochs": args.cycle_epochs,
-                "requested_batch_size": args.batch_size,
-                "auto_batch_size": args.auto_batch_size,
-            },
-            flush=True,
-        )
+        raw_mixed_size = len(mixed_examples)
+        mixed_examples = repeat_training_examples(mixed_examples, args.min_mixed_examples)
+        train_start_event = {
+            "stage": "cycle_train",
+            "cycle": cycle,
+            "examples": len(mixed_examples),
+            "unique_examples_before_repeat": raw_mixed_size,
+            "epochs": args.cycle_epochs,
+            "requested_batch_size": args.batch_size,
+            "auto_batch_size": args.auto_batch_size,
+        }
+        print(train_start_event, flush=True)
+        log_progress_to_wandb(wandb_run, train_start_event, cycle * 100_000 + 20_000)
         trained = train_torch_model(
             mixed_examples,
             TorchTrainConfig(
@@ -516,15 +625,26 @@ def main() -> None:
             baseline_model,
             args.search_simulations,
         )
+        cycle_random_eval = evaluate_random_policy(
+            cycle_targets,
+            baseline_model,
+            rollouts_per_target=args.random_rollouts_per_target,
+            seed=args.seed + cycle * 1009,
+            k_candidates=args.random_rollout_candidates,
+            max_steps=args.random_rollout_max_steps,
+        )
         metric_row = {
             "cycle": cycle,
             "stage": "search_distill",
             "train_metrics": summarize_supervised(trained.final_metrics),
             "holdout_eval": cycle_eval,
             "cycle_eval": cycle_distill_eval,
+            "holdout_random": holdout_random_eval,
+            "cycle_random": cycle_random_eval,
             "replay_size": len(replay),
             "elite_size": len(elite),
             "recent_distill_count": len(recent_distill_examples),
+            "raw_mixed_batch_size": raw_mixed_size,
             "mixed_batch_size": len(mixed_examples),
             "batch_size": trained.batch_size_stats.__dict__,
             "curriculum": curriculum,
@@ -722,6 +842,9 @@ def generate_curriculum_examples(
     max_degree: int,
     max_horner_degree: int,
     max_inner_support: int,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
+    progress_interval: int = 0,
+    factor_cache_clear_interval: int = 512,
 ):
     if count <= 0:
         return []
@@ -730,54 +853,245 @@ def generate_curriculum_examples(
     families = [name for name, _ in family_weights]
     weights = [weight for _, weight in family_weights]
     examples = []
-    for _ in range(count):
-        for _attempt in range(32):
-            family = rng.choices(families, weights=weights, k=1)[0]
-            prime = rng.choice(prime_pool)
-            variable_count = int(profile["variable_count"])
-            variables = make_variable_tuple(variable_count)
-            try:
-                if family == "planted":
-                    example = planted_factorable_example(
-                        rng,
-                        prime,
-                        variables,
-                        support_size=int(profile["planted_support"]),
-                        max_degree=int(profile["planted_degree"]),
+    family_counts: Counter[str] = Counter()
+    baseline_model = BaselineCostModel()
+    factorizer = FiniteFieldFactorizer()
+    started_at = time.perf_counter()
+    try:
+        for index in range(count):
+            if (
+                progress_callback is not None
+                and (
+                    index == 0
+                    or index == count - 1
+                    or (
+                        progress_interval > 0
+                        and index > 0
+                        and index % progress_interval == 0
                     )
-                elif family == "horner":
-                    if len(variables) > 1:
-                        example = multivariate_horner_example(
+                )
+            ):
+                progress_callback(
+                    {
+                        "status": "generating",
+                        "completed": index,
+                        "total": count,
+                        "elapsed_sec": round(time.perf_counter() - started_at, 2),
+                        "family_counts": dict(family_counts),
+                    }
+                )
+            if (
+                factor_cache_clear_interval > 0
+                and index > 0
+                and index % factor_cache_clear_interval == 0
+            ):
+                factorizer.clear()
+            for _attempt in range(32):
+                family = rng.choices(families, weights=weights, k=1)[0]
+                prime = rng.choice(prime_pool)
+                variable_count = int(profile["variable_count"])
+                variables = make_variable_tuple(variable_count)
+                try:
+                    if family == "planted":
+                        example = planted_factorable_example(
                             rng,
                             prime,
                             variables,
-                            outer_degree=min(max_horner_degree, int(profile["horner_degree_min"]) + 1),
-                            inner_support_size=max(1, min(max_inner_support, int(profile["planted_support"]) - 1)),
-                            inner_max_degree=max(1, int(profile["planted_degree"])),
+                            support_size=int(profile["planted_support"]),
+                            max_degree=int(profile["planted_degree"]),
+                            baseline_model=baseline_model,
+                            factorizer=factorizer,
+                        )
+                    elif family == "horner":
+                        if len(variables) > 1:
+                            example = multivariate_horner_example(
+                                rng,
+                                prime,
+                                variables,
+                                outer_degree=min(max_horner_degree, int(profile["horner_degree_min"]) + 1),
+                                inner_support_size=max(1, min(max_inner_support, int(profile["planted_support"]) - 1)),
+                                inner_max_degree=max(1, int(profile["planted_degree"])),
+                            )
+                        else:
+                            degree = rng.randint(int(profile["horner_degree_min"]), int(profile["horner_degree_max"]))
+                            coefficients = [rng.randint(0, prime - 1) for _ in range(degree + 1)]
+                            if all(coeff == 0 for coeff in coefficients):
+                                coefficients[0] = 1
+                            if coefficients[0] == 0:
+                                coefficients[0] = 1
+                            example = horner_example(coefficients, prime)
+                    elif family == "elementary":
+                        example = elementary_symmetric_example(
+                            variable_count=max(4, variable_count),
+                            degree=2,
+                            prime=prime,
                         )
                     else:
-                        degree = rng.randint(int(profile["horner_degree_min"]), int(profile["horner_degree_max"]))
-                        coefficients = [rng.randint(0, prime - 1) for _ in range(degree + 1)]
-                        if all(coeff == 0 for coeff in coefficients):
-                            coefficients[0] = 1
-                        if coefficients[0] == 0:
-                            coefficients[0] = 1
-                        example = horner_example(coefficients, prime)
-                elif family == "elementary":
-                    example = elementary_symmetric_example(
-                        variable_count=max(4, variable_count),
-                        degree=2,
-                        prime=prime,
-                    )
-                else:
-                    example = exact_small_example(rng, prime, variables=("x", "y"))
-            except RuntimeError:
-                continue
-            examples.append(example)
-            break
-        else:
-            raise RuntimeError(f"Failed to generate a curriculum example after repeated attempts for profile {profile}")
+                        example = exact_small_example(
+                            rng,
+                            prime,
+                            variables=("x", "y"),
+                            baseline_model=baseline_model,
+                            factorizer=factorizer,
+                        )
+                except RuntimeError:
+                    continue
+                examples.append(example)
+                family_counts[example.family] += 1
+                break
+            else:
+                raise RuntimeError(f"Failed to generate a curriculum example after repeated attempts for profile {profile}")
+    finally:
+        factorizer.close()
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "status": "complete",
+                "completed": len(examples),
+                "total": count,
+                "elapsed_sec": round(time.perf_counter() - started_at, 2),
+                "family_counts": dict(family_counts),
+            }
+        )
     return examples
+
+
+def generate_curriculum_examples_parallel(
+    rng: Random,
+    count: int,
+    progress: float,
+    base_prime: int,
+    prime_pool: list[int],
+    max_var_count: int,
+    max_support: int,
+    max_degree: int,
+    max_horner_degree: int,
+    max_inner_support: int,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
+    progress_interval: int = 0,
+    factor_cache_clear_interval: int = 512,
+    workers: int = 1,
+):
+    if count <= 0:
+        return []
+    workers = max(1, min(int(workers), count))
+    if workers <= 1:
+        return generate_curriculum_examples(
+            rng,
+            count,
+            progress=progress,
+            base_prime=base_prime,
+            prime_pool=prime_pool,
+            max_var_count=max_var_count,
+            max_support=max_support,
+            max_degree=max_degree,
+            max_horner_degree=max_horner_degree,
+            max_inner_support=max_inner_support,
+            progress_callback=progress_callback,
+            progress_interval=progress_interval,
+            factor_cache_clear_interval=factor_cache_clear_interval,
+        )
+
+    chunk_count = workers
+    base_count, remainder = divmod(count, chunk_count)
+    chunk_sizes = [base_count + (1 if index < remainder else 0) for index in range(chunk_count)]
+    seeds = [rng.randrange(1, 2**63 - 1) for _ in range(chunk_count)]
+    started_at = time.perf_counter()
+    family_counts: Counter[str] = Counter()
+    completed = 0
+    results: dict[int, list] = {}
+
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "status": "parallel_start",
+                "completed": 0,
+                "total": count,
+                "workers": workers,
+                "chunks": chunk_count,
+                "elapsed_sec": 0.0,
+                "family_counts": {},
+            }
+        )
+
+    payloads = [
+        {
+            "seed": seeds[index],
+            "count": chunk_sizes[index],
+            "progress": progress,
+            "base_prime": base_prime,
+            "prime_pool": prime_pool,
+            "max_var_count": max_var_count,
+            "max_support": max_support,
+            "max_degree": max_degree,
+            "max_horner_degree": max_horner_degree,
+            "max_inner_support": max_inner_support,
+            "factor_cache_clear_interval": factor_cache_clear_interval,
+        }
+        for index in range(chunk_count)
+        if chunk_sizes[index] > 0
+    ]
+    context = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=workers, mp_context=context) as executor:
+        future_to_index = {
+            executor.submit(_generate_curriculum_examples_chunk, payload): index
+            for index, payload in enumerate(payloads)
+        }
+        for future in as_completed(future_to_index):
+            index = future_to_index[future]
+            chunk_examples, chunk_counts = future.result()
+            results[index] = chunk_examples
+            completed += len(chunk_examples)
+            family_counts.update(chunk_counts)
+            if progress_callback is not None:
+                progress_callback(
+                    {
+                        "status": "parallel_generating",
+                        "completed": completed,
+                        "total": count,
+                        "workers": workers,
+                        "chunks_done": len(results),
+                        "chunks": len(payloads),
+                        "elapsed_sec": round(time.perf_counter() - started_at, 2),
+                        "family_counts": dict(family_counts),
+                    }
+                )
+
+    examples = []
+    for index in range(len(payloads)):
+        examples.extend(results[index])
+    if progress_callback is not None:
+        progress_callback(
+            {
+                "status": "complete",
+                "completed": len(examples),
+                "total": count,
+                "workers": workers,
+                "chunks": len(payloads),
+                "elapsed_sec": round(time.perf_counter() - started_at, 2),
+                "family_counts": dict(family_counts),
+            }
+        )
+    return examples
+
+
+def _generate_curriculum_examples_chunk(payload: dict[str, object]):
+    examples = generate_curriculum_examples(
+        Random(int(payload["seed"])),
+        int(payload["count"]),
+        progress=float(payload["progress"]),
+        base_prime=int(payload["base_prime"]),
+        prime_pool=list(payload["prime_pool"]),
+        max_var_count=int(payload["max_var_count"]),
+        max_support=int(payload["max_support"]),
+        max_degree=int(payload["max_degree"]),
+        max_horner_degree=int(payload["max_horner_degree"]),
+        max_inner_support=int(payload["max_inner_support"]),
+        progress_callback=None,
+        progress_interval=0,
+        factor_cache_clear_interval=int(payload["factor_cache_clear_interval"]),
+    )
+    return examples, dict(Counter(example.family for example in examples))
 
 
 def generate_cycle_targets(
@@ -802,49 +1116,64 @@ def generate_cycle_targets(
         max_degree=max_degree,
         max_horner_degree=max_horner_degree,
     )
+    baseline_model = BaselineCostModel()
+    factorizer = FiniteFieldFactorizer()
     for index in range(count):
-        for _attempt in range(32):
-            prime = rng.choice(prime_pool)
-            selector = index % 4
-            try:
-                if selector == 0:
-                    target = planted_factorable_example(
-                        rng,
-                        prime,
-                        make_variable_tuple(int(profile["variable_count"])),
-                        support_size=int(profile["planted_support"]),
-                        max_degree=int(profile["planted_degree"]),
-                    ).target
-                elif selector == 1:
-                    variables = make_variable_tuple(int(profile["variable_count"]))
-                    if len(variables) > 1:
-                        target = multivariate_horner_example(
+        try:
+            for _attempt in range(32):
+                prime = rng.choice(prime_pool)
+                selector = index % 4
+                try:
+                    if selector == 0:
+                        target = planted_factorable_example(
                             rng,
                             prime,
-                            variables,
-                            outer_degree=min(max_horner_degree, int(profile["horner_degree_min"]) + 1),
-                            inner_support_size=max(1, min(max_inner_support, int(profile["planted_support"]) - 1)),
-                            inner_max_degree=max(1, int(profile["planted_degree"])),
+                            make_variable_tuple(int(profile["variable_count"])),
+                            support_size=int(profile["planted_support"]),
+                            max_degree=int(profile["planted_degree"]),
+                            baseline_model=baseline_model,
+                            factorizer=factorizer,
                         ).target
+                    elif selector == 1:
+                        variables = make_variable_tuple(int(profile["variable_count"]))
+                        if len(variables) > 1:
+                            target = multivariate_horner_example(
+                                rng,
+                                prime,
+                                variables,
+                                outer_degree=min(max_horner_degree, int(profile["horner_degree_min"]) + 1),
+                                inner_support_size=max(1, min(max_inner_support, int(profile["planted_support"]) - 1)),
+                                inner_max_degree=max(1, int(profile["planted_degree"])),
+                            ).target
+                        else:
+                            degree = rng.randint(int(profile["horner_degree_min"]), int(profile["horner_degree_max"]))
+                            coefficients = [rng.randint(0, prime - 1) for _ in range(degree + 1)]
+                            if all(coeff == 0 for coeff in coefficients):
+                                coefficients[0] = 1
+                            if coefficients[0] == 0:
+                                coefficients[0] = 1
+                            target = horner_example(coefficients, prime).target
+                    elif selector == 2:
+                        variable_count = max(4, int(profile["variable_count"]))
+                        target = elementary_symmetric_example(variable_count=variable_count, degree=2, prime=prime).target
                     else:
-                        degree = rng.randint(int(profile["horner_degree_min"]), int(profile["horner_degree_max"]))
-                        coefficients = [rng.randint(0, prime - 1) for _ in range(degree + 1)]
-                        if all(coeff == 0 for coeff in coefficients):
-                            coefficients[0] = 1
-                        if coefficients[0] == 0:
-                            coefficients[0] = 1
-                        target = horner_example(coefficients, prime).target
-                elif selector == 2:
-                    variable_count = max(4, int(profile["variable_count"]))
-                    target = elementary_symmetric_example(variable_count=variable_count, degree=2, prime=prime).target
-                else:
-                    target = exact_small_example(rng, prime, variables=("x", "y")).target
-            except RuntimeError:
-                continue
-            targets.append(target)
-            break
-        else:
-            raise RuntimeError(f"Failed to generate a cycle target after repeated attempts for profile {profile}")
+                        target = exact_small_example(
+                            rng,
+                            prime,
+                            variables=("x", "y"),
+                            baseline_model=baseline_model,
+                            factorizer=factorizer,
+                        ).target
+                except RuntimeError:
+                    continue
+                targets.append(target)
+                break
+            else:
+                raise RuntimeError(f"Failed to generate a cycle target after repeated attempts for profile {profile}")
+        finally:
+            if index > 0 and index % 64 == 0:
+                factorizer.clear()
+    factorizer.close()
     return targets
 
 
@@ -866,6 +1195,32 @@ def evaluate_search_model(
         return summary.__dict__
     finally:
         search.close()
+
+
+def evaluate_random_policy(
+    targets,
+    baseline_model: BaselineCostModel,
+    rollouts_per_target: int,
+    seed: int,
+    k_candidates: int,
+    max_steps: int,
+) -> dict[str, float]:
+    metrics = evaluate_random_rollouts(
+        list(targets),
+        baseline_model=baseline_model,
+        rollouts_per_target=rollouts_per_target,
+        seed=seed,
+        k_candidates=k_candidates,
+        max_steps=max_steps,
+    )
+    return metrics.__dict__
+
+
+def repeat_training_examples(examples, minimum_count: int):
+    if minimum_count <= 0 or not examples or len(examples) >= minimum_count:
+        return examples
+    repeats, remainder = divmod(minimum_count, len(examples))
+    return examples * repeats + examples[:remainder]
 
 
 def compute_priority(training_example, best_cost: float, baseline_cost: float, model) -> float:
@@ -927,6 +1282,10 @@ def init_wandb(args, config_payload: dict, output_dir: Path, run_id: str):
     for mode in modes:
         try:
             run = wandb.init(mode=mode, **init_kwargs)
+            try:
+                run.define_metric("progress/*", step_metric="progress/step")
+            except Exception:
+                pass
             return run, mode
         except Exception as exc:  # pragma: no cover - depends on environment auth
             last_error = exc
@@ -944,6 +1303,21 @@ def log_to_wandb(run, payload: dict, step: int) -> None:
     run.log(flatten_dict(payload), step=step)
 
 
+def log_progress_to_wandb(run, payload: dict, progress_step: int) -> None:
+    if run is None:
+        return
+    run.log(
+        flatten_dict(
+            {
+                "progress": {
+                    "step": progress_step,
+                    **payload,
+                }
+            }
+        )
+    )
+
+
 def flatten_dict(payload: dict, prefix: str = "") -> dict[str, float | int | str]:
     flat: dict[str, float | int | str] = {}
     for key, value in payload.items():
@@ -957,7 +1331,15 @@ def flatten_dict(payload: dict, prefix: str = "") -> dict[str, float | int | str
 
 def log_checkpoint_artifact(run, output_dir: Path, run_id: str) -> None:
     artifact = wandb.Artifact(f"{run_id}-checkpoints", type="experiment")
-    artifact.add_dir(str(output_dir))
+    for relative_path in (
+        Path("config.json"),
+        Path("metrics.jsonl"),
+        Path("checkpoints/best_holdout.pt"),
+        Path("checkpoints/final.pt"),
+    ):
+        path = output_dir / relative_path
+        if path.exists():
+            artifact.add_file(str(path), name=str(relative_path))
     run.log_artifact(artifact)
 
 

@@ -27,6 +27,7 @@ def _validate_supervised_example(
     example: SupervisedExample,
     baseline_model: BaselineCostModel,
     require_positive_value: bool = False,
+    baseline_cost: float | None = None,
 ) -> SupervisedExample:
     if example.target.is_zero:
         raise ValueError("Supervised examples must have non-zero targets")
@@ -39,7 +40,11 @@ def _validate_supervised_example(
     if not any(candidate.key() == example.preferred_action.key() for candidate in example.candidates):
         raise ValueError("Preferred split is missing from the candidate set")
 
-    baseline = float(baseline_model.direct_construction_cost(example.target))
+    baseline = float(
+        baseline_model.direct_construction_cost(example.target)
+        if baseline_cost is None
+        else baseline_cost
+    )
     if require_positive_value and not (example.total_cost_target < baseline and example.value_target > 0):
         raise ValueError("Example must provide a real improvement over the baseline")
     return example
@@ -84,9 +89,12 @@ def planted_factorable_example(
     max_degree: int = 2,
     k_candidates: int = 16,
     max_attempts: int = 128,
+    baseline_model: BaselineCostModel | None = None,
+    factorizer: FiniteFieldFactorizer | None = None,
 ) -> SupervisedExample:
-    baseline_model = BaselineCostModel()
-    factorizer = FiniteFieldFactorizer()
+    baseline_model = baseline_model or BaselineCostModel()
+    own_factorizer = factorizer is None
+    factorizer = factorizer or FiniteFieldFactorizer()
     try:
         for _ in range(max_attempts):
             g_left = random_sparse_polynomial(rng, prime, variables, support_size, max_degree)
@@ -127,11 +135,10 @@ def planted_factorable_example(
                 + g_rebuild
                 + h_rebuild
                 + resolved_base_cost
-                + sum(float(baseline_model.direct_construction_cost(child)) for child in child_map.values())
+                + sum(float(baseline_model.sparse_direct_cost(child)) for child in child_map.values())
             )
-            value_target = (
-                baseline_model.direct_construction_cost(target) - total_cost
-            ) / max(1, baseline_model.direct_construction_cost(target))
+            target_baseline = float(baseline_model.sparse_direct_cost(target))
+            value_target = (target_baseline - total_cost) / max(1.0, target_baseline)
             if value_target <= 0:
                 continue
             return _validate_supervised_example(
@@ -145,9 +152,11 @@ def planted_factorable_example(
                 ),
                 baseline_model,
                 require_positive_value=True,
+                baseline_cost=target_baseline,
             )
     finally:
-        factorizer.close()
+        if own_factorizer:
+            factorizer.close()
     raise RuntimeError("Failed to generate a useful planted factorable example")
 
 
@@ -180,10 +189,9 @@ def horner_example(
     candidates = tuple(propose_splits(target, k_candidates, baseline_model=baseline_model))
     if preferred.key() not in {candidate.key() for candidate in candidates}:
         candidates = (preferred,) + candidates[: max(0, k_candidates - 1)]
-    total_cost = 1 + baseline_model.direct_construction_cost(quotient)
-    value_target = (
-        baseline_model.direct_construction_cost(target) - total_cost
-    ) / max(1, baseline_model.direct_construction_cost(target))
+    total_cost = 1 + baseline_model.sparse_direct_cost(quotient)
+    target_baseline = float(baseline_model.sparse_direct_cost(target))
+    value_target = (target_baseline - total_cost) / max(1.0, target_baseline)
     return _validate_supervised_example(
         SupervisedExample(
             family="horner",
@@ -194,6 +202,7 @@ def horner_example(
             total_cost_target=float(total_cost),
         ),
         baseline_model,
+        baseline_cost=target_baseline,
     )
 
 
@@ -246,10 +255,9 @@ def multivariate_horner_example(
         candidates = tuple(propose_splits(target, k_candidates, baseline_model=baseline_model))
         if preferred.key() not in {candidate.key() for candidate in candidates}:
             candidates = (preferred,) + candidates[: max(0, k_candidates - 1)]
-        total_cost = 1 + baseline_model.direct_construction_cost(quotient)
-        value_target = (
-            baseline_model.direct_construction_cost(target) - total_cost
-        ) / max(1, baseline_model.direct_construction_cost(target))
+        total_cost = 1 + baseline_model.sparse_direct_cost(quotient)
+        target_baseline = float(baseline_model.sparse_direct_cost(target))
+        value_target = (target_baseline - total_cost) / max(1.0, target_baseline)
         if value_target <= 0:
             continue
         return _validate_supervised_example(
@@ -263,6 +271,7 @@ def multivariate_horner_example(
             ),
             baseline_model,
             require_positive_value=True,
+            baseline_cost=target_baseline,
         )
     raise RuntimeError("Failed to generate a useful multivariate Horner example")
 
@@ -317,10 +326,9 @@ def elementary_symmetric_example(
     candidates = tuple(propose_splits(target, k_candidates, baseline_model=baseline_model))
     if preferred.key() not in {candidate.key() for candidate in candidates}:
         candidates = (preferred,) + candidates[: max(0, k_candidates - 1)]
-    total_cost = 1 + baseline_model.direct_construction_cost(g) + baseline_model.direct_construction_cost(h)
-    value_target = (
-        baseline_model.direct_construction_cost(target) - total_cost
-    ) / max(1, baseline_model.direct_construction_cost(target))
+    total_cost = 1 + baseline_model.sparse_direct_cost(g) + baseline_model.sparse_direct_cost(h)
+    target_baseline = float(baseline_model.sparse_direct_cost(target))
+    value_target = (target_baseline - total_cost) / max(1.0, target_baseline)
     return _validate_supervised_example(
         SupervisedExample(
             family="elementary_symmetric",
@@ -331,6 +339,7 @@ def elementary_symmetric_example(
             total_cost_target=float(total_cost),
         ),
         baseline_model,
+        baseline_cost=target_baseline,
     )
 
 
@@ -342,9 +351,12 @@ def exact_small_example(
     max_degree: int = 2,
     k_candidates: int = 16,
     max_attempts: int = 64,
+    baseline_model: BaselineCostModel | None = None,
+    factorizer: FiniteFieldFactorizer | None = None,
 ) -> SupervisedExample:
-    baseline_model = BaselineCostModel()
-    factorizer = FiniteFieldFactorizer()
+    baseline_model = baseline_model or BaselineCostModel()
+    own_factorizer = factorizer is None
+    factorizer = factorizer or FiniteFieldFactorizer()
     try:
         for _ in range(max_attempts):
             target = random_sparse_polynomial(rng, prime, variables, support_size, max_degree)
@@ -375,7 +387,8 @@ def exact_small_example(
                 require_positive_value=True,
             )
     finally:
-        factorizer.close()
+        if own_factorizer:
+            factorizer.close()
     raise RuntimeError("Failed to generate an exact-small example with a useful split")
 
 

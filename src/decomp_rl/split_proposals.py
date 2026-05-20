@@ -46,9 +46,17 @@ def _candidate_hint(
     size_balance = abs(action.g.support_size - action.h.support_size)
     degree_balance = abs(action.g.total_degree - action.h.total_degree)
     horner_bonus = 0.5 if action.source == "horner" else 0.0
-    naive_split_cost = 1 + baseline_model.direct_construction_cost(action.g) + baseline_model.direct_construction_cost(action.h)
+    # Split hints are used only for proposal ordering. The full recursive
+    # direct_construction_cost oracle is far too expensive to call for every
+    # candidate in large synthetic batches, so use the cheap sparse upper bound
+    # here and reserve the full oracle for rewards/evaluation.
+    naive_split_cost = (
+        1
+        + baseline_model.sparse_direct_cost(action.g)
+        + baseline_model.sparse_direct_cost(action.h)
+    )
     return (
-        baseline_model.direct_construction_cost(target)
+        baseline_model.sparse_direct_cost(target)
         - naive_split_cost
         - 0.1 * size_balance
         - 0.1 * degree_balance

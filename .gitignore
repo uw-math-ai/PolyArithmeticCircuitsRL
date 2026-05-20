@@ -16,6 +16,7 @@ __pycache__/
 .sage_home/
 .tools/
 .env
+.secrets/
 
 # Experiment artifacts
 artifacts/

@@ -264,40 +264,60 @@ def train_torch_model(
             dataset_cache_device=device,
         )
 
+    resolved_batch_size = batch_size_stats.resolved_batch_size
     history: list[TorchEpochMetrics] = []
     for epoch in range(config.epochs):
-        network.train()
-        total_loss = 0.0
-        total_policy_loss = 0.0
-        total_value_loss = 0.0
-        correct = 0
+        while True:
+            network.train()
+            total_loss = 0.0
+            total_policy_loss = 0.0
+            total_value_loss = 0.0
+            correct = 0
+            try:
+                for batch in iterate_training_batches(
+                    packed_examples,
+                    batch_size=resolved_batch_size,
+                    device=device,
+                    seed=config.seed + epoch,
+                    shuffle=True,
+                ):
+                    optimizer.zero_grad(set_to_none=True)
+                    with torch.autocast(device_type=device.split(":")[0], dtype=amp_dtype, enabled=amp_enabled):
+                        logits, predicted_value = network(batch.candidate_features, batch.target_features)
+                        masked_logits = logits.masked_fill(~batch.candidate_mask, torch.finfo(logits.dtype).min)
+                        log_probs = torch.log_softmax(masked_logits, dim=-1)
+                        policy_loss = -(batch.policy_targets * log_probs).sum(dim=-1).mean()
+                        value_loss = F.mse_loss(predicted_value, batch.value_targets)
+                        loss = policy_loss + config.value_loss_weight * value_loss
 
-        for batch in iterate_training_batches(
-            packed_examples,
-            batch_size=batch_size_stats.resolved_batch_size,
-            device=device,
-            seed=config.seed + epoch,
-            shuffle=True,
-        ):
-            optimizer.zero_grad(set_to_none=True)
-            with torch.autocast(device_type=device.split(":")[0], dtype=amp_dtype, enabled=amp_enabled):
-                logits, predicted_value = network(batch.candidate_features, batch.target_features)
-                masked_logits = logits.masked_fill(~batch.candidate_mask, torch.finfo(logits.dtype).min)
-                log_probs = torch.log_softmax(masked_logits, dim=-1)
-                policy_loss = -(batch.policy_targets * log_probs).sum(dim=-1).mean()
-                value_loss = F.mse_loss(predicted_value, batch.value_targets)
-                loss = policy_loss + config.value_loss_weight * value_loss
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    scaler.update()
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-
-            total_loss += float(loss.item()) * batch.batch_size
-            total_policy_loss += float(policy_loss.item()) * batch.batch_size
-            total_value_loss += float(value_loss.item()) * batch.batch_size
-            predictions = torch.argmax(masked_logits, dim=-1)
-            targets = torch.argmax(batch.policy_targets, dim=-1)
-            correct += int((predictions == targets).sum().item())
+                    total_loss += float(loss.item()) * batch.batch_size
+                    total_policy_loss += float(policy_loss.item()) * batch.batch_size
+                    total_value_loss += float(value_loss.item()) * batch.batch_size
+                    predictions = torch.argmax(masked_logits, dim=-1)
+                    targets = torch.argmax(batch.policy_targets, dim=-1)
+                    correct += int((predictions == targets).sum().item())
+                break
+            except RuntimeError as exc:
+                if not _is_cuda_oom(exc) or resolved_batch_size <= 1:
+                    raise
+                optimizer.zero_grad(set_to_none=True)
+                network.zero_grad(set_to_none=True)
+                torch.cuda.empty_cache()
+                next_batch_size = max(1, resolved_batch_size // 2)
+                print(
+                    {
+                        "stage": "train_batch_oom_backoff",
+                        "epoch": epoch + 1,
+                        "old_batch_size": resolved_batch_size,
+                        "new_batch_size": next_batch_size,
+                    },
+                    flush=True,
+                )
+                resolved_batch_size = next_batch_size
 
         count = max(1, len(examples))
         history.append(
@@ -308,6 +328,21 @@ def train_torch_model(
                 average_value_loss=total_value_loss / count,
                 top1_accuracy=correct / count,
             )
+        )
+
+    if resolved_batch_size != batch_size_stats.resolved_batch_size:
+        batch_size_stats = BatchSizeStats(
+            requested_batch_size=batch_size_stats.requested_batch_size,
+            resolved_batch_size=resolved_batch_size,
+            auto_batch_size=batch_size_stats.auto_batch_size,
+            device=batch_size_stats.device,
+            target_gpu_memory_fraction=batch_size_stats.target_gpu_memory_fraction,
+            dataset_limited=resolved_batch_size >= len(examples),
+            peak_memory_mb=batch_size_stats.peak_memory_mb,
+            total_memory_mb=batch_size_stats.total_memory_mb,
+            available_memory_mb=batch_size_stats.available_memory_mb,
+            peak_memory_fraction=batch_size_stats.peak_memory_fraction,
+            dataset_cache_device=batch_size_stats.dataset_cache_device,
         )
 
     wrapper = TorchPolicyValueWrapper(network, device=device)
@@ -326,6 +361,10 @@ def _resolve_torch_device(device: str) -> str:
     if device != "auto":
         return device
     return "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def _is_cuda_oom(exc: RuntimeError) -> bool:
+    return "out of memory" in str(exc).lower()
 
 
 def iterate_training_batches(

@@ -7,6 +7,7 @@ from decomp_rl.family_generators import (
     horner_example,
     planted_factorable_example,
 )
+from decomp_rl.evaluate import evaluate_random_rollouts
 from decomp_rl.train_supervised import (
     TorchTrainConfig,
     build_default_model,
@@ -38,3 +39,18 @@ def test_torch_training_smoke():
     assert result.final_metrics.average_policy_loss <= before.average_policy_loss
     assert result.batch_size_stats.resolved_batch_size == 3
     assert result.batch_size_stats.device in {"cpu", "cuda"}
+
+
+def test_random_rollout_evaluator_smoke():
+    target = horner_example([1, 2, 0, 1], 3).target
+    metrics = evaluate_random_rollouts(
+        [target],
+        rollouts_per_target=2,
+        seed=0,
+        k_candidates=4,
+        max_steps=8,
+    )
+
+    assert metrics.rollout_count == 2
+    assert metrics.average_cost >= 0.0
+    assert 0.0 <= metrics.solved_fraction <= 1.0

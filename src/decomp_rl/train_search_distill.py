@@ -128,11 +128,22 @@ def make_elite_training_examples(
     elite_entries,
     baseline_model: BaselineCostModel | None = None,
     k_candidates: int = 16,
+    max_examples: int | None = None,
+    max_nodes_per_trace: int | None = None,
 ) -> list[PolicyValueTrainingExample]:
     baseline_model = baseline_model or BaselineCostModel()
     training_examples: list[PolicyValueTrainingExample] = []
     for entry in elite_entries:
+        seen_nodes: set[str] = set()
         for trace in _iter_trace_nodes(entry.trace):
+            if max_examples is not None and len(training_examples) >= max_examples:
+                return training_examples
+            key = trace.poly.to_key()
+            if key in seen_nodes:
+                continue
+            seen_nodes.add(key)
+            if max_nodes_per_trace is not None and len(seen_nodes) > max_nodes_per_trace:
+                break
             if trace.chosen_action is None:
                 continue
             candidates = tuple(propose_splits(trace.poly, k_candidates, baseline_model=baseline_model))
