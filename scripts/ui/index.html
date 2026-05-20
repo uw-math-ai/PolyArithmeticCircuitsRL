@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Circuit RL · Inference Demo</title>
+
+  <!-- KaTeX for polynomial typesetting -->
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"
+        integrity="sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV"
+        crossorigin="anonymous">
+  <script defer
+          src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"
+          integrity="sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8"
+          crossorigin="anonymous"></script>
+  <script defer
+          src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+          integrity="sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05"
+          crossorigin="anonymous"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="title-block">
+        <h1>Arithmetic Circuit Discovery</h1>
+        <p class="subtitle">
+          An RL agent learns to decompose multivariate polynomials over
+          <span class="kbd">F<sub>p</sub></span> into minimal-cost arithmetic
+          circuits via additive splits.
+        </p>
+      </div>
+      <div class="controls">
+        <label class="control">
+          <span>Search sims</span>
+          <select id="search-sims">
+            <option value="8">8</option>
+            <option value="16">16</option>
+            <option value="32" selected>32</option>
+            <option value="64">64</option>
+            <option value="96">96</option>
+          </select>
+        </label>
+        <label class="control">
+          <span>Display</span>
+          <div class="mode-toggle" id="mode-toggle">
+            <input type="radio" name="mode" value="search" id="mode-search" checked>
+            <label for="mode-search">Search</label>
+            <input type="radio" name="mode" value="greedy" id="mode-greedy">
+            <label for="mode-greedy">Greedy</label>
+            <input type="radio" name="mode" value="both" id="mode-both">
+            <label for="mode-both">Both</label>
+          </div>
+        </label>
+        <button id="run-btn" class="primary">
+          <span class="btn-label">Run Inference</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="model-cards" id="model-cards"></section>
+    <section class="poly-tables" id="poly-tables">
+      <p class="empty-state">Loading polynomial test suite…</p>
+    </section>
+    <section class="footnote">
+      <p>
+        <strong>Success criterion.</strong>
+        A cell turns <span class="legend-success">green ✓</span> when the agent's
+        discovered circuit cost is at most the minimum cost across all five
+        closed-form baselines (sparse-direct, Horner, multivariate Horner, CSE,
+        and top-down branch-and-bound). Cells turn
+        <span class="legend-fail">amber ✗</span> when the agent fails to match
+        any of those baselines.
+      </p>
+      <p>
+        <strong>Modes.</strong>
+        <em>Greedy</em> rolls out the policy alone — one forward pass per
+        frontier step, taking the argmax candidate. <em>Search</em> wraps the
+        same network in a 32-simulation memoized AND/OR tree search with PUCT
+        selection. Hover any cell for the underlying numbers.
+      </p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
