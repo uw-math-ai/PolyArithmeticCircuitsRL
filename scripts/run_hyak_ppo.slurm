@@ -31,6 +31,11 @@
 #   MCTS_DEPTH     – AndOrSearch max depth  (default: 6)
 #   MCTS_TEMP      – visit-count temperature(default: 1.0)
 #   MCTS_DISTILL   – distillation weight    (default: 1.0)
+#   WANDB_API_KEY  – your W&B API key (NEVER commit this; export before sbatch
+#                    or run `wandb login` once on the login node)
+#   WANDB_ENTITY   – W&B entity/user/team   (empty disables W&B)
+#   WANDB_PROJECT  – W&B project            (default: PolyArithmeticCircuitsRL)
+#   WANDB_MODE     – online|offline|disabled|auto (default: auto)
 #
 # Auto-resume:
 #   The script always passes --resume latest to the trainer. The trainer scans
@@ -129,6 +134,19 @@ WARM_START="${WARM_START:-}"
 WARM_ARGS=()
 [[ -n "$WARM_START" ]] && WARM_ARGS=(--checkpoint-in "$WARM_START")
 
+# ── W&B settings ─────────────────────────────────────────────────────────
+# WANDB_API_KEY must come from the submitter's environment (or ~/.netrc via
+# `wandb login`); it is never written to disk by this script.
+WANDB_ENTITY="${WANDB_ENTITY:-}"
+WANDB_PROJECT="${WANDB_PROJECT:-PolyArithmeticCircuitsRL}"
+WANDB_MODE="${WANDB_MODE:-auto}"
+WANDB_ARGS=(
+    --wandb-entity  "$WANDB_ENTITY"
+    --wandb-project "$WANDB_PROJECT"
+    --wandb-run-id  "$RUN_ID"
+    --wandb-mode    "$WANDB_MODE"
+)
+
 # ── Launch training ───────────────────────────────────────────────────────
 exec env \
     PYTHONUNBUFFERED=1 \
@@ -138,6 +156,8 @@ exec env \
     NUMEXPR_NUM_THREADS=4 \
     PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True" \
     HOME="$HOME" \
+    WANDB_API_KEY="${WANDB_API_KEY:-}" \
+    WANDB_DIR="$OUT_DIR" \
     "$PYTHON" \
     "$REPO/scripts/run_ppo_finetune.py" \
     --prime "$PRIME" \
@@ -156,4 +176,5 @@ exec env \
     --checkpoint-out "$CKPT_DIR/final.pt" \
     --metrics-out   "$OUT_DIR/metrics.jsonl" \
     "${WARM_ARGS[@]}" \
-    "${MCTS_ARGS[@]}"
+    "${MCTS_ARGS[@]}" \
+    "${WANDB_ARGS[@]}"

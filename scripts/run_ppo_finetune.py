@@ -26,9 +26,15 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 
 import torch
+
+try:
+    import wandb
+except ImportError:  # pragma: no cover - optional dependency
+    wandb = None
 
 from decomp_rl.baseline_cost import BaselineCostModel
 from decomp_rl.config import (
@@ -77,7 +83,49 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--resume", default="",
                    help="Path to a .pt state_dict, or 'latest' to auto-detect the "
                         "newest iter_*.pt inside --checkpoint-dir. Overrides --checkpoint-in.")
+    p.add_argument("--wandb-entity", default="",
+                   help="W&B entity (user or team). Empty disables W&B unless WANDB_ENTITY is set.")
+    p.add_argument("--wandb-project", default="PolyArithmeticCircuitsRL",
+                   help="W&B project name.")
+    p.add_argument("--wandb-run-id", default="",
+                   help="W&B run id (also used as run name). Empty -> auto-generated timestamped id.")
+    p.add_argument("--wandb-mode", choices=["auto", "online", "offline", "disabled"], default="auto",
+                   help="W&B mode. 'auto' tries online then falls back to offline.")
     return p.parse_args()
+
+
+def init_wandb(args: argparse.Namespace, run_id: str):
+    """Initialize a W&B run; returns (run, resolved_mode). Falls back to disabled."""
+    if args.wandb_mode == "disabled" or wandb is None:
+        reason = "disabled" if args.wandb_mode == "disabled" else "wandb not installed"
+        return None, reason
+    if not args.wandb_entity:
+        return None, "no_entity"
+
+    config_payload = {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()}
+    init_kwargs = dict(
+        entity=args.wandb_entity,
+        project=args.wandb_project,
+        id=run_id,
+        name=run_id,
+        resume="allow",
+        config=config_payload,
+        dir=str(args.metrics_out.parent),
+    )
+    modes = [args.wandb_mode] if args.wandb_mode != "auto" else ["online", "offline"]
+    last_error: Exception | None = None
+    for mode in modes:
+        try:
+            run = wandb.init(mode=mode, **init_kwargs)
+            return run, mode
+        except Exception as exc:  # pragma: no cover - depends on env auth
+            last_error = exc
+    warning_path = args.metrics_out.parent / "wandb_warning.txt"
+    warning_path.write_text(
+        f"Failed to initialize wandb in modes {modes}: {last_error}\n",
+        encoding="utf-8",
+    )
+    return None, "disabled"
 
 
 def find_latest_iter_checkpoint(checkpoints_dir: Path) -> Path | None:
@@ -172,6 +220,10 @@ def main() -> None:
         network.load_state_dict(state)
     network.train()
 
+    run_id = args.wandb_run_id or f"decomp-rl-ppo-{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    wandb_run, wandb_mode = init_wandb(args, run_id)
+    print(f"wandb_run_id={run_id}  wandb_mode={wandb_mode}", flush=True)
+
     targets = load_targets(args)
     config = PPOConfig(
         rollouts_per_update=args.rollouts_per_update,
@@ -189,20 +241,22 @@ def main() -> None:
     )
 
     def log_callback(m: TrainingMetrics) -> None:
+        payload = {
+            "iteration": m.iteration,
+            "mean_episode_reward": m.mean_episode_reward,
+            "mean_episode_length": m.mean_episode_length,
+            "mean_episode_savings": m.mean_episode_savings,
+            "policy_loss": m.policy_loss,
+            "value_loss": m.value_loss,
+            "entropy": m.entropy,
+            "approx_kl": m.approx_kl,
+            "distill_loss": m.distill_loss,
+            "mean_terminal_bonus": m.mean_terminal_bonus,
+        }
         with args.metrics_out.open("a") as fh:
-            fh.write(
-                json.dumps({
-                    "iteration": m.iteration,
-                    "mean_episode_reward": m.mean_episode_reward,
-                    "mean_episode_length": m.mean_episode_length,
-                    "mean_episode_savings": m.mean_episode_savings,
-                    "policy_loss": m.policy_loss,
-                    "value_loss": m.value_loss,
-                    "entropy": m.entropy,
-                    "approx_kl": m.approx_kl,
-                    "distill_loss": m.distill_loss,
-                }) + "\n"
-            )
+            fh.write(json.dumps(payload) + "\n")
+        if wandb_run is not None:
+            wandb_run.log(payload, step=m.iteration)
         distill_str = f"  dl={m.distill_loss:.4f}" if args.use_mcts else ""
         print(
             f"[iter {m.iteration:4d}] reward={m.mean_episode_reward:+.3f}  "
@@ -222,6 +276,17 @@ def main() -> None:
     train_ppo(targets, network, env, config, iterations=args.iterations, log_callback=log_callback)
     torch.save(network.state_dict(), args.checkpoint_out)
     print(f"Saved checkpoint to {args.checkpoint_out}")
+
+    if wandb_run is not None:
+        try:
+            artifact = wandb.Artifact(f"{run_id}-checkpoints", type="model")
+            for path in (args.checkpoint_out, args.metrics_out):
+                if path.exists():
+                    artifact.add_file(str(path), name=path.name)
+            wandb_run.log_artifact(artifact)
+        except Exception as exc:  # pragma: no cover - depends on env auth
+            print(f"wandb artifact upload failed: {exc}", flush=True)
+        wandb_run.finish()
 
 
 if __name__ == "__main__":
