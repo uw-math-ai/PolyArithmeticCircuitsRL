@@ -10,12 +10,22 @@ Examples:
         --target-file targets.jsonl \
         --checkpoint-in artifacts/search_distill/best.pt \
         --checkpoint-out artifacts/ppo/finetuned.pt
+
+For long cluster runs with preemption, use periodic checkpointing + resume:
+    python scripts/run_ppo_finetune.py \
+        --iterations 2000 --use-mcts \
+        --checkpoint-dir artifacts/ppo/run1/checkpoints \
+        --checkpoint-every 25 \
+        --resume latest \
+        --checkpoint-out artifacts/ppo/run1/checkpoints/final.pt \
+        --metrics-out  artifacts/ppo/run1/metrics.jsonl
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 import torch
@@ -58,7 +68,31 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--checkpoint-out", type=Path, default=Path("artifacts/ppo/finetuned.pt"))
     p.add_argument("--metrics-out", type=Path, default=Path("artifacts/ppo/finetuned.metrics.jsonl"))
     p.add_argument("--device", default="cpu")
+    p.add_argument("--checkpoint-dir", type=Path, default=None,
+                   help="Optional directory for periodic checkpoints (iter_NNNNN.pt). "
+                        "Created if missing. Required when --checkpoint-every > 0 or "
+                        "--resume latest is used.")
+    p.add_argument("--checkpoint-every", type=int, default=0,
+                   help="Save iter_NNNNN.pt every N PPO iterations (0 = final only).")
+    p.add_argument("--resume", default="",
+                   help="Path to a .pt state_dict, or 'latest' to auto-detect the "
+                        "newest iter_*.pt inside --checkpoint-dir. Overrides --checkpoint-in.")
     return p.parse_args()
+
+
+def find_latest_iter_checkpoint(checkpoints_dir: Path) -> Path | None:
+    """Return the highest-numbered iter_NNNNN.pt in checkpoints_dir, or None."""
+    pattern = re.compile(r"^iter_(\d+)\.pt$")
+    best_num, best_path = -1, None
+    if not checkpoints_dir.is_dir():
+        return None
+    for path in checkpoints_dir.iterdir():
+        match = pattern.match(path.name)
+        if match:
+            num = int(match.group(1))
+            if num > best_num:
+                best_num, best_path = num, path
+    return best_path
 
 
 def load_targets(args: argparse.Namespace) -> list[SparsePolynomial]:
@@ -102,7 +136,26 @@ def main() -> None:
     args = parse_args()
     args.checkpoint_out.parent.mkdir(parents=True, exist_ok=True)
     args.metrics_out.parent.mkdir(parents=True, exist_ok=True)
-    args.metrics_out.unlink(missing_ok=True)
+    if args.checkpoint_dir is not None:
+        args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    # Resolve resume source: --resume takes precedence over --checkpoint-in.
+    resume_path: Path | None = None
+    if args.resume == "latest":
+        if args.checkpoint_dir is None:
+            raise SystemExit("--resume latest requires --checkpoint-dir")
+        resume_path = find_latest_iter_checkpoint(args.checkpoint_dir)
+        if resume_path is not None:
+            print(f"Auto-resume: loading {resume_path}", flush=True)
+        else:
+            print("Auto-resume: no iter_*.pt found, starting fresh", flush=True)
+    elif args.resume:
+        resume_path = Path(args.resume)
+    elif args.checkpoint_in is not None:
+        resume_path = args.checkpoint_in
+
+    if resume_path is None:
+        args.metrics_out.unlink(missing_ok=True)
 
     library = FactorizableLibrary(prime=args.prime, variables=tuple(args.variables))
     factorizer = FiniteFieldFactorizer(FactorizerConfig(), library=library)
@@ -114,8 +167,8 @@ def main() -> None:
     )
 
     network = TorchPolicyValueNetwork().to(args.device)
-    if args.checkpoint_in is not None:
-        state = torch.load(args.checkpoint_in, map_location=args.device)
+    if resume_path is not None and resume_path.exists():
+        state = torch.load(resume_path, map_location=args.device)
         network.load_state_dict(state)
     network.train()
 
@@ -157,6 +210,14 @@ def main() -> None:
             f"pl={m.policy_loss:+.4f}  vl={m.value_loss:.4f}  H={m.entropy:.3f}  "
             f"kl={m.approx_kl:+.4f}{distill_str}"
         )
+        if (
+            args.checkpoint_dir is not None
+            and args.checkpoint_every > 0
+            and (m.iteration + 1) % args.checkpoint_every == 0
+        ):
+            ckpt_path = args.checkpoint_dir / f"iter_{m.iteration + 1:05d}.pt"
+            torch.save(network.state_dict(), ckpt_path)
+            print(f"Saved periodic checkpoint: {ckpt_path}", flush=True)
 
     train_ppo(targets, network, env, config, iterations=args.iterations, log_callback=log_callback)
     torch.save(network.state_dict(), args.checkpoint_out)
