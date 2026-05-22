@@ -28,3 +28,8 @@ wandb/
 Michael's\ experiments/
 MCTS/
 MAIL/
+
+# Released model checkpoints are tracked despite the broad *.pt / *.metrics.jsonl
+# rules above. Keep these small (the policy/value net is a ~150 KB MLP).
+!models/
+!models/**
