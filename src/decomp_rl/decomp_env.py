@@ -9,7 +9,7 @@ from .config import DecompEnvConfig
 from .cost_model import rebuild_cost, unresolved_children
 from .factor_fp import FactorizationResult, FiniteFieldFactorizer
 from .polynomial import SparsePolynomial
-from .split_proposals import SplitAction, propose_splits
+from .split_proposals import SplitAction, factor_whole_action, propose_splits
 
 
 @dataclass(frozen=True)
@@ -73,12 +73,19 @@ class DecompEnv:
         k: int,
     ) -> list[SplitAction]:
         target = state.frontier[poly_handle]
-        return propose_splits(
+        candidates = propose_splits(
             target=target,
             k=k,
             config=self.config.proposal,
             baseline_model=self.baseline_model,
         )
+        # Offer a whole-polynomial factorization action alongside additive
+        # splits when the target factors non-trivially. This is the move that
+        # lets the agent reach optima like (x+y)^2 that pure splits cannot.
+        factor_action = factor_whole_action(target, self.factorizer.factor(target))
+        if factor_action is not None:
+            candidates = [factor_action, *candidates]
+        return candidates
 
     def _child_resolution_cost(
         self,
@@ -121,6 +128,10 @@ class DecompEnv:
         )
         next_state.frontier.pop(poly_handle)
 
+        # Factor actions perform no addition (h is zero), so they are not
+        # charged the +1 that an additive split f = g + h pays.
+        add_op = 0 if action.kind == "factor" else 1
+
         g_factors = self.factorizer.factor(action.g)
         h_factors = self.factorizer.factor(action.h)
         rebuild_g = rebuild_cost(g_factors)
@@ -133,7 +144,7 @@ class DecompEnv:
         new_children, resolved_cost, cache_hits = self._child_resolution_cost(next_state, children)
 
         baseline_before = self.baseline_model.direct_construction_cost(active)
-        baseline_after = 1 + rebuild_g + rebuild_h + sum(
+        baseline_after = add_op + rebuild_g + rebuild_h + sum(
             self.baseline_model.direct_construction_cost(child) for child in new_children
         )
         reward = baseline_before - baseline_after
@@ -149,12 +160,12 @@ class DecompEnv:
                     library_reward += lib_reward_per_hit
 
         next_state.frontier.extend(new_children)
-        next_state.acc_cost += 1 + rebuild_g + rebuild_h + resolved_cost
+        next_state.acc_cost += add_op + rebuild_g + rebuild_h + resolved_cost
         done = len(next_state.frontier) == 0
 
         info = StepInfo(
             active_poly=active,
-            action_kind="split",
+            action_kind=action.kind,
             split=action,
             g_factorization=g_factors,
             h_factorization=h_factors,

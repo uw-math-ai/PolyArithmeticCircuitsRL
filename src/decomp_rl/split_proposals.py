@@ -20,9 +20,14 @@ class SplitAction:
     source: str
     score_hint: float = 0.0
     metadata: tuple[tuple[str, float], ...] = field(default_factory=tuple)
+    # "split" => additive decomposition f = g + h (default; charges 1 add).
+    # "factor" => factor the whole polynomial (g = f, h = 0; charges no add).
+    kind: str = "split"
 
     def ordered(self) -> "SplitAction":
-        if order_pair_by_key(self.g.to_key(), self.h.to_key()):
+        # Factor actions carry the whole polynomial in ``g`` (``h`` is zero), so
+        # never swap them — the consumer relies on ``g`` being the target.
+        if self.kind == "factor" or order_pair_by_key(self.g.to_key(), self.h.to_key()):
             return self
         return SplitAction(
             g=self.h,
@@ -30,11 +35,40 @@ class SplitAction:
             source=self.source,
             score_hint=self.score_hint,
             metadata=self.metadata,
+            kind=self.kind,
         )
 
     def key(self) -> tuple[str, str]:
+        if self.kind == "factor":
+            return ("factor", self.g.to_key())
         ordered = self.ordered()
         return (ordered.g.to_key(), ordered.h.to_key())
+
+
+def factor_whole_action(
+    poly: SparsePolynomial,
+    factorization,  # FactorizationResult
+) -> "SplitAction | None":
+    """A ``kind='factor'`` action for ``poly`` if it factors non-trivially.
+
+    Non-trivial means the factorization exposes structure the additive-split
+    moves cannot: a repeated factor (e.g. ``(x+y)^2``), more than one distinct
+    irreducible factor (e.g. ``(x+1)(y+1)``), or a factor strictly smaller than
+    ``poly``. Irreducible polynomials (only factor is themselves) return None.
+    """
+    from .cost_model import unresolved_children
+
+    children = unresolved_children(factorization)
+    max_multiplicity = max((exp for _, exp in factorization.factors), default=1)
+    nontrivial = (
+        len(children) >= 2
+        or max_multiplicity >= 2
+        or any(child.support_size < poly.support_size for child in children)
+    )
+    if not nontrivial:
+        return None
+    zero = SparsePolynomial.zero(poly.p, poly.variables)
+    return SplitAction(g=poly, h=zero, source="factor_whole", kind="factor")
 
 
 def _candidate_hint(

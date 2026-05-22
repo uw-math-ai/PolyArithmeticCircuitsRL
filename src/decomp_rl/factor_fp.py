@@ -13,6 +13,21 @@ from pathlib import Path
 from .config import FactorizerConfig
 from .polynomial import SparsePolynomial
 
+_FLINT_AVAILABLE: bool | None = None
+
+
+def _flint_available() -> bool:
+    """Cached check for python-flint, used to enable the FLINT backend."""
+    global _FLINT_AVAILABLE
+    if _FLINT_AVAILABLE is None:
+        try:
+            import flint  # noqa: F401
+
+            _FLINT_AVAILABLE = True
+        except ImportError:
+            _FLINT_AVAILABLE = False
+    return _FLINT_AVAILABLE
+
 
 @dataclass(frozen=True)
 class FactorizationResult:
@@ -80,12 +95,21 @@ class FiniteFieldFactorizer:
         backend_name = self._resolve_backend_name()
         if backend_name == "sage":
             return self._factor_via_sage(poly)
+        if backend_name == "flint":
+            return self._factor_via_flint(poly)
         return self._factor_via_sympy(poly)
 
     def _resolve_backend_name(self) -> str:
         if self.config.backend_name != "auto":
             return self.config.backend_name
-        return "sage" if self._sage_python_available() else "sympy"
+        # Preference order: Sage (project default CAS) > FLINT (correct,
+        # pip-installable multivariate GF(p) factorization) > SymPy (only
+        # correct for univariate over finite fields).
+        if self._sage_python_available():
+            return "sage"
+        if _flint_available():
+            return "flint"
+        return "sympy"
 
     def _sage_python_available(self) -> bool:
         if not self.config.cas_python_path:
@@ -111,6 +135,48 @@ class FiniteFieldFactorizer:
                 startup_timeout_sec=self.config.helper_startup_timeout_sec,
             )
         return self._sage_worker
+
+    def _factor_via_flint(self, poly: SparsePolynomial) -> FactorizationResult:
+        """Multivariate factorization over GF(p) via python-flint (nmod_mpoly).
+
+        Unlike SymPy, FLINT factors multivariate polynomials over a finite
+        field correctly, so e.g. ``x^2 + 2xy + y^2`` over F_3 returns
+        ``(x + y)^2`` rather than falling back to an integer factorization.
+        """
+        import flint
+
+        ctx = flint.nmod_mpoly_ctx.get(list(poly.variables), modulus=poly.p)
+        term_dict = {
+            tuple(int(e) for e in exponent): int(coeff) % poly.p
+            for coeff, exponent in poly.terms
+            if int(coeff) % poly.p != 0
+        }
+        flint_poly = ctx.from_dict(term_dict)
+        const, raw_factors = flint_poly.factor()
+        # FLINT returns the leading coefficient as ``const`` and each factor
+        # already monic, so ``poly == const * prod(factor_i ** exp_i)``. We use
+        # the factors verbatim (no re-monicizing) and validate by reconstruction.
+        unit = int(const) % poly.p
+        factors: list[tuple[SparsePolynomial, int]] = [
+            (self._flint_to_sparse(factor_poly, poly.p, poly.variables), int(exponent))
+            for factor_poly, exponent in raw_factors
+        ]
+
+        if unit == 0:
+            raise ValueError("Non-zero polynomial unexpectedly factored with zero unit")
+        result = FactorizationResult(unit=unit, factors=tuple(factors), backend="flint")
+        if self._reconstruct_from_result(poly, result) != poly:
+            raise ValueError("FLINT backend returned factors that do not reconstruct the polynomial")
+        return result
+
+    @staticmethod
+    def _flint_to_sparse(flint_poly, prime: int, variables: tuple[str, ...]) -> SparsePolynomial:
+        term_dict = {
+            tuple(int(e) for e in monom): int(coeff) % prime
+            for monom, coeff in zip(flint_poly.monoms(), flint_poly.coeffs())
+            if int(coeff) % prime != 0
+        }
+        return SparsePolynomial.from_dict(term_dict, prime, variables)
 
     def _factor_via_sympy(self, poly: SparsePolynomial) -> FactorizationResult:
         try:

@@ -21,6 +21,11 @@ train = [
     "torch>=2.4",
     "wandb>=0.19",
 ]
+cas = [
+    # Correct multivariate factorization over GF(p); enables the "flint"
+    # backend in factor_fp.py without requiring a Sage CAS install.
+    "python-flint>=0.6",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

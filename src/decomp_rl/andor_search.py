@@ -11,7 +11,7 @@ from .cost_model import rebuild_cost, unresolved_children
 from .factor_fp import FiniteFieldFactorizer
 from .model import HeuristicPolicyValueModel, PolicyValueModel
 from .polynomial import SparsePolynomial
-from .split_proposals import SplitAction, propose_splits
+from .split_proposals import SplitAction, factor_whole_action, propose_splits
 
 
 @dataclass
@@ -155,10 +155,14 @@ class AndOrSearch:
     def _expand(self, poly: SparsePolynomial) -> NodeStats:
         baseline = float(self.baseline_model.direct_construction_cost(poly))
         candidates = propose_splits(poly, self.search_config.expand_top_k, baseline_model=self.baseline_model, library=self.library)
+        factor_action = factor_whole_action(poly, self.factorizer.factor(poly))
+        if factor_action is not None:
+            candidates = [factor_action, *candidates]
         priors, value_estimate = self.model.score_candidates(poly, candidates)
         actions = []
         for prior, candidate in zip(priors, candidates):
-            heuristic_cost = 1 + self.baseline_model.direct_construction_cost(candidate.g) + self.baseline_model.direct_construction_cost(candidate.h)
+            add_op = 0 if candidate.kind == "factor" else 1
+            heuristic_cost = add_op + self.baseline_model.direct_construction_cost(candidate.g) + self.baseline_model.direct_construction_cost(candidate.h)
             actions.append(
                 ActionStats(
                     action=candidate,
@@ -228,9 +232,10 @@ class AndOrSearch:
         return node.best_cost, node.best_trace or DecompositionTrace(poly, node.baseline_cost)
 
     def _evaluate_action(self, poly: SparsePolynomial, action: SplitAction, depth: int) -> tuple[float, DecompositionTrace]:
+        add_op = 0 if action.kind == "factor" else 1
         g_factors = self.factorizer.factor(action.g)
         h_factors = self.factorizer.factor(action.h)
-        total = 1 + rebuild_cost(g_factors) + rebuild_cost(h_factors)
+        total = add_op + rebuild_cost(g_factors) + rebuild_cost(h_factors)
 
         children_map: dict[str, SparsePolynomial] = {}
         for child in unresolved_children(g_factors) + unresolved_children(h_factors):
