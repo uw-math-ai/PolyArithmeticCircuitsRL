@@ -113,6 +113,38 @@ try:
             return logits, value
 
 
+    class TorchQNetwork(nn.Module):
+        """Candidate-scoring Q-network for discrete SAC.
+
+        Maps each candidate's handcrafted feature vector
+        ``[target, g, h]`` to a scalar action-value ``Q(s, a)``. Mirrors the
+        policy net's candidate encoder but emits an unbounded Q (no Tanh) and
+        has no separate value head. Used as the twin critics Q1/Q2.
+        """
+
+        def __init__(
+            self,
+            input_dim: int = CANDIDATE_FEATURE_DIM,
+            hidden_dim: int = 128,
+            layers: int = 3,
+            activation: str = "relu",
+        ) -> None:
+            super().__init__()
+            activation_cls = nn.GELU if activation.lower() == "gelu" else nn.ReLU
+            modules: list[nn.Module] = []
+            last_dim = input_dim
+            for _ in range(max(1, layers)):
+                modules.append(nn.Linear(last_dim, hidden_dim))
+                modules.append(activation_cls())
+                last_dim = hidden_dim
+            modules.append(nn.Linear(hidden_dim, 1))
+            self.net = nn.Sequential(*modules)
+
+        def forward(self, candidate_features: torch.Tensor) -> torch.Tensor:
+            # candidate_features: (..., A, F) -> Q per candidate: (..., A)
+            return self.net(candidate_features).squeeze(-1)
+
+
     class TorchPolicyValueWrapper:
         def __init__(self, network: TorchPolicyValueNetwork, device: str | None = None) -> None:
             self.network = network

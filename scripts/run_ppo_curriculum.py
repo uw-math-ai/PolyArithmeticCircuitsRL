@@ -121,12 +121,14 @@ def greedy_episode_cost(env: DecompEnv, model, target: SparsePolynomial,
 
 
 def evaluate_curriculum(env: DecompEnv, model, targets: list[Target],
-                        candidates_per_step: int, max_steps: int, device) -> dict[str, float]:
+                        candidates_per_step: int, max_steps: int, device,
+                        prefix: str = "eval") -> dict[str, float]:
     """Greedy eval against the shortest-circuit target Ck.
 
     Success on a target = the greedy circuit cost reaches its complexity Ck
     (``cost <= ck``). ``gap = cost - ck`` measures distance from the optimal.
-    Reported overall and per Ck bucket.
+    Reported overall and per Ck bucket under ``{prefix}/...`` so the same
+    function serves both the train and held-out evaluations.
     """
     was_training = model.training
     model.eval()
@@ -157,31 +159,41 @@ def evaluate_curriculum(env: DecompEnv, model, targets: list[Target],
 
     n = len(targets)
     metrics: dict[str, float] = {
-        "eval/ck_match_rate": overall_match / n,
-        "eval/mean_gap_to_optimal": overall_gap / n,
-        "eval/mean_discovered_cost": overall_cost / n,
-        "eval/mean_ck": overall_ck / n,
+        f"{prefix}/ck_match_rate": overall_match / n,
+        f"{prefix}/mean_gap_to_optimal": overall_gap / n,
+        f"{prefix}/mean_discovered_cost": overall_cost / n,
+        f"{prefix}/mean_ck": overall_ck / n,
     }
     for ck in sorted(per_ck_count):
         c = per_ck_count[ck]
-        metrics[f"eval/C{ck}/match_rate"] = per_ck_match[ck] / c
-        metrics[f"eval/C{ck}/mean_gap"] = per_ck_gap[ck] / c
-        metrics[f"eval/C{ck}/count"] = float(c)
+        metrics[f"{prefix}/C{ck}/match_rate"] = per_ck_match[ck] / c
+        metrics[f"{prefix}/C{ck}/mean_gap"] = per_ck_gap[ck] / c
+        metrics[f"{prefix}/C{ck}/count"] = float(c)
     return metrics
 
 
-def random_ck_match_rate(targets: list[Target], env: DecompEnv,
-                         k_candidates: int, max_steps: int, seed: int, rollouts: int = 4) -> float:
-    """Reference: uniform-random split policy's Ck-match rate (flat line)."""
+def random_ck_baseline(targets: list[Target], env: DecompEnv,
+                       k_candidates: int, max_steps: int, seed: int,
+                       rollouts: int = 25, prefix: str = "baseline_train") -> dict[str, float]:
+    """Uniform-random split-policy Ck-match rate, overall and per Ck bucket.
+
+    Each (target, rollout) is a single random attempt; the rate is the
+    probability a random rollout reaches Ck. Logged as flat reference lines.
+    """
     rng = Random(seed)
-    matched = 0
-    total = 0
+    overall_match = overall_total = 0
+    per_ck_match: dict[int, int] = defaultdict(int)
+    per_ck_total: dict[int, int] = defaultdict(int)
     for tgt in targets:
         for _ in range(rollouts):
             cost, _ = random_rollout_cost(tgt.poly, env, rng, k_candidates=k_candidates, max_steps=max_steps)
-            matched += int(cost <= tgt.ck)
-            total += 1
-    return matched / total if total else 0.0
+            hit = int(cost <= tgt.ck)
+            overall_match += hit; overall_total += 1
+            per_ck_match[tgt.ck] += hit; per_ck_total[tgt.ck] += 1
+    metrics = {f"{prefix}/random_ck_match_rate": overall_match / max(1, overall_total)}
+    for ck in sorted(per_ck_total):
+        metrics[f"{prefix}/C{ck}/random_match_rate"] = per_ck_match[ck] / per_ck_total[ck]
+    return metrics
 
 
 # ───────────────────────────── wandb ────────────────────────────
@@ -210,6 +222,9 @@ def init_wandb(args, run_id: str, config_payload: dict):
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--target-file", type=Path, required=True)
+    p.add_argument("--heldout-file", type=Path, default=None,
+                   help="Optional held-out (test) curriculum JSONL; evaluated each cycle "
+                        "under heldout/* metrics. Should be disjoint from --target-file.")
     p.add_argument("--prime", type=int, default=3)
     p.add_argument("--variables", nargs="+", default=["x", "y", "z"])
     p.add_argument("--iterations", type=int, default=500)
@@ -221,6 +236,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--entropy-coef", type=float, default=0.01)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--eval-every", type=int, default=10, help="Run greedy curriculum eval every N iters.")
+    p.add_argument("--random-rollouts", type=int, default=25,
+                   help="Random rollouts per target for the (one-time) per-Ck random reference.")
     p.add_argument("--use-mcts", action="store_true",
                    help="Enable AlphaZero-style MCTS guidance (AndOrSearch per step + distillation).")
     p.add_argument("--mcts-simulations", type=int, default=48)
@@ -250,12 +267,20 @@ def main() -> None:
     variables = tuple(args.variables)
     targets = load_curriculum(args.target_file)
     target_polys = [t.poly for t in targets]
-    print(f"Loaded {len(targets)} targets from {args.target_file}", flush=True)
+    print(f"Loaded {len(targets)} train targets from {args.target_file}", flush=True)
+
+    heldout: list[Target] = []
+    if args.heldout_file is not None and args.heldout_file.exists():
+        heldout = load_curriculum(args.heldout_file)
+        train_keys = {t.poly.to_key() for t in targets}
+        overlap = sum(1 for t in heldout if t.poly.to_key() in train_keys)
+        print(f"Loaded {len(heldout)} held-out targets from {args.heldout_file} "
+              f"(overlap with train={overlap})", flush=True)
 
     ck_hist = defaultdict(int)
     for t in targets:
         ck_hist[t.ck] += 1
-    print(f"Ck buckets: {dict(sorted(ck_hist.items()))}", flush=True)
+    print(f"Ck buckets (train): {dict(sorted(ck_hist.items()))}", flush=True)
 
     library = FactorizableLibrary(prime=args.prime, variables=variables)
     factorizer = FiniteFieldFactorizer(FactorizerConfig(), library=library)
@@ -274,16 +299,25 @@ def main() -> None:
     wandb_run, wandb_mode = init_wandb(args, run_id, config_payload)
     print(f"wandb_run_id={run_id}  wandb_mode={wandb_mode}", flush=True)
 
-    # Reference: uniform-random split policy Ck-match rate (flat line on graphs).
-    random_match = random_ck_match_rate(
+    # Reference: uniform-random split policy Ck-match rate (overall + per-Ck),
+    # computed once for train and held-out and logged as flat lines.
+    random_ref = random_ck_baseline(
         targets, env, args.candidates_per_step, args.max_episode_steps, args.seed,
+        rollouts=args.random_rollouts, prefix="baseline_train",
     )
-    print(f"random-policy reference ck_match_rate={random_match:.3f}", flush=True)
+    if heldout:
+        random_ref.update(random_ck_baseline(
+            heldout, env, args.candidates_per_step, args.max_episode_steps, args.seed,
+            rollouts=args.random_rollouts, prefix="baseline_heldout",
+        ))
+    print(f"random reference: train={random_ref['baseline_train/random_ck_match_rate']:.3f}"
+          + (f"  heldout={random_ref['baseline_heldout/random_ck_match_rate']:.3f}" if heldout else ""),
+          flush=True)
 
     # Baseline (untrained net) greedy eval at iteration 0.
     init_eval = evaluate_curriculum(env, network, targets,
                                     args.candidates_per_step, args.max_episode_steps, args.device)
-    print(f"init greedy ck_match_rate={init_eval['eval/ck_match_rate']:.3f}", flush=True)
+    print(f"init greedy ck_match_rate (train)={init_eval['eval/ck_match_rate']:.3f}", flush=True)
 
     def log_callback(m: TrainingMetrics) -> None:
         payload = {
@@ -296,21 +330,33 @@ def main() -> None:
             "train/entropy": m.entropy,
             "train/approx_kl": m.approx_kl,
             "train/mean_terminal_bonus": m.mean_terminal_bonus,
-            "baseline/random_ck_match_rate": random_match,
         }
-        if args.eval_every > 0 and (m.iteration % args.eval_every == 0 or m.iteration + 1 == args.iterations):
+        payload.update(random_ref)  # flat per-Ck + overall random reference lines
+        is_eval = args.eval_every > 0 and (m.iteration % args.eval_every == 0 or m.iteration + 1 == args.iterations)
+        if is_eval:
             payload.update(
                 evaluate_curriculum(env, network, targets,
-                                    args.candidates_per_step, args.max_episode_steps, args.device)
+                                    args.candidates_per_step, args.max_episode_steps, args.device,
+                                    prefix="eval")
             )
+            if heldout:
+                payload.update(
+                    evaluate_curriculum(env, network, heldout,
+                                        args.candidates_per_step, args.max_episode_steps, args.device,
+                                        prefix="heldout")
+                )
 
         with args.metrics_out.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(payload) + "\n")
         if wandb_run is not None:
             wandb_run.log(payload, step=m.iteration)
 
-        match = payload.get("eval/ck_match_rate")
-        match_str = f"  ck_match={match:.2f}  gap={payload['eval/mean_gap_to_optimal']:+.2f}" if match is not None else ""
+        if is_eval:
+            tr = payload["eval/ck_match_rate"]
+            ho = f"  heldout={payload['heldout/ck_match_rate']:.2f}" if heldout else ""
+            match_str = f"  train_match={tr:.2f}{ho}  gap={payload['eval/mean_gap_to_optimal']:+.2f}"
+        else:
+            match_str = ""
         print(
             f"[iter {m.iteration:4d}] reward={m.mean_episode_reward:+.3f}  "
             f"savings={m.mean_episode_savings:+.3f}  bonus={m.mean_terminal_bonus:+.3f}  "

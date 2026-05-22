@@ -70,10 +70,16 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # ── Load cluster modules ─────────────────────────────────────────────────
 # Klone: adjust the CUDA version to match the one your .venv torch was built
 # against. Run `module avail cuda` on the login node to see options.
+# Also load a python module that ships a complete stdlib (the default Klone
+# coenv-src python is missing _ctypes, which breaks sympy at runtime).
 if command -v module &>/dev/null; then
     module load cuda/12.1.1 2>/dev/null || \
     module load cuda/11.8.0 2>/dev/null || \
     true  # fall through if neither is available
+    module load coenv/miniconda/3.13.11 2>/dev/null || \
+    module load ssmc/miniconda/3.9 2>/dev/null || \
+    module load mamslab/miniconda/3.9 2>/dev/null || \
+    true  # if no module loads, fall back to .venv/bin/python's own binary
 fi
 
 # ── Run identity ─────────────────────────────────────────────────────────
