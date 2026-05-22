@@ -57,6 +57,7 @@ from decomp_rl.model import (
 )
 from decomp_rl.polynomial import SparsePolynomial
 from decomp_rl.train_ppo import PPOConfig, TrainingMetrics, train_ppo
+from decomp_rl.train_sac import SACConfig, train_sac
 
 
 # ─────────────────────────── targets ────────────────────────────
@@ -221,6 +222,8 @@ def init_wandb(args, run_id: str, config_payload: dict):
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--algorithm", choices=["ppo", "sac"], default="ppo",
+                   help="RL algorithm. Both use the identical Ck eval / metrics.")
     p.add_argument("--target-file", type=Path, required=True)
     p.add_argument("--heldout-file", type=Path, default=None,
                    help="Optional held-out (test) curriculum JSONL; evaluated each cycle "
@@ -244,6 +247,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--mcts-max-depth", type=int, default=6)
     p.add_argument("--mcts-temperature", type=float, default=1.0)
     p.add_argument("--mcts-distill-coef", type=float, default=1.0)
+    # SAC-only knobs (ignored for PPO).
+    p.add_argument("--gradient-steps", type=int, default=16)
+    p.add_argument("--batch-size", type=int, default=64)
+    p.add_argument("--buffer-capacity", type=int, default=100_000)
+    p.add_argument("--learning-starts", type=int, default=512)
+    p.add_argument("--tau", type=float, default=0.005)
+    p.add_argument("--alpha-init", type=float, default=0.2)
+    p.add_argument("--no-autotune-alpha", action="store_true")
+    p.add_argument("--target-entropy-scale", type=float, default=0.7)
     p.add_argument("--device", default="cuda")
     p.add_argument("--checkpoint-dir", type=Path, default=Path("artifacts/curriculum/checkpoints"))
     p.add_argument("--checkpoint-every", type=int, default=25)
@@ -319,18 +331,36 @@ def main() -> None:
                                     args.candidates_per_step, args.max_episode_steps, args.device)
     print(f"init greedy ck_match_rate (train)={init_eval['eval/ck_match_rate']:.3f}", flush=True)
 
-    def log_callback(m: TrainingMetrics) -> None:
-        payload = {
-            "iteration": m.iteration,
+    def _train_fields(m) -> tuple[dict, str]:
+        """Algorithm-specific train/* metrics + a short console summary."""
+        common = {
             "train/mean_episode_reward": m.mean_episode_reward,
             "train/mean_episode_length": m.mean_episode_length,
             "train/mean_episode_savings": m.mean_episode_savings,
-            "train/policy_loss": m.policy_loss,
-            "train/value_loss": m.value_loss,
             "train/entropy": m.entropy,
-            "train/approx_kl": m.approx_kl,
             "train/mean_terminal_bonus": m.mean_terminal_bonus,
         }
+        if args.algorithm == "sac":
+            common.update({
+                "train/critic_loss": m.critic_loss,
+                "train/actor_loss": m.actor_loss,
+                "train/alpha": m.alpha,
+                "train/alpha_loss": m.alpha_loss,
+                "train/buffer_size": float(m.buffer_size),
+            })
+            summary = f"cl={m.critic_loss:.3f}  al={m.actor_loss:+.3f}  alpha={m.alpha:.3f}"
+        else:
+            common.update({
+                "train/policy_loss": m.policy_loss,
+                "train/value_loss": m.value_loss,
+                "train/approx_kl": m.approx_kl,
+            })
+            summary = f"pl={m.policy_loss:+.4f}  vl={m.value_loss:.4f}"
+        return common, summary
+
+    def log_callback(m) -> None:
+        train_dict, summary = _train_fields(m)
+        payload = {"iteration": m.iteration, **train_dict}
         payload.update(random_ref)  # flat per-Ck + overall random reference lines
         is_eval = args.eval_every > 0 and (m.iteration % args.eval_every == 0 or m.iteration + 1 == args.iterations)
         if is_eval:
@@ -352,36 +382,53 @@ def main() -> None:
             wandb_run.log(payload, step=m.iteration)
 
         if is_eval:
-            tr = payload["eval/ck_match_rate"]
             ho = f"  heldout={payload['heldout/ck_match_rate']:.2f}" if heldout else ""
-            match_str = f"  train_match={tr:.2f}{ho}  gap={payload['eval/mean_gap_to_optimal']:+.2f}"
+            match_str = f"  train_match={payload['eval/ck_match_rate']:.2f}{ho}  gap={payload['eval/mean_gap_to_optimal']:+.2f}"
         else:
             match_str = ""
         print(
             f"[iter {m.iteration:4d}] reward={m.mean_episode_reward:+.3f}  "
-            f"savings={m.mean_episode_savings:+.3f}  bonus={m.mean_terminal_bonus:+.3f}  "
-            f"pl={m.policy_loss:+.4f}  vl={m.value_loss:.4f}  H={m.entropy:.3f}{match_str}",
+            f"savings={m.mean_episode_savings:+.3f}  H={m.entropy:.3f}  {summary}{match_str}",
             flush=True,
         )
         if args.checkpoint_every > 0 and (m.iteration + 1) % args.checkpoint_every == 0:
             ckpt = args.checkpoint_dir / f"iter_{m.iteration + 1:05d}.pt"
             torch.save(network.state_dict(), ckpt)
 
-    config = PPOConfig(
-        rollouts_per_update=args.rollouts_per_update,
-        candidates_per_step=args.candidates_per_step,
-        max_episode_steps=args.max_episode_steps,
-        learning_rate=args.learning_rate,
-        library_reward_weight=args.library_reward_weight,
-        entropy_coef=args.entropy_coef,
-        seed=args.seed,
-        use_mcts=args.use_mcts,
-        mcts_simulations=args.mcts_simulations,
-        mcts_max_depth=args.mcts_max_depth,
-        mcts_temperature=args.mcts_temperature,
-        mcts_distill_coef=args.mcts_distill_coef,
-    )
-    train_ppo(target_polys, network, env, config, iterations=args.iterations, log_callback=log_callback)
+    if args.algorithm == "sac":
+        config = SACConfig(
+            rollouts_per_update=args.rollouts_per_update,
+            candidates_per_step=args.candidates_per_step,
+            max_episode_steps=args.max_episode_steps,
+            learning_rate=args.learning_rate,
+            library_reward_weight=args.library_reward_weight,
+            gradient_steps=args.gradient_steps,
+            batch_size=args.batch_size,
+            buffer_capacity=args.buffer_capacity,
+            learning_starts=args.learning_starts,
+            tau=args.tau,
+            alpha_init=args.alpha_init,
+            autotune_alpha=not args.no_autotune_alpha,
+            target_entropy_scale=args.target_entropy_scale,
+            seed=args.seed,
+        )
+        train_sac(target_polys, network, env, config, iterations=args.iterations, log_callback=log_callback)
+    else:
+        config = PPOConfig(
+            rollouts_per_update=args.rollouts_per_update,
+            candidates_per_step=args.candidates_per_step,
+            max_episode_steps=args.max_episode_steps,
+            learning_rate=args.learning_rate,
+            library_reward_weight=args.library_reward_weight,
+            entropy_coef=args.entropy_coef,
+            seed=args.seed,
+            use_mcts=args.use_mcts,
+            mcts_simulations=args.mcts_simulations,
+            mcts_max_depth=args.mcts_max_depth,
+            mcts_temperature=args.mcts_temperature,
+            mcts_distill_coef=args.mcts_distill_coef,
+        )
+        train_ppo(target_polys, network, env, config, iterations=args.iterations, log_callback=log_callback)
 
     torch.save(network.state_dict(), args.checkpoint_out)
     print(f"Saved checkpoint to {args.checkpoint_out}", flush=True)

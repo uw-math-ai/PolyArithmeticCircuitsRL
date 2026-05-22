@@ -137,7 +137,15 @@ terminal_bonus).
 | `top-down-ppo-4070ti-500` | plain PPO, 2 trivial built-in targets | flat / meaningless (baseline sanity only) |
 | `top-down-ppo-curriculum-500` | plain PPO, term/degree-graded curriculum, success vs 5-baseline min | 0.833 success |
 | `top-down-ppo-ck-500` | plain PPO, Ck curriculum, success = reach Ck | 0.588 Ck-match, gap +0.61 |
-| `top-down-ppo-ck-mcts-1000` | **PPO+MCTS + factor action**, Ck curriculum | **0.900 Ck-match, gap +0.09** |
+| `top-down-ppo-ck-mcts-1000` | **PPO+MCTS + factor action**, Ck curriculum (80) | **0.900 Ck-match, gap +0.09** |
+| `top-down-ppo-ck-mcts-big-1000` | PPO+MCTS + factor action, 450 train / 207 held-out | **train 0.918 = held-out 0.918** (no overfit), gap ~0.01 (see §11) |
+| `top-down-sac-ck-big-1000` | discrete SAC (target-entropy 0.7), big curriculum | held-out 0.831 final / **0.928 peak** — α over-grew (over-exploration) |
+| `top-down-sac-ck-big-tuned-1000` | discrete SAC (target-entropy 0.4) | held-out **0.889 final / 0.928 best**, α stable; ~30 min vs ~2.5 h MCTS |
+
+**PPO+MCTS vs SAC** (held-out, same benchmark/metric): PPO 0.918 (most stable),
+tuned SAC 0.889 final / 0.928 best, both ≫ random ~0.40 and both generalize.
+SAC trains ~5× faster (no search). Comparison figures + writeup in
+`paper_plots/comparison_ppo_vs_sac/` (`compare_runs.py`). Shared weak spot: C8.
 
 Final per-Ck match (MCTS-1000): C2 1.00, C3 1.00, C4 1.00, C5 1.00, C6 0.60,
 C7 0.90, C8 0.80, C9 0.90.
@@ -384,10 +392,18 @@ Tooling added for defensible numbers:
 - **Plots:** `plot_training.py` gained `06_train_vs_heldout` and
   `07_agent_vs_random_by_complexity`.
 
-Run in progress at handoff time: `top-down-ppo-ck-mcts-big-1000` (PPO+MCTS, 1000
-iters, 450 train / 207 held-out, factor action, W&B group `top-down`). Compare
-its `heldout/ck_match_rate` and the per-Ck agent-vs-random bars against the
-earlier mcts-1000 numbers when it finishes.
+**Result — `top-down-ppo-ck-mcts-big-1000`** (PPO+MCTS, 1000 iters, 450 train /
+207 disjoint held-out, factor action). The headline generalization result:
+
+- **Train Ck-match = 0.918, held-out = 0.918** (identical — no overfitting),
+  random ≈ 0.41. Mean gap to optimal: train 0.03, held-out 0.01 ops.
+- Held-out reached 0.918 by iter ~100 and stayed flat through iter 1000.
+- Per-Ck (held-out) vs random, lift widens with complexity:
+  C2 1.00/0.81 · C3 0.95/0.71 · C4 1.00/0.57 · C5 1.00/0.44 · C6 1.00/0.30 ·
+  C7 0.76/0.32 · C8 0.72/0.23 · C9 0.96/0.31 · C10 0.92/0.18.
+  (C8 is a real difficulty pocket — ~0.72 on both train and held-out.)
+- Figures: `paper_plots/top-down-ppo-ck-mcts-big-1000/` (06 = train-vs-held-out
+  generalization, 07 = per-Ck learned-vs-random bars are the paper money figs).
 
 ### SAC-specific future work
 1. Add the per-Ck greedy eval to `run_sac_finetune.py` (or a shared launcher)
