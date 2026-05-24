@@ -1,0 +1,592 @@
+%%%%%%%% ICML 2026 WORKSHOP SUBMISSION DRAFT %%%%%%%%%%%%%%%%%
+
+\documentclass{article}
+
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, fit, calc, shapes.geometric}
+\usepackage{subcaption}
+\usepackage{amsmath}
+
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\usepackage{icml2026}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{amsthm}
+\usepackage[capitalize,noabbrev]{cleveref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\algrenewcommand\alglinenumber[1]{}
+
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{problem}[definition]{Problem}
+\theoremstyle{remark}
+\newtheorem{remark}[definition]{Remark}
+
+\usepackage[disable,textsize=tiny]{todonotes}
+
+\icmltitlerunning{FactorLibraries}
+
+\begin{document}
+
+\twocolumn[
+  \icmltitle{FactorLibraries: From Polynomials to Circuits via Recursive Subgoals}
+
+  \begin{icmlauthorlist}
+    \icmlauthor{Anonymous Authors}{anon}
+  \end{icmlauthorlist}
+
+  \icmlaffiliation{anon}{Anonymous Institution}
+  \icmlcorrespondingauthor{Anonymous Authors}{anonymous@example.com}
+
+  \icmlkeywords{Arithmetic Circuits, Reinforcement Learning, Monte Carlo Tree Search, Symbolic Reasoning}
+
+  \vskip 0.3in
+]
+
+\printAffiliationsAndNotice{}
+
+\begin{abstract}
+Finding minimal arithmetic circuits for polynomials over finite fields is a combinatorially hard problem central to algebraic complexity theory. We introduce \texttt{FactorLibrary}, a persistent store of polynomials with certified factorizable structure that supplies algebraic subgoals across training episodes, and study two complementary RL formulations. In the \textit{bottom-up} formulation, an agent appends gates sequentially, trained with Gumbel-PPO-MCTS in a JAX/\texttt{mctx} parallel implementation; \texttt{FactorLibrary} shapes rewards via subgoal hits, library bonuses, and completion bonuses. In the \textit{top-down} formulation, the agent decomposes the target recursively via additive splits, trained with PPO or SAC augmented by memoized AND/OR MCTS; a JAX-accelerated \texttt{FactorLibrary} generates factorizable split candidates by a vectorized coefficient comparison. On two-variable polynomials over $\mathbb{F}_5$, the bottom-up branch achieves $99.9\%$ success at complexities $C_1$--$C_2$ but degrades to $7.8\%$ at $C_9$--$C_{10}$, reflecting combinatorial growth of the gate-action space. The top-down branch is substantially more robust: PPO+MCTS reaches $91.8\%$ held-out match rate across $C_2$--$C_{10}$, and SAC achieves $92.8\%$ at its best checkpoint at one-fifth the compute. Both far exceed the $40\%$ random baseline, showing that explicit algebraic subgoal structure enables more robust generalization than gate-level search alone.
+\end{abstract}
+
+\section{Introduction}
+
+An \textit{arithmetic circuit} is a sequence of addition and multiplication gates that computes a given polynomial from initial variable nodes \citep{Burgisser1997AlgebraicComplexity,ShpilkaYehudayoff2009Circuits}. A circuit is \textit{efficient} if it computes the polynomial with the minimal number of gates. The problem of finding efficient arithmetic circuits is central in algebraic complexity theory, and it also provides a useful testbed for reinforcement learning methods that search over a large combinatorial action space \citep{Valiant1979CompletenessClasses,Valiant1979Permanent,LidlNiederreiter1997FiniteFields}.  A much more difficult search problem of this sort is automatic generation of mathematical proofs, where learned policies must compose many verified symbolic steps \citep{Hubert2025AlphaProof}. 
+
+A recent related work \citet{Zhang2026CircuitBuilder} formulated the arithmetic circuit problem as a bottom-up reinforcement-learning game. Their ``\texttt{CircuitBuilder}'' agent begins with an empty circuit consisting of only variable and constant nodes, applies one gate at a time, and succeeds when a computed node equals the target polynomial. Zhang et.al. compared PPO+MCTS with discrete SAC training architectures and observed that off-policy learning was competitive on easier two-variable tasks, while on-policy search performed better the number of variables increased. 
+
+In this paper, we adopt the \textit{bottom-up} approach of Zhang et.al. and train with Gumbel-PPO-MCTS, where Gumbel search produces improved targets for PPO updates \citep{Danihelka2022GumbelPlanning,schulman2017ppo}. We also study an opposite \textit{top-down} formulation that reverses the direction of search. The agent starts from the target polynomial $f$ and repeatedly proposes addition split points $f = g+h$, relying on the game environment to produce lists of factors of $g$ and $h$. The agent then continues to recursively propose split points for smaller expressions until the search reaches the variable and constant nodes. 
+
+Both formulations use a \texttt{FactorLibrary}, a collection of polynomials that serve as subgoals. It serves as both the agent's short-term memory and a list of recursive subgoals, under the heuristic that if the agent has learned to produce simpler subexpressions, then it should assemble them into the bigger expression. The technique of breaking down goals into recursive subgoals has been considered in \citet{Kulkarni2016HierarchicalDeepRL}, \citet{Andrychowicz2017HER}, and \citet{Florensa2018AutomaticGoalGeneration}. 
+
+We evaluate both formulations on two-variable polynomials over $\mathbb{F}_5$. The bottom-up branch achieves near-perfect success on small circuits (99.9\% aggregate on $C_1$--$C_2$) but degrades sharply with complexity, falling to 7.8\% at $C_9$--$C_{10}$ due to the combinatorial explosion of the gate-action space. The top-down branch is substantially more robust: PPO+MCTS reaches 91.8\% held-out match rate across complexities $C_2$--$C_{10}$, and SAC achieves a best checkpoint of 92.8\% at roughly one-fifth the compute cost. Both methods far exceed the 40\% uniform random baseline, demonstrating that the learned split and factor policies generalize to unseen targets.
+
+\section{The Arithmetic Circuit Problem}
+\label{sec:arithmetic-circuit-problem}
+
+In this section, we describe the two formulations of the arithmetic circuit problem that we considered. We introduce the concept of a \texttt{FactorLibrary} and discuss its implementation under both formulations.
+
+\subsection{Background}
+\label{subsec:background}
+
+
+Let $\mathbb{F}_p$ be a finite field and let $X=\{x_0,\ldots,x_{n-1}\}$ be a set of variables. An arithmetic circuit over $\mathbb{F}_p[X]$ is a finite directed acyclic graph whose input gates are labeled by variables and constants and whose internal gates are labeled by addition $+$ or multiplication $\times$ \citep{Burgisser1997AlgebraicComplexity,ShpilkaYehudayoff2009Circuits}. The value at each internal gate is computed by performing the labeled operation on the values of the two incoming gates, and one gate is designated as the output gate. A circuit $C$ computes $f$ if the value at the output gate is equal to $f$. The size of a circuit $C$ is the total number of internal gates.
+
+\begin{problem}[The arithmetic circuit problem]
+Given a target polynomial $f\in\mathbb{F}_p[X]$, find a circuit $C$ with the minimum number of internal gates such that $C$ computes $f$.
+\end{problem}
+
+The arithmetic circuit problem is central to algebraic complexity theory, closely tied to Valiant's VP vs VNP conjecture \citep{Valiant1979CompletenessClasses}. This conjecture is the algebraic analogue of P vs NP, and finding efficient circuits for polynomials such as permanents would receive great interest in the literature \citep{Valiant1979Permanent}. Even though this problem is hard in general, there are certain families of polynomials for which there exists well-known efficient circuits. Horner's method \citep{Horner1819NewMethod} computes any degree $d$ univariate polynomial within $2d$ gates, which is known to be optimal. Elementary symmetric polynomials and determinants satisfy similar recursions that produce efficient circuits.
+
+\begin{figure*}[t]
+    \centering
+    % ------------------ SUBFIGURE A: BOTTOM-UP ------------------
+    \begin{subfigure}[b]{0.43\textwidth}
+        \centering
+        \begin{tikzpicture}[
+            node distance=1.1cm and 0.8cm,
+            % Matched to your sample image's cream circles
+            gate/.style={circle, draw=black, thick, fill=orange!10, minimum size=7mm, font=\large},
+            % Matched to your sample image's light blue input rectangles
+            leaf/.style={rectangle, draw=black, thick, fill=blue!10, minimum size=6mm, font=\large},
+            edge/.style={->, >=Stealth, thick, draw=black},
+            steptext/.style={text=black!80, font=\footnotesize\sffamily, align=left}
+        ]
+            % Leaf nodes (Initial State Pool)
+            \node[leaf] (x0) {$x_0$};
+            \node[leaf] (x1) [right=of x0] {$x_1$};
+            \node[leaf] (x2) [right=of x1] {$x_2$};
+            
+            % Step 1: Multiply x1 and x2
+            \node[gate] (mul) [above=1.2cm of $(x1.north)!0.5!(x2.north)$] {$\times$};
+            \draw[edge] (x1) -- (mul);
+            \draw[edge] (x2) -- (mul);
+            \node[right=0.15cm of mul, steptext] {Step 1:\\\texttt{multiply($x_1, x_2$)}};
+            
+            % Step 2: Add x0 and the product
+            \node[gate] (add) [above=1.2cm of $(x0.north)!0.5!(mul.north)$] {$+$};
+            \draw[edge] (x0) -- (add);
+            \draw[edge] (mul) -- (add);
+            \node[right=0.15cm of add, steptext] {Step 2:\\\texttt{add($x_0$, node\_3)}};
+            
+            % Target indication
+            \node[above=0.3cm of add, font=\small\sffamily\bfseries, color=black] (target) {Target Built!};
+            \draw[dashed, thick, color=black!40] (add) -- (target);
+            
+            % Bounding box label for initial pool
+            \draw[dashed, black!30, thick] ($(x0.south west)+(-0.15,-0.15)$) rectangle ($(x2.north east)+(0.15,0.15)$);
+            \node[text=black!60, font=\scriptsize\sffamily] at ($(x1.south)+(0,-0.35)$) {Initial Node Pool};
+        \end{tikzpicture}
+        \caption{Bottom-up Construction}
+        \label{fig:bottom-up}
+    \end{subfigure}
+    \hfill
+    % ------------------ SUBFIGURE B: TOP-DOWN ------------------
+    \begin{subfigure}[b]{0.54\textwidth}
+        \centering
+        \begin{tikzpicture}[
+            scale=0.9,
+            transform shape,
+            node distance=0.7cm and 0.15cm,
+            % Subgoals styled as clean rounded cream containers matching the theme
+            poly/.style={rectangle, draw=black, thick, fill=orange!10, rounded corners=4pt, minimum width=2.0cm, minimum height=0.7cm, align=center, font=\small},
+            agent/.style={draw=black, thick, fill=purple!10, ellipse, align=center, inner sep=4pt, font=\small\sffamily},
+            env/.style={draw=black, thick, fill=teal!10, rounded corners=3pt, rectangle, align=center, inner sep=4pt, font=\small\sffamily},
+            edge/.style={->, >=Stealth, thick, draw=black},
+            % FIXED: added 'align=center' to prevent the LR mode line-break error
+            done/.style={text=black!50, font=\tiny\sffamily\itshape, align=center}
+        ]
+            % Root Target State
+            \node[poly] (root) {\textbf{Target Subgoal}\\$x_0 + x_1x_2$};
+            
+            % Agent Action (Split point choice)
+            \node[agent] (split) [below=0.6cm of root] {Agent: Split sums};
+            \draw[edge] (root) -- (split);
+            
+            % Compact side branches to prevent clipping off-page
+            \node[poly] (g) [below left=0.8cm and 0.3cm of split] {\textbf{Left Term ($g$)}\\ $x_0$};
+            \node[poly] (h) [below right=0.8cm and 0.3cm of split] {\textbf{Right Term ($h$)}\\ $x_1x_2$};
+            \draw[edge] (split) -- (g);
+            \draw[edge] (split) -- (h);
+            
+            % Trivial reduction leaf
+            \node[done] (g_done) [below=0.3cm of g] {Leaf Node\\(Terminates)};
+            \draw[edge, dashed, draw=black!40] (g) -- (g_done);
+            
+            % Environment factoring step
+            \node[env] (factor) [below=0.5cm of h] {Env: Auto-Factorization};
+            \draw[edge] (h) -- (factor);
+            
+            % Ultra-tight layout for lower level factors to guarantee margin safety
+            \node[poly] (x1) [below left=0.7cm and -0.2cm of factor] {\textbf{Subgoal}\\$x_1$};
+            \node[poly] (x2) [below right=0.7cm and -0.2cm of factor] {\textbf{Subgoal}\\$x_2$};
+            \draw[edge] (factor) -- (x1);
+            \draw[edge] (factor) -- (x2);
+            
+            \node[done] (x1_done) [below=0.3cm of x1] {(Terminates)};
+            \node[done] (x2_done) [below=0.3cm of x2] {(Terminates)};
+            \draw[edge, dashed, draw=black!40] (x1) -- (x1_done);
+            \draw[edge, dashed, draw=black!40] (x2) -- (x2_done);
+        \end{tikzpicture}
+        \caption{Top-down Decomposition}
+        \label{fig:top-down}
+    \end{subfigure}
+    
+    \caption{Comparison of RL environment mechanics for arithmetic circuit design on the target polynomial $f = x_0 + x_1x_2$. (a) Bottom-up sequentially links operators from atomic leaves up to the target. (b) Top-down issues additive split choices to an environment that recursively strips out products via automatic factorization.}
+    \label{fig:framework_comparison}
+\end{figure*}
+
+\subsection{FactorLibrary and Recursive Subgoals}
+
+\label{subsec:factor-library}
+
+Polynomial arithmetic circuit optimization is closely related to algebraic expression optimization and goal-directed reinforcement learning. Polynomial expressions can be optimized by combining algebraic factorization with common subexpression elimination \citep{Hosangadi2006OptimizingPolynomials}. Hierarchical deep reinforcement learning uses intrinsic goals to decompose sparse-reward tasks \citep{Kulkarni2016HierarchicalDeepRL}. Hindsight Experience Replay improves sparse-reward learning by relabeling achieved states as goals \citep{Andrychowicz2017HER}. Automatic goal generation builds curricula of achievable but informative goals \citep{Florensa2018AutomaticGoalGeneration}. FactorLibraries combine these ideas in a restricted algebraic form: every reusable subgoal is a polynomial identity that can be checked exactly.
+
+
+
+A \texttt{FactorLibrary} is a persistent collection of polynomials that serve as certified subgoals across training episodes. Both formulations maintain a \texttt{FactorLibrary}, though the contents and matching semantics differ by formulation. In both cases, the library acts as a form of algebraic short-term memory: it records structures the agent has encountered or constructed, and provides a source of intermediate targets that guide search toward efficient constructions. Admission to the library always requires a verifiable algebraic certificate, either the polynomial was constructed exactly in a prior successful episode (bottom-up), or its factorization demonstrably saves at least one gate over direct construction (top-down).
+
+Viewed from reinforcement learning, the library turns circuit discovery into a subgoal problem with exact algebraic semantics. Options, hierarchical control, and goal-conditioned replay all exploit intermediate objectives to improve long-horizon learning \citep{Sutton1999Options,Vezhnevets2017Feudal,Kulkarni2016HierarchicalDeepRL,Andrychowicz2017HER}. Search has been similarly effective in exact symbolic domains, including AlphaZero-style planning in games, AlphaTensor for bilinear algorithms, neural symbolic integration, and formal proof search in AlphaProof \citep{Silveretal2018AlphaZero,Fawzietal2022AlphaTensor,Lample2020Deep,Hubert2025AlphaProof}. Our setting differs from latent-subgoal formulations because every admissible subgoal is a concrete polynomial over $\mathbb{F}_p[X]$, and every reward signal is computed by exact arithmetic rather than a learned or heuristic approximation.
+
+
+\subsection{The Bottom-Up Formulation}
+\label{subsec:bottom-up}
+
+We adopt the formulation of the artihmetic circuit problem from \citet{Zhang2026CircuitBuilder}, which we refer to as the \textit{bottom-up} approach. Given a polynomial $f(x_1, \dots,x_n)$, the initial game state consists of the variable gates $x_1, \dots, x_n$ and a constant gate $1$. Each subsequent game state at the $m^\text{th}$ iteration then consists of a partial circuit with gates $v_0,\ldots,v_{m-1}$. A valid actions $\star\in\{+,\times\}$ connects two existing nodes $v_i,v_j$ and produces a new node $v_m=v_i\star v_j$. An episode succeeds when some node computes $f$. As the number of variables and the circuit size grows, the action space grows exponentially (see \citet[Section 3.2]{Zhang2026CircuitBuilder}), and non-optimized sequences of actions have very little chance of building a circuit which computes the target polynomial. Therefore, the bottom-up formulation is characterized by sparse reward signal with large combinatorial growth. See \Cref{fig:framework_comparison} for a schematic of the bottom-up environment. 
+
+\begin{figure*}[t]
+\centering
+\begin{subfigure}[t]{0.46\textwidth}
+\centering
+\begin{tikzpicture}[
+    node distance=0.62cm,
+    box/.style={rectangle, draw=black, thick, rounded corners=3pt,
+        align=center, minimum width=3.0cm, minimum height=0.62cm,
+        fill=blue!6, font=\scriptsize},
+    rew/.style={rectangle, draw=black, thick, rounded corners=3pt,
+        align=center, minimum width=3.0cm, minimum height=0.62cm,
+        fill=green!8, font=\scriptsize},
+    data/.style={cylinder, shape border rotate=90, draw=black, thick,
+        align=center, minimum width=2.4cm, minimum height=0.62cm,
+        fill=purple!8, font=\scriptsize},
+    arr/.style={->, thick, >=Stealth},
+    sidelab/.style={text=black!55, font=\tiny\sffamily\itshape, align=center},
+]
+\node[box] (sample)  {Sample target $f$};
+\node[box,  below=of sample]  (factor) {Factorize $f$ over $\mathbb{Z}$ (SymPy)};
+\node[data, below=of factor]  (sg)     {Episode subgoals $\mathcal{F}_f$};
+\node[box,  below=of sg]      (gate)   {New gate $u = v_i \star v_j$};
+\node[rew,  below=of gate]    (sgrew)  {$u \in \mathcal{F}_f$: subgoal reward};
+\node[rew,  below=of sgrew]   (librew) {$u \in \mathcal{L}$: library bonus};
+\node[rew,  below=of librew]  (comp)   {$u+v'=f$ or $u \cdot v'=f$:\\completion bonus};
+\node[data, below=of comp]    (lib)    {\texttt{FactorLibrary} $\mathcal{L}$};
+\draw[arr] (sample) -- (factor);
+\draw[arr] (factor) -- (sg);
+\draw[arr] (sg)     -- (gate);
+\draw[arr] (gate)   -- (sgrew);
+\draw[arr] (sgrew)  -- (librew);
+\draw[arr] (librew) -- (comp);
+\draw[arr] (comp.east) -- ++(0.55,0)
+    node[sidelab, right, text width=0.9cm] {on\\success}
+    |- (lib.east);
+\draw[arr, dashed, draw=black!45] (lib.west) -- ++(-0.55,0) |- (librew.west);
+\draw[arr, dashed, draw=black!45] (lib.west) -- ++(-0.55,0) |- (sg.west)
+    node[sidelab, left, pos=0.5, text width=1.0cm] {next\\episode};
+\end{tikzpicture}
+\caption{Bottom-up \texttt{FactorLibrary} lifecycle.}
+\label{fig:fl-bottom-up}
+\end{subfigure}
+\hfill
+\begin{subfigure}[t]{0.46\textwidth}
+\centering
+\begin{tikzpicture}[
+    node distance=0.62cm,
+    box/.style={rectangle, draw=black, thick, rounded corners=3pt,
+        align=center, minimum width=3.0cm, minimum height=0.62cm,
+        fill=blue!6, font=\scriptsize},
+    search/.style={rectangle, draw=black, thick, rounded corners=3pt,
+        align=center, minimum width=3.0cm, minimum height=0.62cm,
+        fill=orange!12, font=\scriptsize},
+    data/.style={cylinder, shape border rotate=90, draw=black, thick,
+        align=center, minimum width=2.4cm, minimum height=0.62cm,
+        fill=purple!8, font=\scriptsize},
+    arr/.style={->, thick, >=Stealth},
+    sidelab/.style={text=black!55, font=\tiny\sffamily\itshape, align=center},
+]
+\node[data]  (lib)   {\texttt{FactorLibrary} $\mathcal{L}$: $N$ entries};
+\node[box,   below=of lib]   (dense) {Dense $(N\times M)$ JAX \texttt{int32} array};
+\node[box,   below=of dense] (tgt)   {Active poly $q$ as dense vector\\(length $M$)};
+\node[search,below=of tgt]   (jax)   {JAX vectorized comparison:\\exact $|$ scalar $|$ permuted};
+\node[box,   below=of jax]   (match) {Matched sub-polynomials of $q$};
+\node[box,   below=of match] (cands) {\texttt{library\_match} candidates\\(top priority + score bonus)};
+\node[box,   below=of cands] (rank)  {\texttt{propose\_splits} ranked output};
+\draw[arr] (lib)   -- (dense);
+\draw[arr] (dense) -- (tgt);
+\draw[arr] (tgt)   -- (jax);
+\draw[arr] (jax)   -- (match);
+\draw[arr] (match) -- (cands);
+\draw[arr] (cands) -- (rank);
+\draw[arr, dashed, draw=black!45] (rank.east) -- ++(0.55,0)
+    node[sidelab, right, text width=1.0cm] {new\\factorization}
+    |- (lib.east);
+\end{tikzpicture}
+\caption{Top-down \texttt{FactorLibrary} matching pipeline.}
+\label{fig:fl-top-down}
+\end{subfigure}
+\caption{\texttt{FactorLibrary} in the two formulations. \textbf{(a)} Bottom-up lifecycle: at episode reset the target is factorized to populate subgoals $\mathcal{F}_f$; subgoal hits, library bonuses, and one-time completion bonuses shape reward during rollout; successful episodes register new nodes in $\mathcal{L}$. \textbf{(b)} Top-down matching: $N$ library entries are stored as dense coefficient vectors stacked into a $(N\times M)$ JAX array; a vectorized comparison finds exact and scalar matches in one GPU call; permutation matches use a NumPy loop; matched entries become top-priority split candidates.}
+\label{fig:factor-library-both}
+\end{figure*}
+
+In the bottom-up formulation, the \texttt{FactorLibrary} is an in-memory, session-level cache that maps canonical polynomial keys to the earliest successful episode in which they were constructed. At the start of each episode, the target $f$ is factorized over $\mathbb{Z}$ using \texttt{SymPy}'s \texttt{factor\_list}, and all non-trivial polynomial factors, those of degree at least one that are not base input nodes, are collected into the active subgoal set $\mathcal{F}_f$. Factorization is performed over the integers rather than $\mathbb{F}_p$ for numerical stability; resulting factors are then reduced modulo $p$. During rollout, the first time a newly appended gate $u$ matches a member of $\mathcal{F}_f$, the agent receives a subgoal reward. If that subgoal is also present in the cross-episode library, an additional library bonus is awarded to encourage rediscovery of previously learned sub-computations.
+
+A further mechanism, dynamic subgoal discovery, activates whenever $u$ is library-known: the residual $f - u$ is computed immediately as a dense coefficient subtraction and added as a new additive subgoal (one addition away from $f$); exact division $f / u$ is also attempted via polynomial pseudo-division with a modular remainder check, and if exact, the quotient is added as a multiplicative subgoal for the remainder of the episode. One-time completion bonuses fire when the circuit simultaneously contains $u$ and a node $v'$ satisfying $u + v' = f$ (additive) or $u \cdot v' = f$ (multiplicative). Each bonus fires at most once per episode to ensure the primary success criterion remains exact target construction. After a successful episode, every non-input node of the circuit is entered into the library for future episodes. All subgoal checks, library-known tests, and completion comparisons are implemented as pure JAX operations over fixed-size coefficient arrays, keeping the entire reward path GPU-resident. See \Cref{fig:fl-bottom-up} for an illustration of the library lifecycle.
+
+\subsection{The Top-Down Formulation}
+
+\label{subsec:top-down}
+
+We next introduce the \textit{top-down} formulation, which reverses the direction of search and regards the arithmetic circuit problem as a recursive decomposition problem. The initial state simply consists of the list $(f)$ where $f$ is the target polynomial. The valid actions are all two-part decompositions in the form $f = g +h$ for polynomials $g,h$. We refer to these as \textit{addition split points}. Once a split point is chosen, the game environment then immediately factors $g$ and $h$ and returns a list of factors $(g_1, \dots, g_r, \; h_1, \dots, h_s)$, and this list together with the chosen addition split point and multiplications in the factorizations becomes the next state. For each subsequent state $(f_1, \dots, f_l)$, the valid actions are addition split points for all factors, in the form $f_i = g_i + h_i$. The game terminates when the list consists of only single variables $x_j$ and constants $1$. See \Cref{fig:framework_comparison} for a schematic of the top-down environment. 
+
+One advantage of this formulation lies in its deterministic nature. The agent is not asked to guess the next gate in a partial circuit. Instead, the agent chooses how to decompose the remaining target. Since factorization algorithms over finite fields are exact, the agent is always \textit{guaranteed} to build a valid circuit for $f$ given enough action steps. 
+
+In the top-down formulation, the \texttt{FactorLibrary} stores polynomials with confirmed non-trivial multiplicative factorizations, specifically those for which rebuilding the polynomial via its factorization costs strictly fewer gates than direct construction. An entry $p$ is admitted only if $\mathrm{rebuild\_cost}(\mathrm{factor}(p)) < \mathrm{direct\_cost}(p)$, guaranteeing at least one gate saved. The library is pre-seeded before training with known factorizable families: $(x_i + a)^2$ for each variable $x_i$ and each nonzero constant $a \in \mathbb{F}_p$; $(x_i + a)(x_j + b)$ for each variable pair and all constants $a, b \in \mathbb{F}_p$; and elementary symmetric polynomials up to degree three. As search proceeds, every polynomial whose factorization is non-trivial is a candidate for admission, so the library grows dynamically with the agent's experience.
+
+At query time, the library identifies all entries that appear as a sub-polynomial of the active polynomial $q$, under three matching modes. Exact matching checks whether all support monomials of a library entry appear in $q$ with identical coefficients. Scalar matching additionally allows a uniform rescaling $p \mapsto c \cdot p$ for any $c \in \mathbb{F}_p^\times$. Permutation matching allows the variable ordering to be permuted, so that a known pattern for $(x_0, x_1)$ can match an occurrence in $(x_1, x_0)$ order; this is gated on the number of variables being at most five. Each library entry is stored as a dense integer coefficient vector of length $M$ (one slot per monomial up to the degree bound), and all $N$ entries are stacked into an $(N \times M)$ JAX \texttt{int32} array. Exact matches are found by a single vectorized comparison using JAX, while scalar and permutation matches are resolved by a NumPy loop over the small residual candidate set. A matched entry generates a \texttt{library\_match} split candidate with the highest source priority in the proposal ranking and an elevated score hint, directly biasing the policy toward decompositions that expose known factorizable subexpressions. See \Cref{fig:fl-top-down} for an illustration of the matching pipeline.
+
+
+\section{Training}
+\label{sec:training}
+
+We now describe the training pipelines the two formulations introduced in \Cref{sec:arithmetic-circuit-problem}. For bottom-up, we adopted \texttt{CircuitBuilder}'s gate-action environment and added root-only Gumbel search, PPO updates, and \texttt{FactorLibrary} shaping. We only considered PPO, because \citet{Zhang2026CircuitBuilder} points out that PPO performs better at higher complexities. For top-down, we train a policy over variable-sized candidate decompositions, using factorization, memoization, \texttt{FactorLibrary} and AND/OR MCTS to evaluate recursive subgoals. We compared the efficacy of PPO and SAC in this new environment. All built polynomials are checked with exact arithmetic over $\mathbb F_p$.
+
+\subsection{Bottom-Up Gumbel-PPO-MCTS}
+
+The bottom-up environment represents each partial circuit as a DAG whose nodes store finite-field polynomials. Observations contain a padded circuit graph, node features, the target coefficient vector, and a valid-action mask. Actions are encoded by an operation $\star\in\{+,\times\}$ together with an upper-triangular pair of existing nodes $(v_i,v_j)$, producing the new node $v_i\star v_j$. A graph encoder embeds the partial circuit, a target encoder embeds the coefficient vector of the target polynomial, and the resulting representation is passed to policy and value heads.
+
+The implementation is built on JAX, with the network written in Flax and optimization handled by optax with gradient-clipped Adam. The environment is also implemented in pure JAX as a collection of fixed-size arrays (node coefficient matrix, edge arrays, subgoal arrays, and target vector), enabling JIT compilation of the full step function. All $B$ parallel environments are stepped in a single JIT-compiled call, and the \texttt{FactorLibrary} reward path, including subgoal coefficient comparisons, library-known flag lookups, and completion checks, is executed as JAX operations over preloaded arrays, keeping the entire training loop GPU-resident. Batched MCTS uses Google DeepMind's \texttt{mctx} library, which searches all $B$ environments simultaneously on GPU.
+
+At each rollout step, the policy is locally improved by root-only Gumbel search \citep{Danihelka2022GumbelPlanning}. The network supplies masked logits and a value estimate. Gumbel-Top-$k$ sampling selects a bounded set of promising root actions, and Sequential Halving compares those candidates by shallow lookahead. The search returns both a selected gate action and a completed-$Q$ root distribution. PPO then updates the network using the clipped surrogate objective \citep{Schulman2017PPO}, with advantages computed by generalized advantage estimation \citep{Schulman2016GAE}. The stored network log-probability, not the MCTS probability, is used in the PPO ratio. The Gumbel-improved root distribution is used as an auxiliary cross-entropy distillation target, following the expert-iteration pattern in which search improves local decisions and the network generalizes these improved decisions across all states \citep{Anthony2017ExpertIteration,Silver2018AlphaZero}.
+
+The \texttt{FactorLibrary} operates on the level of reward shaping. At episode reset, nontrivial factors of the remaining target are added as episode subgoals. During rollout, we give a subgoal reward to a newly constructed gate if it is a first-time match for a library subgoal, and a library bonus if that subgoal was previously constructed in a successful episode. If the new node $u$ and an existing node $v$ satisfy $u+v=f$ or $uv=f$, the transition receives a completion bonus. These bonuses are bounded and one-time per episode, so the success criterion remains tied to exactly constructing the target. The \texttt{FactorLibrary}, however, persists across all episodes and serves as the short-term memory of the model. See \Cref{alg:bottom-up-gumbel} for pseudocode and \Cref{fig:bottom-up} for an illustration. 
+
+\begin{algorithm}[t]
+\caption{Bottom-Up Gumbel-PPO-MCTS with \texttt{FactorLibrary}}
+\label{alg:bottom-up-gumbel}
+\footnotesize
+\begin{algorithmic}
+\REQUIRE target distribution $\mathcal D_{\mathrm{tar}}$, budget $B$, network $(\pi_\theta,V_\theta)$, library $\mathcal L$, search budget $K$
+\FOR{each training episode}
+    \STATE Sample target $f\sim\mathcal D_{\mathrm{tar}}$ and reset circuit $C\gets\{1,x_0,\ldots,x_{n-1}\}$
+    \STATE Initialize unrewarded subgoals $\mathcal F_f\gets \mathrm{NontrivialFactors}(f)$
+    \FOR{$t=0,\ldots,B-1$}
+        \STATE Encode $s_t=(C,f,\mathcal F_f,\mathcal L)$ with valid gate-action mask
+        \STATE $(a_t,\widehat{\pi}_t)\gets \textsc{GumbelRootSearch}(s_t,\pi_\theta,V_\theta,K)$
+        \STATE Append $u\gets v_i\star v_j$ to $C$ for $a_t=(\star,i,j)$
+        \STATE Set $r_t$ by exact terminal, subgoal, library, and one-step completion checks
+        \STATE Remove any newly rewarded subgoals from $\mathcal F_f$
+        \STATE Store $(s_t,a_t,r_t,\widehat{\pi}_t,V_\theta(s_t),\log\pi_\theta(a_t\mid s_t))$
+        \IF{$u=f$}
+            \STATE Add constructed non-input nodes of $C$ to $\mathcal L$ and terminate episode
+        \ENDIF
+    \ENDFOR
+    \STATE Update $\theta$ by PPO with GAE and distillation to $\widehat{\pi}_t$
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Top-Down PPO/SAC + MCTS}
+
+The top-down implementation trains on the decomposition environment described in \Cref{subsec:top-down}. At each decision point, the active polynomial is the first element in the list of unresolved subgoals. The environment generates a variable-sized candidate set consisting of additive splits and, when the active polynomial factors nontrivially, a whole-polynomial factor action. Candidate splits are generated from term supports, random masks, common-factor clusters, known patterns, and \texttt{FactorLibrary} matches. The policy scores the current candidate list generated by the environment.
+
+After an action is selected, the environment factors the split pieces over $\mathbb F_p$. Only additive splits are counted towards agent actions and penalized in reward shaping. Base cases and memoized subproblems are resolved immediately, and unresolved nontrivial factors are pushed back onto the game state. The step reward is the reduction of cost before and after the action compared to the baseline cost given by random actions and heuristic search, with an optional library-match bonus. 
+
+Planning is performed by memoized AND/OR PUCT search, building on UCT and MCTS \citep{Kocsis2006UCT,Browne2012MCTS}. OR nodes are candidate actions for a polynomial. AND expansions are deterministic: after an action is chosen, factorization determines all child subproblems that must be solved. Search backs up total circuit cost rather than the value on a single leaf node. Our use of priors and values follows the AlphaZero search regime \citep{Silver2018AlphaZero}.
+
+In PPO+MCTS mode, MCTS runs at each action step. The distribution of root visits is used for action selection and as a cross-entropy distillation target in the PPO loss. We follow \citet{schulman2017ppo} for clipped surrogate, value loss, and entropy bonus. In SAC+MCTS mode, MCTS-guided transitions are stored in replay. The critic scores each candidate decomposition action by its expected entropy-regularized return, and the actor is trained with a discrete-action maximum-entropy objective \citep{Haarnoja2018SAC,Christodoulou2019DiscreteSAC}.
+
+\begin{algorithm}[t]
+\caption{Top-Down PPO/SAC + MCTS with \texttt{FactorLibrary}}
+\label{alg:top-down-clean}
+\footnotesize
+\begin{algorithmic}
+\REQUIRE target distribution $\mathcal D_{\mathrm{tar}}$, budget $H$, model $(\pi_\theta,V_\theta)$, optional critic $Q_\phi$, library $\mathcal L$, search budget $K$
+\FOR{each training episode}
+    \STATE Sample target $f\sim\mathcal D_{\mathrm{tar}}$
+    \STATE Reset list of subgoals $\mathcal Q\gets(f)$, trace $\mathcal T\gets\emptyset$, memo table $M\gets\emptyset$
+    \FOR{$t=0,\ldots,H-1$}
+        \IF{$\mathcal Q=\emptyset$}
+            \STATE Reconstruct and verify circuit from $\mathcal T$; add useful subtraces to $\mathcal L$
+            \STATE Terminate episode
+        \ENDIF
+        \STATE Let $q$ be the active unresolved polynomial
+        \STATE Generate verified actions $\mathcal A(q)$: splits, library matches, and possible factor action
+        \STATE $(a_t,\widehat{\pi}_t)\gets \textsc{AndOrMCTS}(q,\mathcal A(q),M,\pi_\theta,V_\theta,K)$
+        \STATE Execute $a_t$: factor selected pieces, charge rebuild cost, and update $\mathcal Q,\mathcal T,M$
+        \STATE Set reward to baseline cost saving plus any verified library reward
+        \STATE Store transition and search target $\widehat{\pi}_t$ in rollout or replay buffer
+    \ENDFOR
+    \STATE Update by PPO with MCTS distillation, or by SAC from replay using candidate-set $Q$-values
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\begin{figure*}[t]
+\centering
+\begin{subfigure}[t]{0.48\textwidth}
+\centering
+\begin{tikzpicture}[
+    node distance=0.62cm,
+    box/.style={rectangle, draw=black, thick, rounded corners=3pt,
+        align=center, minimum width=3.0cm, minimum height=0.62cm,
+        fill=blue!6, font=\scriptsize},
+    search/.style={rectangle, draw=black, thick, rounded corners=3pt,
+        align=center, minimum width=3.0cm, minimum height=0.62cm,
+        fill=orange!12, font=\scriptsize},
+    data/.style={cylinder, shape border rotate=90, draw=black, thick,
+        align=center, minimum width=2.4cm, minimum height=0.62cm,
+        fill=purple!8, font=\scriptsize},
+    arr/.style={->, thick, >=Stealth}
+]
+\node[box] (init) {Partial circuit\\$\{1,x_0,\ldots,x_{n-1}\}$};
+\node[data, below=of init] (lib) {\texttt{FactorLibrary}};
+\node[box, below=of lib] (obs) {Graph, target vector, mask};
+\node[box, below=of obs] (net) {Policy-value network};
+\node[search, below=of net] (search) {Gumbel root search};
+\node[box, below=of search] (gate) {Append gate $v_i\star v_j$};
+\node[box, below=of gate] (checks) {Exact success, subgoal, completion checks};
+\node[box, below=of checks] (update) {PPO update + distillation};
+
+\draw[arr] (init) -- (lib);
+\draw[arr] (lib) -- (obs);
+\draw[arr] (obs) -- (net);
+\draw[arr] (net) -- (search);
+\draw[arr] (search) -- (gate);
+\draw[arr] (gate) -- (checks);
+\draw[arr] (checks) -- (update);
+\draw[arr] (update.east) -- ++(0.55,0) |- (net.east);
+\draw[arr] (checks.west) -- ++(-0.45,0) |- (lib.west);
+\end{tikzpicture}
+\caption{Bottom-up gate-level pipeline.}
+\label{fig:bottom-up-training-pipeline}
+\end{subfigure}
+\hfill
+\begin{subfigure}[t]{0.48\textwidth}
+\centering
+\begin{tikzpicture}[
+    node distance=0.62cm,
+    box/.style={rectangle, draw=black, thick, rounded corners=3pt,
+        align=center, minimum width=3.0cm, minimum height=0.62cm,
+        fill=blue!6, font=\scriptsize},
+    search/.style={rectangle, draw=black, thick, rounded corners=3pt,
+        align=center, minimum width=3.0cm, minimum height=0.62cm,
+        fill=orange!12, font=\scriptsize},
+    data/.style={cylinder, shape border rotate=90, draw=black, thick,
+        align=center, minimum width=2.4cm, minimum height=0.62cm,
+        fill=purple!8, font=\scriptsize},
+    arr/.style={->, thick, >=Stealth}
+]
+\node[box] (frontier) {List of subgoals $\mathcal Q=(f)$};
+\node[data, below=of frontier] (lib) {\texttt{FactorLibrary}};
+\node[box, below=of lib] (cand) {Candidate actions\\splits + factor action};
+\node[box, below=of cand] (score) {Candidate scoring};
+\node[search, below=of score] (mcts) {Memoized AND/OR MCTS};
+\node[box, below=of mcts] (factor) {Execute action and factor pieces};
+\node[box, below=of factor] (updatefrontier) {Update list of subgoals, trace, memo};
+\node[box, below=of updatefrontier] (learn) {PPO/SAC update + search targets};
+
+\draw[arr] (frontier) -- (lib);
+\draw[arr] (lib) -- (cand);
+\draw[arr] (cand) -- (score);
+\draw[arr] (score) -- (mcts);
+\draw[arr] (mcts) -- (factor);
+\draw[arr] (factor) -- (updatefrontier);
+\draw[arr] (updatefrontier) -- (learn);
+\draw[arr] (learn.east) -- ++(0.55,0) |- (score.east);
+\draw[arr] (updatefrontier.west) -- ++(-0.45,0) |- (lib.west);
+\end{tikzpicture}
+\caption{Top-down decomposition pipeline.}
+\label{fig:top-down-training-pipeline}
+\end{subfigure}
+\caption{Training pipelines for bottom-up and top-down environments.}
+\label{fig:training-pipelines}
+\end{figure*}
+
+\section{Results and Comparisons}
+\label{sec:results}
+
+In this section, we discuss our training and evaluation results. For the bottom-up branch, we analyze the success rate of building a circuit for the target polynomial across the training curriculum, which is based on increasing heuristic size of the circuits. For the top-down branch, we analyze the success rate of the agent beating the baseline and achieving the optimal circuit length across circuit sizes. 
+
+\subsection{Bottom-Up Gumbel-PPO-MCTS}
+
+The bottom-up Gumbel-PPO-MCTS run uses a JAX implementation with \texttt{mctx} Gumbel MuZero search. \texttt{FactorLibrary} provides reward shaping. We trained using a curriculum based on circuit size, over two-variable targets in \(\mathbb F_5\). Let $C_i$ denote circuits of heuristic size $i$, meaning circuits generated from $i$ random gates. The curriculum proceeds through adjacent complexity buckets, starting from \(C_1\), then \(C_1,C_2\), then \(C_2,C_3\), and continuing up to \(C_9,C_{10}\). We trained the agent using a \(4\)-layer GNN with hidden dimension \(384\), batch size \(1024\), \texttt{mctx} Gumbel MuZero search with \(64\) simulations and \(16\) actions, on a single NVIDIA RTX PRO 6000 Blackwell GPU. The full phase-by-phase results are given in \Cref{tab:bottomup-gumbel-curriculum}. 
+
+The results show that Gumbel search and the \texttt{FactorLibrary} make the learning effective at low circuit size. The agent had \(99.2\%\) aggregate success up to \(C_3\), showing that the network has memorized the constructions of most small-size circuits. Performance remains strong through \(C_4\), but begins to degrade at \(C_5\), and the drop becomes sharper at higher complexities. The \(C_5,C_6\) phase ends at \(45.0\%\), the \(C_6,C_7\) phase at \(26.8\%\), and the \(C_9,C_{10}\) phase at \(7.8\%\). This is the expected failure mode of the primitive gate-action formulation, which coincides with the combinatorial explosion of the search space. Even with improved root search and factor-library rewards, the agent still struggles to discover useful intermediate expressions inside a rapidly expanding action space. 
+
+\subsection{Top-Down PPO+MCTS versus SAC}
+
+We trained the top-down PPO+MCTS agent with an MLP with $3$ hidden layers of width on an ensemble of targets combining Horner-schemes, sums of products, elementary symmetric polynomials. The training ran for \(1000\) iterations and used \(16\) rollouts per update, \(16\) candidate actions per step, maximum episode length \(24\), and \(48\) MCTS simulations of depth \(6\) on an RTX 4070 Ti.  The top-down SAC agent used the same actor architecture as PPO but replaced MCTS with off-policy discrete SAC using twin \(3\)-layer width-\(128\) critics, replay batch size \(64\), \(16\) gradient steps per iteration, Polyak target updates, and an automatically tuned entropy temperature with target entropy scale \(0.4\). 
+
+
+Evaluation used a fixed \(450\)-target training set for in-distribution tracking and a disjoint \(207\)-target held-out set for the reported generalization results, across \(C_2,\ldots,C_{10}\). The main results are summarized in \Cref{tab:topdown-summary}, and the training curves and final per-complexity results are shown in \Cref{fig:topdown-comparison}. For \(C_2,\ldots,C_8\), the \(C_k\) labels are computed by exact search over the split/factor/direct move set. The \(C_9\) and \(C_{10}\) buckets are partly heuristic-labeled, so verified-optimality claims are limited to \(C_2,\ldots,C_8\).
+
+Both top-down methods substantially outperform the random baseline. PPO+MCTS reaches a final held-out \(C_k\)-match rate of \(0.918\), compared with \(0.40\) for uniform random action selection over the same candidate sets. This indicates that the learned split/factor policy generalizes to unseen targets rather than memorizing the training set. SAC is competitive despite not using MCTS. Its final held-out success rate is \(0.889\), and its best checkpoint reaches \(0.928\), slightly above the final PPO+MCTS checkpoint. The SAC method is much cheaper computationally, as each run takes about 30 minutes on an RTX 4070 Ti, compared with about 2.5 hours for PPO+MCTS. However, it appears less stable due to drift in late-training. The choice between the two methods is therefore stability versus compute.
+
+
+
+\section{Conclusion and Future Directions}
+
+We have introduced two reinforcement learning formulations for arithmetic circuit discovery over finite fields and studied the role of a \texttt{FactorLibrary} in each. The bottom-up formulation extends gate-level search with Gumbel-PPO-MCTS and \texttt{FactorLibrary} reward shaping, implemented in JAX with \texttt{mctx} for GPU-batched MCTS. The top-down formulation searches over recursive algebraic decompositions, using memoized AND/OR MCTS and a JAX-accelerated \texttt{FactorLibrary} for candidate generation. Both formulations preserve exact verification over $\mathbb{F}_p$, so the comparison isolates representational and search choices.
+
+Empirically, the top-down formulation is substantially more robust at higher circuit complexities. Gate-level search saturates and degrades sharply beyond $C_5$, consistent with the combinatorial explosion of the action space. The top-down system, which manipulates algebraic subgoals directly rather than individual gates, maintains strong performance through $C_{10}$. The SAC variant achieves competitive results at a fraction of the compute, suggesting that the deterministic structure of the decomposition environment is well matched to off-policy learning.
+
+The \texttt{FactorLibrary} unifies both formulations around a common principle: admissible subgoals are certified polynomials rather than latent representations, and every reward signal is computed by exact arithmetic. This makes the subgoal structure fully interpretable and free of approximation error. The library grows with the agent's experience in both formulations, accumulating reusable algebraic facts across episodes.
+
+Future work will scale to more variables and higher degree targets, more carefully separate training-time from inference-time compute, and identify which polynomial families favor each representation. The \texttt{FactorLibrary} mechanism also suggests a domain-specific analogue of a formal theorem library, and arithmetic circuits provide a controlled setting for studying how learned systems acquire, reuse, and generalize mathematical subgoals.
+
+
+
+
+\bibliography{references}
+\bibliographystyle{icml2026}
+
+
+
+
+\appendix
+
+\section{Results from Experiments}
+\label{app:additional-results}
+
+\begin{table*}[t]
+\centering
+\caption{Bottom-up JAX Gumbel-PPO-MCTS curriculum. Each phase trains on the indicated fixed complexity bucket or pair of adjacent buckets and is initialized from the previous phase. Success is exact target-construction success in the bottom-up gate-action environment, not \(C_k\)-match in the top-down cost model.}
+\label{tab:bottomup-gumbel-curriculum}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+Phase & Train buckets & Iter. & Aggregate success & Per-bucket success & Library size & Reward \\
+\midrule
+1  & \(C_1\)          & 30  & 93.65\% & \(C_1=93.7\%\) & 501 & 18.535 \\
+2  & \(C_1,C_2\)      & 500 & 99.90\% & \(C_1=100.0\%,\ C_2=99.8\%\) & 959 & 19.263 \\
+3  & \(C_2,C_3\)      & 500 & 99.22\% & \(C_2=100.0\%,\ C_3=98.4\%\) & 1368 & 18.696 \\
+4  & \(C_3,C_4\)      & 500 & 91.70\% & \(C_3=100.0\%,\ C_4=83.4\%\) & 3985 & 17.240 \\
+5  & \(C_4,C_5\)      & 500 & 71.68\% & \(C_4=89.6\%,\ C_5=53.7\%\) & 8839 & 13.137 \\
+6  & \(C_5,C_6\)      & 500 & 45.02\% & \(C_5=59.6\%,\ C_6=30.5\%\) & 13693 & 7.973 \\
+7  & \(C_6,C_7\)      & 500 & 26.76\% & \(C_6=35.2\%,\ C_7=18.4\%\) & 15051 & 4.686 \\
+8  & \(C_7,C_8\)      & 500 & 17.19\% & \(C_7=22.7\%,\ C_8=11.7\%\) & 11625 & 2.786 \\
+9  & \(C_8,C_9\)      & 500 & 12.40\% & \(C_8=16.0\%,\ C_9=8.8\%\) & 8860 & 1.830 \\
+10 & \(C_9,C_{10}\)   & 500 & 7.81\%  & \(C_9=8.4\%,\ C_{10}=7.2\%\) & 7279 & 0.925 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table}[t]
+\centering
+\caption{Top-down held-out performance. ``Best'' denotes the best held-out checkpoint during training; final performance is measured at the last checkpoint.}
+\label{tab:topdown-summary}
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+Method & Final & Best & Train & Gap & Time \\
+\midrule
+PPO+MCTS & 0.918 & 0.918 & 0.918 & 0.01 & 2.5 h \\
+SAC      & 0.889 & 0.928 & 0.844 & 0.05 & 30 m \\
+Random   & 0.40  & --    & --    & --   & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table*}[t]
+\centering
+\caption{Final held-out \(C_k\)-match rate by complexity for the top-down PPO+MCTS and SAC runs. Random uses the same generated candidate sets with uniform action selection.}
+\label{tab:topdown-per-ck}
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{@{}lccccccccc@{}}
+\toprule
+Method & \(C_2\) & \(C_3\) & \(C_4\) & \(C_5\) & \(C_6\) & \(C_7\) & \(C_8\) & \(C_9\) & \(C_{10}\) \\
+\midrule
+PPO+MCTS & 1.00 & 0.95 & 1.00 & 1.00 & 1.00 & 0.76 & 0.72 & 0.96 & 0.86 \\
+SAC      & 1.00 & 0.95 & 1.00 & 0.91 & 0.96 & 0.80 & 0.68 & 0.88 & 0.88 \\
+Random   & 0.81 & 0.71 & 0.57 & 0.44 & 0.30 & 0.32 & 0.23 & 0.31 & 0.18 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure*}[t]
+\centering
+\begin{subfigure}[t]{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{cmp_01_heldout_over_iterations.pdf}
+    \caption{Held-out \(C_k\)-match rate during training.}
+    \label{fig:topdown-heldout-over-training}
+\end{subfigure}
+\hfill
+\begin{subfigure}[t]{0.49\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{cmp_02_final_per_ck.pdf}
+    \caption{Final held-out \(C_k\)-match rate by complexity.}
+    \label{fig:topdown-final-per-ck}
+\end{subfigure}
+\caption{Top-down PPO+MCTS and SAC on the shared held-out benchmark. Both methods rapidly rise above the random baseline and remain far above it across all complexities. PPO+MCTS is more stable at convergence, while SAC reaches a slightly higher best checkpoint with much lower wall-clock cost.}
+\label{fig:topdown-comparison}
+\end{figure*}
+
+\end{document}
+ 
