@@ -2,9 +2,10 @@
 """
 Checkpoint evaluation script for arithmetic circuit RL.
 
-Evaluates cycle_001.pt and cycle_012.pt (plus a no-ML heuristic baseline)
-on a fixed set of 20 polynomials spanning bivariate/trivariate/univariate
-structures over F_3 and F_5.
+Auto-discovers every ``*.pt`` file inside ``<repo_root>/checkpoints/`` (or any
+``--checkpoint-dir`` you pass) and evaluates each one — plus a no-ML heuristic
+baseline — on a fixed set of 20 polynomials spanning bivariate/trivariate/
+univariate structures over F_3 and F_5.
 
 Success criterion: the agent's discovered circuit cost is <= the minimum cost
 achieved by all five closed-form baselines (BaselineBundle.min_cost). Two
@@ -19,11 +20,13 @@ Usage (from the repo root):
     python scripts/evaluate_checkpoints.py
     python scripts/evaluate_checkpoints.py --search-sims 96
     python scripts/evaluate_checkpoints.py --checkpoint-dir /path/to/ckpts
+    python scripts/evaluate_checkpoints.py --checkpoints cycle_001,cycle_012
 """
 from __future__ import annotations
 
 import argparse
 import math
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -176,6 +179,25 @@ def load_torch_wrapper(checkpoint_path: Path) -> tuple[TorchPolicyValueWrapper, 
     return wrapper, payload.get("metadata", {})
 
 
+def discover_checkpoints(ckpt_dir: Path) -> list[Path]:
+    """Return every ``*.pt`` file under ``ckpt_dir``, naturally sorted.
+
+    A trailing integer in the stem (e.g. ``cycle_001``, ``cycle_012``) is
+    treated as a numeric sort key so ``cycle_002`` orders before ``cycle_010``.
+    Files without a trailing number fall back to lexicographic order.
+    """
+    if not ckpt_dir.is_dir():
+        return []
+
+    def sort_key(p: Path) -> tuple:
+        m = re.search(r"(\d+)\s*$", p.stem)
+        if m:
+            return (0, int(m.group(1)), p.stem)
+        return (1, 0, p.stem)
+
+    return sorted(ckpt_dir.glob("*.pt"), key=sort_key)
+
+
 # ---------------------------------------------------------------------------
 # Inference helpers
 # ---------------------------------------------------------------------------
@@ -324,8 +346,16 @@ def main() -> None:
     parser.add_argument(
         "--checkpoint-dir", type=str, default="",
         help=(
-            "Directory containing cycle_001.pt and cycle_012.pt. "
-            "Defaults to the repo root."
+            "Directory to scan for *.pt checkpoint files. "
+            "Defaults to <repo_root>/checkpoints/."
+        ),
+    )
+    parser.add_argument(
+        "--checkpoints", type=str, default="",
+        help=(
+            "Optional comma-separated list of checkpoint stems "
+            "(e.g. 'cycle_001,cycle_012') to restrict evaluation to. "
+            "Defaults to all *.pt files found in --checkpoint-dir."
         ),
     )
     parser.add_argument(
@@ -334,7 +364,16 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    ckpt_dir = Path(args.checkpoint_dir) if args.checkpoint_dir else _REPO_ROOT
+    ckpt_dir = Path(args.checkpoint_dir) if args.checkpoint_dir else _REPO_ROOT / "checkpoints"
+
+    discovered = discover_checkpoints(ckpt_dir)
+    if args.checkpoints:
+        wanted = {s.strip() for s in args.checkpoints.split(",") if s.strip()}
+        discovered = [p for p in discovered if p.stem in wanted]
+        missing = wanted - {p.stem for p in discovered}
+        for m in sorted(missing):
+            print(f"[WARN] Requested checkpoint '{m}' not found in {ckpt_dir}",
+                  file=sys.stderr)
 
     print("=" * 64)
     print("  Checkpoint Evaluation — Arithmetic Circuit RL")
@@ -343,18 +382,17 @@ def main() -> None:
     print(f"  Search sims      : {args.search_sims}")
     print(f"  Split candidates : {args.k_candidates} per step")
     print(f"  Checkpoint dir   : {ckpt_dir}")
+    print(f"  Checkpoints      : {[p.stem for p in discovered] or '(none found)'}")
     print(
         "  Success criterion: agent_cost <= min(5 closed-form baselines)"
     )
 
     baseline_model = BaselineCostModel()
 
-    # Three models: heuristic, cycle_001, cycle_012
-    checkpoints: list[tuple[str, Path | None]] = [
-        ("Heuristic (no ML)", None),
-        ("cycle_001", ckpt_dir / "cycle_001.pt"),
-        ("cycle_012", ckpt_dir / "cycle_012.pt"),
-    ]
+    # Heuristic baseline first, then every discovered checkpoint.
+    checkpoints: list[tuple[str, Path | None]] = [("Heuristic (no ML)", None)]
+    for p in discovered:
+        checkpoints.append((p.stem, p))
 
     all_results: dict[str, list[PolyResult]] = {}
 

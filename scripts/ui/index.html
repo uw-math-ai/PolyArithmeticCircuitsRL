@@ -62,30 +62,75 @@
   </header>
 
   <main>
+    <!-- Checkpoint picker --------------------------------------------------->
+    <section class="picker-panel" id="picker-panel">
+      <div class="picker-head">
+        <div>
+          <h2 class="picker-title">Checkpoints to evaluate</h2>
+          <p class="picker-sub" id="picker-sub">
+            Loading available checkpoints…
+          </p>
+        </div>
+        <div class="picker-actions">
+          <button class="ghost" id="pick-all">Select all</button>
+          <button class="ghost" id="pick-clear">Clear</button>
+          <button class="ghost" id="pick-refresh" title="Re-scan checkpoint directory">
+            ↻ Refresh
+          </button>
+        </div>
+      </div>
+      <div class="chip-row" id="chip-row">
+        <p class="empty-state-small">No checkpoints found.</p>
+      </div>
+      <p class="picker-foot">
+        The <strong>Heuristic</strong> baseline is always included as a
+        reference. Selected checkpoints will be evaluated against it.
+      </p>
+    </section>
+
+    <!-- Per-model summary cards -------------------------------------------->
     <section class="model-cards" id="model-cards"></section>
+
+    <!-- Per-polynomial tables, grouped ------------------------------------->
     <section class="poly-tables" id="poly-tables">
       <p class="empty-state">Loading polynomial test suite…</p>
     </section>
+
+    <!-- Footnote / legend -------------------------------------------------->
     <section class="footnote">
       <p>
-        <strong>Success criterion.</strong>
-        A cell turns <span class="legend-success">green ✓</span> when the agent's
-        discovered circuit cost is at most the minimum cost across all five
-        closed-form baselines (sparse-direct, Horner, multivariate Horner, CSE,
-        and top-down branch-and-bound). Cells turn
-        <span class="legend-fail">amber ✗</span> when the agent fails to match
-        any of those baselines.
+        <strong>Colour = distance from optimal.</strong>
+        Each cell shows the agent's circuit cost — the number of
+        <span class="kbd">+</span>/<span class="kbd">×</span> gates, where the
+        only free constant is <span class="kbd">1</span> and reuse is free.
+        It is compared against the provably-minimal <strong>Min&nbsp;op</strong>:
+        <span class="legend-tier0">green ✓</span> = exactly optimal,
+        <span class="legend-tier1">amber +1</span> = one op away, and
+        <span class="legend-tier2">red +2</span> (or more) = two or more ops
+        away. Hover any cell to see the full circuit the agent built.
       </p>
       <p>
         <strong>Modes.</strong>
         <em>Greedy</em> rolls out the policy alone — one forward pass per
         frontier step, taking the argmax candidate. <em>Search</em> wraps the
-        same network in a 32-simulation memoized AND/OR tree search with PUCT
-        selection. Hover any cell for the underlying numbers.
+        same network in a memoized AND/OR tree search with PUCT selection.
+        Hover any cell for the per-mode costs and distance from optimal.
       </p>
     </section>
   </main>
 
+  <!-- Circuit hover popover — must appear before app.js so getElementById works -->
+  <div id="circ-popover">
+    <div class="circ-popover-inner">
+      <div class="circ-popover-head">
+        <span class="circ-popover-title"></span>
+        <span class="circ-popover-sub"></span>
+      </div>
+      <div class="circ-popover-body"></div>
+    </div>
+  </div>
+
+  <script src="circuit.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

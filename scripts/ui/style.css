@@ -21,6 +21,18 @@
   --fail-bg:      #fef3c7;
   --fail-bdr:     #fcd34d;
 
+  /* Result tiers vs optimal: 0 = optimal (green), 1 = one op away (amber),
+     2 = 2+ ops away (red). */
+  --tier0:        #15803d;
+  --tier0-bg:     #dcfce7;
+  --tier0-bdr:    #86efac;
+  --tier1:        #b45309;
+  --tier1-bg:     #fef3c7;
+  --tier1-bdr:    #fcd34d;
+  --tier2:        #b91c1c;
+  --tier2-bg:     #fee2e2;
+  --tier2-bdr:    #fca5a5;
+
   --pending:      #94a3b8;
 
   --shadow-sm:    0 1px 2px rgba(15, 23, 42, 0.05);
@@ -185,6 +197,132 @@ main {
   padding: 4rem 0;
 }
 
+.empty-state-small {
+  color: var(--text-faint);
+  font-size: 0.88rem;
+  margin: 0.4rem 0;
+  font-style: italic;
+}
+
+/* ---------------------------------------------------------------------------
+   Checkpoint picker
+--------------------------------------------------------------------------- */
+.picker-panel {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem 1rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.picker-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.85rem;
+}
+
+.picker-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+}
+
+.picker-sub {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.picker-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+button.ghost:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  padding: 0.25rem 0 0.1rem;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.38rem 0.85rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.12s ease;
+}
+.chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.chip.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.25);
+}
+.chip.selected:hover {
+  background: var(--accent-hover);
+}
+.chip .chip-tick {
+  font-size: 0.85rem;
+  line-height: 1;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all 0.12s ease;
+}
+.chip.selected .chip-tick {
+  opacity: 1;
+  transform: scale(1);
+}
+.chip .chip-meta {
+  font-size: 0.7rem;
+  font-weight: 400;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
+}
+
+.picker-foot {
+  margin: 0.75rem 0 0;
+  font-size: 0.8rem;
+  color: var(--text-faint);
+}
+.picker-foot strong { color: var(--text-muted); }
+
 /* ---------------------------------------------------------------------------
    Model summary cards
 --------------------------------------------------------------------------- */
@@ -301,16 +439,19 @@ main {
   margin: 1rem 0 0.55rem 0.2rem;
 }
 
-.poly-table {
-  width: 100%;
+.poly-table-wrap {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  overflow: auto;
+  box-shadow: var(--shadow-sm);
+  max-width: 100%;
+}
+
+.poly-table {
+  width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  overflow: hidden;
-  box-shadow: var(--shadow-sm);
-  table-layout: fixed;
 }
 
 .poly-table th {
@@ -323,11 +464,24 @@ main {
   padding: 0.7rem 0.9rem;
   text-align: left;
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 
-.poly-table th.col-poly   { width: 50%; }
-.poly-table th.col-bmin   { width: 8%; text-align: center; }
-.poly-table th.col-model  { text-align: center; }
+.poly-table th.col-poly   { min-width: 340px; }
+.poly-table th.col-bmin   { min-width: 80px; text-align: center; }
+.poly-table th.col-model  { min-width: 130px; text-align: center; }
+
+/* Sticky polynomial + baseline columns so the model columns can scroll. */
+.poly-table th.col-poly,
+.poly-table td.poly-cell {
+  position: sticky;
+  left: 0;
+  background: var(--card-bg);
+  z-index: 2;
+  box-shadow: 1px 0 0 var(--border-soft);
+}
+.poly-table th.col-poly { background: #fafbfd; }
+.poly-table tr:hover td.poly-cell { background: #fafbfd; }
 
 .poly-table td {
   padding: 0.7rem 0.9rem;
@@ -383,16 +537,22 @@ main {
   font-weight: 400;
 }
 
-.result-cell.success {
-  color: var(--success);
-  background: var(--success-bg);
-  box-shadow: inset 0 0 0 1px var(--success-bdr);
+.result-cell.tier-0 {
+  color: var(--tier0);
+  background: var(--tier0-bg);
+  box-shadow: inset 0 0 0 1px var(--tier0-bdr);
 }
 
-.result-cell.fail {
-  color: var(--fail);
-  background: var(--fail-bg);
-  box-shadow: inset 0 0 0 1px var(--fail-bdr);
+.result-cell.tier-1 {
+  color: var(--tier1);
+  background: var(--tier1-bg);
+  box-shadow: inset 0 0 0 1px var(--tier1-bdr);
+}
+
+.result-cell.tier-2 {
+  color: var(--tier2);
+  background: var(--tier2-bg);
+  box-shadow: inset 0 0 0 1px var(--tier2-bdr);
 }
 
 .result-cell.running {
@@ -413,13 +573,10 @@ main {
   gap: 0.6rem;
   font-size: 0.85rem;
 }
-.result-cell .dual .part { display: inline-flex; align-items: center; gap: 0.2rem; }
-.result-cell .dual .part.g { color: var(--text-muted); }
-.result-cell .dual .part.g.ok { color: var(--success); }
-.result-cell .dual .part.g.bad { color: var(--fail); }
-.result-cell .dual .part.s { color: var(--text-muted); }
-.result-cell .dual .part.s.ok { color: var(--success); }
-.result-cell .dual .part.s.bad { color: var(--fail); }
+.result-cell .dual .part { display: inline-flex; align-items: center; gap: 0.2rem; color: var(--text-muted); }
+.result-cell .dual .part.tier-0 { color: var(--tier0); }
+.result-cell .dual .part.tier-1 { color: var(--tier1); }
+.result-cell .dual .part.tier-2 { color: var(--tier2); }
 .result-cell .dual .tag {
   font-size: 0.65rem;
   font-weight: 700;
@@ -446,15 +603,169 @@ main {
   font-size: 0.85rem;
 }
 .footnote p { margin: 0.3rem 0; }
-.footnote .legend-success {
-  color: var(--success);
-  font-weight: 600;
-}
-.footnote .legend-fail {
-  color: var(--fail);
-  font-weight: 600;
-}
+.footnote .legend-tier0 { color: var(--tier0); font-weight: 600; }
+.footnote .legend-tier1 { color: var(--tier1); font-weight: 600; }
+.footnote .legend-tier2 { color: var(--tier2); font-weight: 600; }
 .footnote strong { color: var(--text); }
+
+/* ---------------------------------------------------------------------------
+   Circuit graph nodes  (rendered by circuit.js into .circ-wrap)
+--------------------------------------------------------------------------- */
+.circ-wrap {
+  position: relative;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+.circ-svg {
+  position: absolute;
+  top: 0; left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.circ-edge {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.circ-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1.5px solid var(--border);
+  background: var(--card-bg);
+  box-shadow: var(--shadow-sm);
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.circ-node.op-leaf {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #15803d;
+}
+
+.circ-node.op-add {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+  font-size: 1.1rem;
+}
+
+.circ-node.op-mul {
+  background: #fdf4ff;
+  border-color: #d8b4fe;
+  color: #7c3aed;
+}
+
+.circ-node.op-pow {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #c2410c;
+}
+
+.circ-node.op-direct {
+  background: #fafafa;
+  border-color: var(--border);
+  color: var(--text-muted);
+  height: auto;
+  padding: 5px 10px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.circ-sym {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-weight: 700;
+}
+
+.circ-scalar {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-right: 1px;
+}
+
+.circ-val .katex { font-size: 0.82em; }
+
+.circ-direct-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.circ-direct-tag {
+  font-size: 0.6rem;
+  color: var(--text-faint);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+/* ---------------------------------------------------------------------------
+   Circuit hover popover
+--------------------------------------------------------------------------- */
+#circ-popover {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+#circ-popover.visible {
+  opacity: 1;
+}
+
+.circ-popover-inner {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.12);
+  min-width: 260px;
+  max-width: min(700px, 92vw);
+}
+
+.circ-popover-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem 0.5rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.circ-popover-title {
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.circ-popover-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.circ-popover-body {
+  padding: 0.85rem 0.9rem 0.75rem;
+  overflow: auto;
+  max-height: 55vh;
+}
+
+/* Subtle hover affordance on interactive cells */
+.bmin-cell { cursor: help; }
+.result-cell:not(.pending):not(.running) { cursor: help; }
 
 /* ---------------------------------------------------------------------------
    Responsive tweaks
