@@ -61,6 +61,11 @@ class DecompEnv:
         key = target_poly.to_key()
         if self.baseline_model.is_base_case(target_poly):
             state.memo[key] = self.baseline_model.exact_base_cost(target_poly)
+            return state
+        if self.config.factor_initial_target:
+            factor_action = factor_whole_action(target_poly, self.factorizer.factor(target_poly))
+            if factor_action is not None:
+                state, _, _, _ = self.step(state, 0, factor_action)
         return state
 
     def get_active_items(self, state: EnvState) -> list[SparsePolynomial]:

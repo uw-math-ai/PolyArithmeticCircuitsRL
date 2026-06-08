@@ -23,6 +23,21 @@ def test_factorization_reconstructs_polynomial():
     assert y.to_key() in factor_keys
 
 
+def test_sympy_fallback_factors_f3_perfect_square():
+    variables = ("x", "y")
+    p = 3
+    x = SparsePolynomial.variable("x", p, variables)
+    y = SparsePolynomial.variable("y", p, variables)
+    poly = x * x + (x * y).scale(2) + y * y
+
+    factorizer = FiniteFieldFactorizer(FactorizerConfig(backend_name="sympy"))
+    factorization = factorizer.factor(poly)
+
+    assert factorization.backend == "sympy-linear-search"
+    assert factorizer.reconstruct(poly) == poly
+    assert factorization.factors == ((x + y, 2),)
+
+
 def test_sage_backend_if_available():
     cas_python = Path(__file__).resolve().parents[1] / ".cas_env" / "bin" / "python"
     if not cas_python.exists():

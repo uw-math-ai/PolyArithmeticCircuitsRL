@@ -53,6 +53,7 @@ class DecompEnvConfig:
     library: FactorizableLibraryConfig = field(default_factory=FactorizableLibraryConfig)
     dedup_frontier: bool = True
     exact_support_limit: int = 3
+    factor_initial_target: bool = True
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,7 @@ class SearchConfig:
     max_depth: int = 8
     puct_exploration: float = 1.25
     expand_top_k: int = 32
+    factor_root: bool = True
 
 
 @dataclass(frozen=True)

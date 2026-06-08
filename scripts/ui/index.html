@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Circuit RL · Inference Demo</title>
+  <link rel="icon" href="data:," />
 
   <!-- KaTeX for polynomial typesetting -->
   <link rel="stylesheet"
@@ -62,60 +63,150 @@
   </header>
 
   <main>
-    <!-- Checkpoint picker --------------------------------------------------->
-    <section class="picker-panel" id="picker-panel">
-      <div class="picker-head">
-        <div>
-          <h2 class="picker-title">Checkpoints to evaluate</h2>
-          <p class="picker-sub" id="picker-sub">
-            Loading available checkpoints…
-          </p>
+    <nav class="tab-switcher" aria-label="Demo tabs">
+      <button class="tab-btn active" type="button" data-tab="inference">Inference Table</button>
+      <button class="tab-btn" type="button" data-tab="play">Top-Down Game</button>
+    </nav>
+
+    <section class="tab-panel active" id="tab-inference">
+      <!-- Checkpoint picker --------------------------------------------------->
+      <section class="picker-panel" id="picker-panel">
+        <div class="picker-head">
+          <div>
+            <h2 class="picker-title">Checkpoints to evaluate</h2>
+            <p class="picker-sub" id="picker-sub">
+              Loading available checkpoints…
+            </p>
+          </div>
+          <div class="picker-actions">
+            <button class="ghost" id="pick-all">Select all</button>
+            <button class="ghost" id="pick-clear">Clear</button>
+            <button class="ghost" id="pick-refresh" title="Re-scan checkpoint directory">
+              ↻ Refresh
+            </button>
+          </div>
         </div>
-        <div class="picker-actions">
-          <button class="ghost" id="pick-all">Select all</button>
-          <button class="ghost" id="pick-clear">Clear</button>
-          <button class="ghost" id="pick-refresh" title="Re-scan checkpoint directory">
-            ↻ Refresh
-          </button>
+        <div class="chip-row" id="chip-row">
+          <p class="empty-state-small">No checkpoints found.</p>
         </div>
-      </div>
-      <div class="chip-row" id="chip-row">
-        <p class="empty-state-small">No checkpoints found.</p>
-      </div>
-      <p class="picker-foot">
-        The <strong>Heuristic</strong> baseline is always included as a
-        reference. Selected checkpoints will be evaluated against it.
-      </p>
+        <p class="picker-foot">
+          The <strong>Heuristic</strong> baseline is always included as a
+          reference. Selected checkpoints will be evaluated against it.
+        </p>
+      </section>
+
+      <!-- Per-model summary cards -------------------------------------------->
+      <section class="model-cards" id="model-cards"></section>
+
+      <!-- Per-polynomial tables, grouped ------------------------------------->
+      <section class="poly-tables" id="poly-tables">
+        <p class="empty-state">Loading polynomial test suite…</p>
+      </section>
+
+      <!-- Footnote / legend -------------------------------------------------->
+      <section class="footnote">
+        <p>
+          <strong>Colour = distance from reference.</strong>
+          Each cell shows the agent's circuit cost — the number of
+          <span class="kbd">+</span>/<span class="kbd">×</span> gates, where the
+          only free constant is <span class="kbd">1</span> and reuse is free.
+          It is compared against the stored <strong>Ref&nbsp;op</strong> circuit:
+          <span class="legend-tier0">green ✓</span> = matches the reference,
+          <span class="legend-tier1">amber +1</span> = one op away, and
+          <span class="legend-tier2">red +2</span> (or more) = two or more ops
+          away. Hover any cell to see the full circuit the agent built.
+        </p>
+        <p>
+          <strong>Modes.</strong>
+          <em>Greedy</em> rolls out the policy alone — one forward pass per
+          frontier step, taking the argmax candidate. <em>Search</em> wraps the
+          same network in a memoized AND/OR tree search with PUCT selection.
+          Hover any cell for the per-mode costs and distance from the reference.
+        </p>
+      </section>
     </section>
 
-    <!-- Per-model summary cards -------------------------------------------->
-    <section class="model-cards" id="model-cards"></section>
+    <section class="tab-panel" id="tab-play">
+      <section class="play-setup">
+        <label class="control play-control">
+          <span>Polynomial</span>
+          <select id="play-poly"></select>
+        </label>
+        <label class="control play-control">
+          <span>Agent</span>
+          <select id="play-model"></select>
+        </label>
+        <label class="control play-control compact">
+          <span>Candidates</span>
+          <select id="play-k">
+            <option value="8">8</option>
+            <option value="12" selected>12</option>
+            <option value="16">16</option>
+            <option value="24">24</option>
+          </select>
+        </label>
+        <button id="play-start" class="primary" type="button">Start Game</button>
+        <button id="play-forfeit" class="ghost danger" type="button" disabled>Forfeit</button>
+        <span class="play-status" id="play-status">Ready</span>
+      </section>
 
-    <!-- Per-polynomial tables, grouped ------------------------------------->
-    <section class="poly-tables" id="poly-tables">
-      <p class="empty-state">Loading polynomial test suite…</p>
-    </section>
+      <section class="play-board">
+        <div class="play-panel play-player">
+          <div class="play-panel-head">
+            <div>
+              <h2>Player Move</h2>
+              <p id="play-active-poly" class="play-sub">No active game.</p>
+            </div>
+            <div class="play-score">
+              <span id="play-acc-cost">0</span>
+              <small>cost</small>
+            </div>
+          </div>
+          <div class="frontier-strip" id="play-frontier"></div>
+          <div class="move-list" id="play-candidates">
+            <p class="empty-state-small">Start a game to load legal moves.</p>
+          </div>
+          <div class="play-actions-row">
+            <button id="play-direct" class="ghost" type="button" disabled>Direct build</button>
+          </div>
+        </div>
 
-    <!-- Footnote / legend -------------------------------------------------->
-    <section class="footnote">
-      <p>
-        <strong>Colour = distance from optimal.</strong>
-        Each cell shows the agent's circuit cost — the number of
-        <span class="kbd">+</span>/<span class="kbd">×</span> gates, where the
-        only free constant is <span class="kbd">1</span> and reuse is free.
-        It is compared against the provably-minimal <strong>Min&nbsp;op</strong>:
-        <span class="legend-tier0">green ✓</span> = exactly optimal,
-        <span class="legend-tier1">amber +1</span> = one op away, and
-        <span class="legend-tier2">red +2</span> (or more) = two or more ops
-        away. Hover any cell to see the full circuit the agent built.
-      </p>
-      <p>
-        <strong>Modes.</strong>
-        <em>Greedy</em> rolls out the policy alone — one forward pass per
-        frontier step, taking the argmax candidate. <em>Search</em> wraps the
-        same network in a memoized AND/OR tree search with PUCT selection.
-        Hover any cell for the per-mode costs and distance from optimal.
-      </p>
+        <div class="play-panel play-agent">
+          <div class="play-panel-head">
+            <div>
+              <h2>Agent Move</h2>
+              <p id="play-agent-sub" class="play-sub">No recommendation.</p>
+            </div>
+            <div class="play-score muted">
+              <span id="play-ref-cost">0</span>
+              <small>ref</small>
+            </div>
+          </div>
+          <div class="agent-move-card" id="play-agent-move"></div>
+          <div class="play-circuit-stage" id="play-agent-circuit"></div>
+        </div>
+      </section>
+
+      <section class="play-board lower">
+        <div class="play-panel play-circuit-panel">
+          <div class="play-panel-head">
+            <div>
+              <h2>Current Circuit</h2>
+              <p id="play-circuit-sub" class="play-sub">Direct fallback until more moves are committed.</p>
+            </div>
+          </div>
+          <div class="play-circuit-stage wide" id="play-current-circuit"></div>
+        </div>
+        <div class="play-panel play-history-panel">
+          <div class="play-panel-head">
+            <div>
+              <h2>Timeline</h2>
+              <p class="play-sub" id="play-history-sub">Environment and player steps.</p>
+            </div>
+          </div>
+          <ol class="play-history" id="play-history"></ol>
+        </div>
+      </section>
     </section>
   </main>
 

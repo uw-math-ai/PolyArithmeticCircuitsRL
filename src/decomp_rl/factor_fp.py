@@ -8,6 +8,7 @@ import os
 import signal
 import subprocess
 from dataclasses import dataclass
+from itertools import product
 from pathlib import Path
 
 from .config import FactorizerConfig
@@ -192,8 +193,11 @@ class FiniteFieldFactorizer:
         try:
             unit, raw_factors = sympy_poly.factor_list()
         except NotImplementedError:
-            from sympy import factor_list
+            finite_field_result = self._factor_by_linear_search(poly)
+            if finite_field_result is not None:
+                return finite_field_result
 
+            from sympy import factor_list
             unit, raw_factors = factor_list(sympy_poly.as_expr())
             backend = f"{self.config.backend_name}-integer-fallback"
         unit = int(unit) % poly.p
@@ -210,6 +214,100 @@ class FiniteFieldFactorizer:
         result = FactorizationResult(unit=unit, factors=tuple(factors), backend=backend)
         if self._reconstruct_from_result(poly, result) != poly:
             raise ValueError("Factorization backend returned factors that do not reconstruct the polynomial")
+        return result
+
+    def _factor_by_linear_search(self, poly: SparsePolynomial) -> FactorizationResult | None:
+        """Bounded GF(p) fallback for multivariate linear factors.
+
+        SymPy cannot factor multivariate polynomials over finite fields. Its
+        integer fallback is actively wrong for examples such as
+        ``x^2 + 2xy + y^2`` over F_3 because ``2`` is represented as ``-1``.
+        This fallback searches normalized affine linear factors directly in
+        GF(p), which covers the small demo/training targets without attempting
+        an exponential search on high-variable rows such as the permanent.
+        """
+        active_vars = [i for i, degree in enumerate(poly.max_degrees) if degree > 0]
+        if not active_vars:
+            return None
+        # Keep this deliberately bounded; FLINT/Sage should handle larger
+        # cases when available, and the visualizer must stay responsive.
+        search_space = poly.p ** (len(active_vars) + 1)
+        if len(active_vars) > 4 or search_space > 5000 or poly.total_degree > 8:
+            return None
+
+        try:
+            from sympy import Poly, symbols
+        except ImportError:
+            return None
+
+        symbols_tuple = symbols(poly.variables)
+        current = Poly(poly.to_sympy_expr(), *symbols_tuple, modulus=poly.p)
+        factors: list[tuple[SparsePolynomial, int]] = []
+        seen_linear_keys: set[tuple[int, ...]] = set()
+
+        for coeff_values in product(range(poly.p), repeat=len(active_vars)):
+            if all(value == 0 for value in coeff_values):
+                continue
+            for constant in range(poly.p):
+                dense_coeffs = [0] * len(poly.variables)
+                for index, value in zip(active_vars, coeff_values):
+                    dense_coeffs[index] = value % poly.p
+                normalizer = next(value for value in dense_coeffs if value % poly.p)
+                inv = pow(normalizer, -1, poly.p)
+                dense_coeffs = [(value * inv) % poly.p for value in dense_coeffs]
+                norm_constant = (constant * inv) % poly.p
+                linear_key = tuple(dense_coeffs + [norm_constant])
+                if linear_key in seen_linear_keys:
+                    continue
+                seen_linear_keys.add(linear_key)
+
+                expr = sum(
+                    coeff * sym
+                    for coeff, sym in zip(dense_coeffs, symbols_tuple)
+                    if coeff
+                )
+                if norm_constant:
+                    expr += norm_constant
+                linear_poly = Poly(expr, *symbols_tuple, modulus=poly.p)
+
+                exponent = 0
+                while current.total_degree() > 0:
+                    quotient, remainder = current.div(linear_poly)
+                    if not remainder.is_zero:
+                        break
+                    current = quotient
+                    exponent += 1
+                if exponent:
+                    sparse_factor = SparsePolynomial.from_sympy_expr(
+                        linear_poly.as_expr(),
+                        prime=poly.p,
+                        variables=poly.variables,
+                    )
+                    factors.append((sparse_factor, exponent))
+
+        unit = 1
+        if not current.is_one:
+            remaining = SparsePolynomial.from_sympy_expr(
+                current.as_expr(),
+                prime=poly.p,
+                variables=poly.variables,
+            )
+            if remaining.is_constant:
+                unit = remaining.terms[0][0] if remaining.terms else 0
+            else:
+                monic_remaining, extracted_unit = remaining.make_monic()
+                unit = (unit * extracted_unit) % poly.p
+                factors.append((monic_remaining, 1))
+
+        if not factors:
+            return None
+        result = FactorizationResult(
+            unit=unit % poly.p,
+            factors=tuple(factors),
+            backend="sympy-linear-search",
+        )
+        if self._reconstruct_from_result(poly, result) != poly:
+            raise ValueError("Linear-search fallback returned factors that do not reconstruct the polynomial")
         return result
 
     def reconstruct(self, poly: SparsePolynomial) -> SparsePolynomial:

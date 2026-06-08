@@ -4,7 +4,7 @@ Checkpoint evaluation script for arithmetic circuit RL.
 
 Auto-discovers every ``*.pt`` file inside ``<repo_root>/checkpoints/`` (or any
 ``--checkpoint-dir`` you pass) and evaluates each one — plus a no-ML heuristic
-baseline — on a fixed set of 20 polynomials spanning bivariate/trivariate/
+baseline — on a fixed set of 21 polynomials spanning bivariate/trivariate/
 univariate structures over F_3 and F_5.
 
 Success criterion: the agent's discovered circuit cost is <= the minimum cost
@@ -58,9 +58,9 @@ def _p(prime: int, variables: tuple[str, ...], terms: tuple) -> SparsePolynomial
     return SparsePolynomial(prime, variables, terms)
 
 
-# 20 polynomials chosen to cover diverse structures: factorizable products,
+# 21 polynomials chosen to cover diverse structures: factorizable products,
 # Horner-amenable chains, elementary symmetric forms, and mixed-degree polys,
-# across primes 3 and 5 and variable counts 1–3.
+# across primes 3 and 5 and variable counts 1–9.
 TEST_SUITE: list[tuple[str, SparsePolynomial]] = [
     # ---- Bivariate F_3, vars (x, y) ----------------------------------------
     # xy + x + y  =  (x+1)(y+1) - 1  [classic factorizable, 3 terms]
@@ -117,6 +117,17 @@ TEST_SUITE: list[tuple[str, SparsePolynomial]] = [
     ("F3_xyz xyz+x+y+z",
      _p(3, ("x","y","z"), ((1,(1,1,1)),(1,(1,0,0)),(1,(0,1,0)),(1,(0,0,1))))),
 
+    # ---- 3x3 permanent over F_3, vars (a,...,i) ---------------------------
+    # permanent([[a,b,c],[d,e,f],[g,h,i]])
+    ("F3_perm3  3x3 permanent",
+     _p(3, ("a","b","c","d","e","f","g","h","i"),
+        ((1,(1,0,0,0,1,0,0,0,1)),  # aei
+         (1,(1,0,0,0,0,1,0,1,0)),  # afh
+         (1,(0,1,0,1,0,0,0,0,1)),  # bdi
+         (1,(0,1,0,0,0,1,1,0,0)),  # bfg
+         (1,(0,0,1,1,0,0,0,1,0)),  # cdh
+         (1,(0,0,1,0,1,0,1,0,0))))),  # ceg
+
     # ---- Bivariate F_5, vars (x, y) ----------------------------------------
     # x² + 4y²  =  (x+y)(x+4y)  [since −1 ≡ 4 mod 5; factorizable, 2 terms]
     ("F5_xy  x2+4y2 [=(x+y)(x+4y)]",
@@ -131,6 +142,41 @@ TEST_SUITE: list[tuple[str, SparsePolynomial]] = [
     ("F5_xy  x3y+xy3 [=xy(x2+y2)]",
      _p(5, ("x", "y"), ((1,(3,1)),(1,(1,3))))),
 ]
+
+
+# The permanent row has nine variables and can generate a much larger search
+# tree than the rest of the demo suite. Cap only that row so the visualizer
+# stays responsive even when the global search setting is raised.
+PER_POLY_SEARCH_LIMITS: dict[str, dict[str, int]] = {
+    "F3_perm3  3x3 permanent": {
+        "search_sims": 2,
+        "k_candidates": 8,
+        "max_depth": 3,
+        "expand_top_k": 8,
+    },
+}
+
+
+def search_budget_for_poly(
+    name: str,
+    requested_search_sims: int,
+    requested_k_candidates: int,
+) -> dict[str, int | bool]:
+    """Return the per-polynomial inference budget after safety caps."""
+    base = SearchConfig()
+    budget: dict[str, int | bool] = {
+        "search_sims": max(1, requested_search_sims),
+        "k_candidates": max(1, requested_k_candidates),
+        "max_depth": base.max_depth,
+        "expand_top_k": base.expand_top_k,
+        "capped": False,
+    }
+    for key, limit in PER_POLY_SEARCH_LIMITS.get(name, {}).items():
+        current = int(budget[key])
+        if current > limit:
+            budget[key] = limit
+            budget["capped"] = True
+    return budget
 
 
 # ---------------------------------------------------------------------------
@@ -167,16 +213,28 @@ def _infer_network_kwargs(state_dict: dict) -> dict:
     )
 
 
+def _read_checkpoint_state(checkpoint_path: Path) -> tuple[dict, dict]:
+    """Return (state_dict, metadata) for wrapped or raw state_dict checkpoints."""
+    payload = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    if isinstance(payload, dict):
+        if "model_state_dict" in payload:
+            return payload["model_state_dict"], payload.get("metadata", {}) or {}
+        if "state_dict" in payload:
+            return payload["state_dict"], payload.get("metadata", {}) or {}
+        if "shared.0.weight" in payload and "value_head.0.weight" in payload:
+            return payload, {}
+    raise ValueError(f"Unsupported checkpoint payload format: {checkpoint_path}")
+
+
 def load_torch_wrapper(checkpoint_path: Path) -> tuple[TorchPolicyValueWrapper, dict]:
     """Load a checkpoint, return (wrapper, metadata)."""
-    payload = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    sd = payload["model_state_dict"]
+    sd, metadata = _read_checkpoint_state(checkpoint_path)
     kwargs = _infer_network_kwargs(sd)
     net = TorchPolicyValueNetwork(**kwargs)
     net.load_state_dict(sd)
     net.eval()
     wrapper = TorchPolicyValueWrapper(net, device="cpu")
-    return wrapper, payload.get("metadata", {})
+    return wrapper, metadata
 
 
 def discover_checkpoints(ckpt_dir: Path) -> list[Path]:
@@ -264,8 +322,14 @@ def evaluate_model(
     results: list[PolyResult] = []
     try:
         for name, poly in test_suite:
+            budget = search_budget_for_poly(name, search_sims, k)
             bmin = bundle.min_cost(poly)
-            gcost = greedy_rollout(env, model, poly, k=k)
+            gcost = greedy_rollout(env, model, poly, k=int(budget["k_candidates"]))
+            search.search_config = SearchConfig(
+                simulations=int(budget["search_sims"]),
+                max_depth=int(budget["max_depth"]),
+                expand_top_k=int(budget["expand_top_k"]),
+            )
             sr = search.search(poly)
             scost = int(sr.best_cost) if not math.isinf(sr.best_cost) else bmin + 999
             results.append(PolyResult(
@@ -337,7 +401,7 @@ def print_checkpoint_results(label: str, results: list[PolyResult]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Evaluate RL checkpoints on a fixed 20-polynomial test suite."
+        description="Evaluate RL checkpoints on a fixed 21-polynomial test suite."
     )
     parser.add_argument(
         "--search-sims", type=int, default=32,

@@ -118,6 +118,39 @@ class AndOrSearch:
         self._transposition_hits = 0
         self._total_candidates = 0
         self.factorizer.reset_stats()
+        root_factor_action = (
+            factor_whole_action(root, self.factorizer.factor(root))
+            if self.search_config.factor_root and not self.baseline_model.is_base_case(root)
+            else None
+        )
+        if root_factor_action is not None:
+            best_cost = math.inf
+            best_trace = DecompositionTrace(root, math.inf, chosen_action=root_factor_action)
+            for _ in range(max(1, self.search_config.simulations)):
+                cost, trace = self._evaluate_action(root, root_factor_action, depth=0)
+                if cost < best_cost:
+                    best_cost = cost
+                    best_trace = trace
+            stats = SearchStats(
+                simulations=self.search_config.simulations,
+                node_expansions=self._node_expansions,
+                transposition_hits=self._transposition_hits,
+                total_candidates=self._total_candidates,
+                factor_cache_requests=self.factorizer.cache_requests,
+                factor_cache_hits=self.factorizer.cache_hits,
+            )
+            baseline = float(self.baseline_model.direct_construction_cost(root))
+            value = (baseline - best_cost) / max(1.0, baseline)
+            return SearchResult(
+                root=root,
+                best_cost=best_cost,
+                best_trace=best_trace,
+                root_candidates=(root_factor_action,),
+                root_policy=(1.0,),
+                root_value=value,
+                stats=stats,
+            )
+
         for _ in range(self.search_config.simulations):
             self._simulate(root, depth=0)
 
