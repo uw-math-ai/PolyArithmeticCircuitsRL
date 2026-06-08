@@ -7,6 +7,8 @@ __pycache__/
 htmlcov/
 
 .venv/
+.venv-*/
+.venv-lgs/
 .venv-hyak-*/
 /venv/
 /env/
@@ -14,8 +16,12 @@ htmlcov/
 *.egg-info/
 
 results/
+wandb/
 *.pt
 *.pth
 *.ckpt
+*.log
+*.out
+.env
 
 .DS_Store

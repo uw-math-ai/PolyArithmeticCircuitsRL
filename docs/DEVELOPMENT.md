@@ -23,6 +23,8 @@ env PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest 
 
 Use `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` when global pytest plugins interfere with local collection.
 
+The current suite is roughly 120 tests. Avoid hardcoding the exact count in scripts or docs because it changes as diagnostics are added.
+
 ## Code Style
 
 - Keep changes scoped.
@@ -83,7 +85,10 @@ Steps:
 2. Add a default value path for missing features.
 3. Add the feature name to `CANDIDATE_FEATURE_NAMES` if it should reach the MLP.
 4. Update tests for deterministic feature length and no NaN/inf.
-5. Consider whether old checkpoints remain compatible. Current checkpoint loading stores feature names.
+5. Retrain before comparing rankers across schema changes.
+6. Consider checkpoint compatibility. Current checkpoint loading stores feature names.
+
+The current default feature schema has 49 features, including support-geometry features. Old ranker checkpoints may still load with their saved feature names, but they should not be treated as comparable to newly trained 49-feature models without retraining.
 
 Do not mutate `CircuitState` or `ProblemInstance` while computing features.
 
@@ -93,6 +98,8 @@ Evaluation code lives in:
 
 - `src/lgs/eval/evaluate_search.py`
 - `src/lgs/eval/sweep.py`
+- `src/lgs/eval/candidate_recall.py`
+- `src/lgs/eval/planner_sweep.py`
 
 For sweep metrics:
 
@@ -102,6 +109,27 @@ For sweep metrics:
 4. Add a deterministic test with hand-built `SweepRow`s where possible.
 
 Keep grouping keys explicit. Guided-vs-heuristic deltas should only compare matching method groups with the same family and search budget.
+
+Candidate recall is only defined for solved traces. For unsolved histories, return or report no recall summary rather than interpreting recall as zero.
+
+## Adding A Planner
+
+New planners live in `src/lgs/search/` and should return `SearchHistory`.
+
+Rules:
+
+1. Preserve exact verification. Finished states must satisfy `state.contains(instance.target)`.
+2. Preserve replayability. `verify_trace(instance, best.actions)` should pass for every finished trace.
+3. Use `history_expansion_count(history)` in evaluation.
+4. Set `SearchHistory.num_expansions` when the planner performs internal rollout or branch-evaluation work not fully represented by public records.
+5. Record compute counters in `SearchHistory.metadata` when practical:
+   - `candidate_generation_calls`
+   - `total_candidates_generated`
+   - `total_candidates_scored`
+   - `model_forward_calls`
+   - `root_expansions`
+   - `rollout_expansions`
+6. Do not mutate candidate feature dictionaries, source states, or ranker train/eval mode unexpectedly.
 
 ## `gumbel` Boundary
 
@@ -130,6 +158,9 @@ Not acceptable:
 - Milestone 6A: optional ranker-guided beam search.
 - Milestone 6B: bootstrapped training loop with validation-gated lambda promotion.
 - Milestone 7: structured benchmark suite, sweep aggregation, and Slurm launch scripts.
+- Candidate recall diagnostics and support-geometry features.
+- Gumbel / Sequential-Halving planner over generated candidates.
+- Matched-budget four-method planner sweep.
 
 ## Before Submitting Large Runs
 
@@ -137,8 +168,9 @@ Run:
 
 ```bash
 env PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -p no:cacheprovider
-python scripts/run_benchmark_sweep.py --max-instances-per-family 1 --beam-widths 1 --candidate-ks 4 --tier2-ms 16
-python scripts/train_and_eval_benchmark.py --rounds 1 --max-instances-per-family 1 --epochs-per-round 3 --beam-widths 1 --candidate-ks 4 --tier2-ms 16
+python scripts/run_benchmark_sweep.py --max-instances-per-family 1 --beam-widths 1 --candidate-ks 4 --tier2-ms 16 --no-wandb
+python scripts/run_planner_sweep.py --max-instances-per-family 1 --beam-widths 1 --candidate-ks 4 --tier2-ms 16 --expansion-budgets 16 --gumbel-seeds 0 --no-wandb
+python scripts/train_and_eval_benchmark.py --rounds 1 --max-instances-per-family 1 --epochs-per-round 3 --beam-widths 1 --candidate-ks 4 --tier2-ms 16 --no-wandb
 ```
 
 For Slurm scripts:

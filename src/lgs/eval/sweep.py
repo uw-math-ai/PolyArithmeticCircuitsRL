@@ -13,6 +13,7 @@ from lgs.env.problem_instance import ProblemInstance
 from lgs.models.candidate_ranker import CandidateRanker
 from lgs.models.feature_encoder import CandidateFeatureEncoder
 from lgs.search.beam_search import beam_search
+from lgs.search.search_history import history_expansion_count
 
 
 @dataclass(frozen=True)
@@ -238,7 +239,7 @@ def _run_one(
         tier2_m=tier2_m,
         success=best is not None,
         best_ops=best.num_ops() if best is not None else None,
-        expansions=len(history.records),
+        expansions=history_expansion_count(history),
         runtime_sec=runtime_sec,
         intended_complexity=_metadata_int(instance, "intended_complexity"),
         generative_ops=_metadata_int(instance, "generative_ops"),

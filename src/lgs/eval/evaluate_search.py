@@ -9,6 +9,7 @@ from lgs.env.problem_instance import ProblemInstance
 from lgs.models.candidate_ranker import CandidateRanker
 from lgs.models.feature_encoder import CandidateFeatureEncoder
 from lgs.search.beam_search import beam_search
+from lgs.search.search_history import history_expansion_count
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,9 @@ def evaluate_beam_search(
     return SearchEvalMetrics(
         success_rate=len(best_ops) / num_instances,
         avg_best_ops=avg_best_ops,
-        avg_expansions=sum(len(history.records) for history in histories) / num_instances,
+        avg_expansions=(
+            sum(history_expansion_count(history) for history in histories)
+            / num_instances
+        ),
         num_instances=num_instances,
     )

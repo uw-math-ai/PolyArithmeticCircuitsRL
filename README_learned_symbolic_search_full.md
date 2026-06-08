@@ -1,5 +1,13 @@
 # Learned Symbolic Search for Polynomial Circuit Synthesis
 
+> Status note: this is a historical planning/design document. The current
+> implementation has advanced beyond the early beam-search-only plan and now
+> includes support-geometry candidate features, candidate recall diagnostics,
+> Gumbel / Sequential-Halving search over generated candidates, explicit
+> expansion accounting, matched-budget four-method planner sweeps, W&B logging,
+> and Slurm wrappers. For current commands and APIs, prefer `README.md` and the
+> files under `docs/`.
+
 This README specifies the **main implementable training pipeline** for a polynomial arithmetic circuit synthesis solver.
 
 The solver is framed as an **AI-for-combinatorial-optimization style learned search system**:
@@ -15,7 +23,7 @@ CandidateGenerator
     ↓
 CandidatePolicy / learned ranker
     ↓
-Planner / decoder: beam search first, MCTS later
+Planner / decoder: beam search and Gumbel / Sequential-Halving now, value/MCTS later
     ↓
 Verifier
     ↓
@@ -238,11 +246,13 @@ Initial planner:
 beam search
 ```
 
-Planned later:
+Current implementation status:
 
 ```text
-MCTS / Gumbel-style search with a value head
+beam search and a clean Gumbel / Sequential-Halving planner over generated candidates
 ```
+
+A value head or full MCTS remains future work.
 
 ### 1.7 Verifier
 
@@ -1704,16 +1714,18 @@ heuristic search
 → regenerate better preferences
 ```
 
-### Milestone 7: value head and MCTS/Gumbel search
+### Milestone 7: Gumbel planner and benchmark sweep
 
-After beam + ranker is stable, add:
+Current implementation status:
 
 ```text
-state value head
-MCTS or Gumbel/Sequential-Halving planner
+Gumbel/Sequential-Halving planner over generated candidates
+matched-budget planner sweep
+candidate recall diagnostics
+support-geometry candidate features
 ```
 
-This is planned, but not required before the beam-search pipeline works.
+A state value head and full MCTS remain future work.
 
 ---
 

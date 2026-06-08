@@ -1,17 +1,17 @@
 # Learned Symbolic Search for Polynomial Arithmetic Circuit Synthesis
 
-This project synthesizes arithmetic circuits for target polynomials by combining exact symbolic arithmetic, target-conditioned candidate generation, learned candidate ranking, and beam search. The implementation is intentionally small and auditable: every arithmetic operation is exact over a finite field, every returned circuit is verified by polynomial equality, and the learned model only scores candidates inside a symbolic search loop.
+This project synthesizes arithmetic circuits for target polynomials by combining exact symbolic arithmetic, target-conditioned candidate generation, learned candidate ranking, and bounded symbolic search. The implementation is intentionally small and auditable: every arithmetic operation is exact over a finite field, every returned circuit is verified by polynomial equality, and the learned model only scores candidates inside a symbolic search loop.
 
 ```text
 ProblemInstance
   -> CircuitState
   -> CandidateGenerator
-  -> HeuristicScorer
-  -> CandidateRanker
-  -> BeamSearch
+  -> HeuristicScorer / CandidateRanker
+  -> BeamSearch / GumbelSearch
   -> ExactVerifier
   -> PreferenceExtractor
   -> BootstrapTrainer
+  -> BenchmarkSweeps
 ```
 
 ## Current Status
@@ -22,19 +22,31 @@ Implemented:
 - fail-loud arithmetic and domain validation
 - circuit state abstractions and exact trace verification
 - target-conditioned add/mul candidate generation
+- support-geometry / Minkowski candidate features
+- candidate recall and candidate-rank diagnostics
 - heuristic-only beam search
+- Gumbel / Sequential-Halving planner over generated candidates
 - search-history based preference extraction
-- fixed-feature MLP candidate ranker
+- fixed-feature MLP candidate ranker with the current 49-feature schema
 - ranker-guided beam search
 - bootstrapped ranker training loop
 - structured benchmark generation and sweep scripts
+- matched-budget four-method planner sweep:
+  - `beam_heuristic`
+  - `beam_guided`
+  - `gumbel_heuristic`
+  - `gumbel_guided`
+- fair expansion accounting through `SearchHistory.num_expansions` and `history_expansion_count`
+- optional W&B logging
 - Slurm wrappers for server runs
 
 Not implemented yet:
 
-- MCTS or value-guided search
+- value head
+- full AlphaZero-style MCTS with value targets
 - Transformer or GNN ranker
-- scalar penalties or model-aware candidate preselection
+- learned candidate proposal or hybrid candidate-set quotas
+- scalar penalties or model-aware candidate preselection outside heuristic top-K
 - local rewrite or post-search circuit improvement
 - old factor-library logic or reward-shaped RL training
 
@@ -72,7 +84,22 @@ python scripts/run_benchmark_sweep.py \
   --max-instances-per-family 1 \
   --beam-widths 1 \
   --candidate-ks 4 \
-  --tier2-ms 16
+  --tier2-ms 16 \
+  --no-wandb
+```
+
+Run a tiny matched-budget planner sweep:
+
+```bash
+python scripts/run_planner_sweep.py \
+  --max-instances-per-family 1 \
+  --beam-widths 1 \
+  --candidate-ks 4 \
+  --tier2-ms 16 \
+  --expansion-budgets 16 \
+  --gumbel-seeds 0 \
+  --output-dir results/local_planner_smoke \
+  --no-wandb
 ```
 
 Run a tiny train-and-evaluate benchmark:
@@ -84,7 +111,8 @@ python scripts/train_and_eval_benchmark.py \
   --epochs-per-round 3 \
   --beam-widths 1 \
   --candidate-ks 4 \
-  --tier2-ms 16
+  --tier2-ms 16 \
+  --no-wandb
 ```
 
 Outputs are written to `results/` by default:
@@ -92,6 +120,9 @@ Outputs are written to `results/` by default:
 - `sweep_rows.jsonl`
 - `sweep_summary.json`
 - `sweep_failures.json`
+- `planner_sweep_rows.jsonl` for planner sweeps
+- `planner_sweep_summary.json` for planner sweeps
+- `planner_sweep_deltas.json` for planner sweeps
 - `ranker.pt` for train-and-eval runs
 - `bootstrap_metrics.json` for train-and-eval runs
 
@@ -103,10 +134,12 @@ Server wrappers live in `slurm/`.
 sbatch slurm/train_eval_benchmark.sbatch
 sbatch slurm/heuristic_sweep.sbatch
 CHECKPOINT=results/server_runs/server_run_001/ranker.pt sbatch slurm/guided_sweep.sbatch
+CHECKPOINT=results/server_runs/server_run_001/ranker.pt sbatch slurm/planner_sweep.sbatch
 ```
 
-The experiment scripts and Slurm wrappers enable W&B by default. Set
-`ENABLE_WANDB=0` or pass `--no-wandb` to run without it.
+The experiment scripts support W&B through `--wandb` / `--no-wandb`. Slurm
+defaults are documented per wrapper; set `ENABLE_WANDB=0` or pass `--no-wandb`
+to run without it.
 See [slurm/README.md](slurm/README.md) for array jobs, metadata logging, and output layout.
 
 ## Key Concepts
@@ -116,9 +149,13 @@ See [slurm/README.md](slurm/README.md) for array jobs, metadata logging, and out
 - `Action`: canonical `add(i, j)` or `mul(i, j)`.
 - `CircuitState`: immutable circuit state containing base nodes, constructed nodes, action trace, parents, and node keys.
 - `Candidate`: proposed action plus exact result polynomial, features, tags, and scores.
+- `CandidateFeatureEncoder`: deterministic encoder for the 49-feature ranker schema; checkpoints save their feature names.
 - `beam_search`: exact symbolic search with optional learned ranker scoring.
+- `gumbel_search`: Gumbel / Sequential-Halving planner over generated candidates, with exact verification and explicit expansion accounting.
+- `compute_recall_for_best_finished`: candidate recall/rank diagnostics for solved traces.
 - `extract_preferences`: converts successful beam-search histories into pairwise candidate preferences.
 - `run_bootstrap_training`: repeats search, preference extraction, ranker training, validation, and lambda promotion.
+- `run_planner_sweep`: matched-budget comparison of Beam and Gumbel, heuristic and guided.
 
 ## Limitations
 
@@ -126,7 +163,9 @@ See [slurm/README.md](slurm/README.md) for array jobs, metadata logging, and out
 - The learned ranker has only been tested on early structured polynomial families so far.
 - Benchmarks are structured synthesis tasks, not arbitrary dense polynomial minimization.
 - The MLP ranker uses hand-built features rather than a graph, Transformer, or learned symbolic representation.
-- There is no MCTS/value head yet, so delayed-good branches can still be dropped by beam search.
+- There is no value head yet, so delayed-good branches can still be mis-scored.
+- The current Gumbel planner is a clean planner over generated `Candidate` objects, not a full AlphaZero/MCTS system with value targets or visit-count training.
+- Learned candidate proposal and hybrid candidate-set quotas are not implemented yet.
 - The code currently optimizes verified construction under search budgets. It does not claim optimal arithmetic circuit minimization.
 
 ## Documentation

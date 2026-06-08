@@ -35,6 +35,10 @@ Main files:
   - `poly_from_terms`
   - `exact_divides`
   - domain helpers
+- `support_geometry.py`
+  - support affine-dimension and bounding-box features
+  - Minkowski-style multiplication compatibility helpers
+  - support-union addition compatibility helpers
 
 Representation:
 
@@ -88,15 +92,38 @@ Main files:
   - `compute_tier1_features`
   - `compute_tier2_features`
   - `unique_by_result_polynomial`
+  - support-geometry feature population
 - `heuristic_score.py`
   - tier-1 and tier-2 symbolic scoring
 - `beam_search.py`
   - `beam_search`
   - optional ranker-guided scoring
   - exact finished-state detection
+- `gumbel_search.py`
+  - `gumbel_search`
+  - Gumbel / Sequential-Halving planner over generated `Candidate` objects
+  - optional short greedy rollouts
+  - explicit expansion-budget accounting
 - `search_history.py`
   - `SearchHistory`
   - `ExpandedStateRecord`
+  - `history_expansion_count`
+
+`SearchHistory` carries two accounting paths:
+
+- `records`: externally visible expanded candidate decisions.
+- `num_expansions`: actual applied-action expansion count when a planner performs internal work, such as Gumbel branch rollouts.
+
+Use `history_expansion_count(history)` for evaluation and comparisons. Do not assume `len(history.records)` is the fair compute count.
+
+`SearchHistory.metadata` may include compute counters:
+
+- `candidate_generation_calls`
+- `total_candidates_generated`
+- `total_candidates_scored`
+- `model_forward_calls`
+- `root_expansions`
+- `rollout_expansions`
 
 Search dependencies:
 
@@ -105,7 +132,7 @@ Search dependencies:
 - should not own training logic
 - should not depend on old factor-library state or `gumbel`
 
-The current beam search always requires exact verification through `state.contains(instance.target)`. Model scores affect ordering, not correctness.
+Beam and Gumbel search both require exact verification through `state.contains(instance.target)`. Model scores and Gumbel noise affect ordering or exploration, not correctness.
 
 ## `src/lgs/models/`
 
@@ -179,14 +206,26 @@ Main files:
 - `evaluate_search.py`
   - `SearchEvalMetrics`
   - `evaluate_beam_search`
+- `candidate_recall.py`
+  - `compute_candidate_recall_for_trace`
+  - `compute_recall_for_best_finished`
+  - recall@K and mean-rank diagnostics for solved traces
 - `compare_rankers.py`
   - direct heuristic-vs-guided comparison helper
+- `compare_planners.py`
+  - direct Beam-vs-Gumbel comparison helper
 - `sweep.py`
   - `SweepConfig`
   - `SweepRow`
   - `run_search_sweep`
   - `summarize_sweep`
   - `summarize_failures`
+- `planner_sweep.py`
+  - `PlannerSweepConfig`
+  - `PlannerSweepRow`
+  - `run_planner_sweep`
+  - `summarize_planner_sweep`
+  - `summarize_planner_deltas`
 
 Evaluation code runs search and reports metrics. It should not train models or mutate benchmark instances.
 
@@ -195,6 +234,7 @@ Evaluation code runs search and reports metrics. It should not train models or m
 Purpose: local runnable entry points.
 
 - `run_benchmark_sweep.py`: heuristic-only sweep, or guided sweep if a checkpoint is provided.
+- `run_planner_sweep.py`: matched-budget four-method planner sweep: Beam heuristic, Beam guided, Gumbel heuristic, and Gumbel guided.
 - `train_and_eval_benchmark.py`: structured benchmark split, bootstrap training, evaluation sweep, checkpoint output.
 - `train_bootstrap.py`: tiny bootstrap smoke run.
 
@@ -207,9 +247,10 @@ Purpose: server launch wrappers.
 - `train_eval_benchmark.sbatch`
 - `heuristic_sweep.sbatch`
 - `guided_sweep.sbatch`
+- `planner_sweep.sbatch`
 - `array_sweep.sbatch`
 
-These scripts are CPU-first, write run metadata, enable W&B logging by default, and avoid containers, GPUs, and old `gumbel` logic.
+These scripts are CPU-first, write run metadata, support optional W&B logging, and avoid containers, GPUs, and old `gumbel` logic.
 
 ## `tests/`
 

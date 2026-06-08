@@ -25,6 +25,13 @@ from lgs.poly.poly_utils import (
     support_size,
     total_degree,
 )
+from lgs.poly.support_geometry import (
+    support_affine_dimension,
+    support_bounding_box_volume,
+    support_minkowski_coverage,
+    support_minkowski_sum,
+    support_union_coverage,
+)
 
 __all__ = [
     "Polynomial",
@@ -46,6 +53,11 @@ __all__ = [
     "per_variable_degrees",
     "poly_from_terms",
     "support",
+    "support_affine_dimension",
+    "support_bounding_box_volume",
+    "support_minkowski_coverage",
+    "support_minkowski_sum",
     "support_size",
+    "support_union_coverage",
     "total_degree",
 ]

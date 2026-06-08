@@ -1,8 +1,8 @@
 # Slurm Benchmark Jobs
 
 These scripts run `learn-guided-search` benchmark sweeps on CPU nodes. They
-enable W&B logging by default and intentionally avoid containers, GPUs, old
-`gumbel` logic, and PID waiting.
+support W&B logging and intentionally avoid containers, GPUs, old `gumbel`
+logic, and PID waiting.
 
 Outputs go to:
 
@@ -21,6 +21,14 @@ sweep_summary.json
 sweep_failures.json
 ```
 
+Planner sweeps write:
+
+```text
+planner_sweep_rows.jsonl
+planner_sweep_summary.json
+planner_sweep_deltas.json
+```
+
 Train/eval runs also write:
 
 ```text
@@ -34,6 +42,9 @@ bootstrap_metrics.json
   heuristic and guided search, and saves a checkpoint.
 - `heuristic_sweep.sbatch`: runs heuristic-only sweeps with no checkpoint.
 - `guided_sweep.sbatch`: runs guided sweeps from a saved `ranker.pt`.
+- `planner_sweep.sbatch`: runs the matched-budget four-method planner sweep:
+  heuristic Beam, guided Beam, heuristic Gumbel, and guided Gumbel when a
+  checkpoint is provided.
 - `array_sweep.sbatch`: dispatches multiple independent sweep jobs from a TSV
   matrix using `SLURM_ARRAY_TASK_ID`.
 
@@ -68,8 +79,9 @@ BOOTSTRAP_VENV=0                   # use selected Python directly; deps must alr
 PIP_CACHE_DIR=/gscratch/scrubbed/$USER/pip-cache
 ```
 
-W&B is enabled by default in the Slurm wrappers, matching the sibling `gumbel`
-launch scripts:
+W&B defaults vary by wrapper. The train/eval and benchmark-sweep wrappers enable
+it by default; `planner_sweep.sbatch` defaults to `ENABLE_WANDB=0` so local
+pre-flight planner runs do not require W&B credentials. Override with:
 
 ```bash
 ENABLE_WANDB=1
@@ -78,8 +90,8 @@ WANDB_ENTITY=zengrf-university-of-washington
 WANDB_MODE=online
 ```
 
-Set `ENABLE_WANDB=0` or pass `--no-wandb` to disable it, or override
-`WANDB_PROJECT`, `WANDB_ENTITY`, or `WANDB_MODE`.
+Set `ENABLE_WANDB=0` to disable it, or override `WANDB_PROJECT`, `WANDB_ENTITY`,
+or `WANDB_MODE`.
 
 ## Train And Evaluate
 
@@ -147,6 +159,68 @@ CANDIDATE_KS=4,8,16,32,64 \
 TIER2_MS=64,128 \
 sbatch slurm/guided_sweep.sbatch
 ```
+
+## Matched-Budget Planner Sweep
+
+Heuristic-only Beam/Gumbel planner sweep:
+
+```bash
+RUN_NAME=planner_heuristic_001 \
+sbatch slurm/planner_sweep.sbatch
+```
+
+Guided plus heuristic four-method sweep from a checkpoint:
+
+```bash
+RUN_NAME=planner_guided_001 \
+CHECKPOINT=results/server_runs/server_train_eval_full_001/ranker.pt \
+ENABLE_WANDB=1 \
+sbatch slurm/planner_sweep.sbatch
+```
+
+Moderate pre-flight server sweep:
+
+```bash
+RUN_NAME=planner_sweep_medium_001 \
+CHECKPOINT=results/server_runs/server_train_eval_full_001/ranker.pt \
+ENABLE_WANDB=1 \
+MAX_INSTANCES_PER_FAMILY=10 \
+BEAM_WIDTHS=1,2,4 \
+CANDIDATE_KS=4,8,16 \
+TIER2_MS=64 \
+EXPANSION_BUDGETS=64,128 \
+GUMBEL_SEEDS=0,1,2,3,4 \
+LAMBDA_MODEL=1.0 \
+sbatch slurm/planner_sweep.sbatch
+```
+
+Full sweep template:
+
+```bash
+RUN_NAME=planner_sweep_full_001 \
+CHECKPOINT=results/server_runs/server_train_eval_full_001/ranker.pt \
+ENABLE_WANDB=1 \
+MAX_INSTANCES_PER_FAMILY=25 \
+BEAM_WIDTHS=1,2,4,8 \
+CANDIDATE_KS=4,8,16,32 \
+TIER2_MS=64,128 \
+EXPANSION_BUDGETS=64,128,256 \
+GUMBEL_SEEDS=0,1,2,3,4,5,6,7,8,9 \
+LAMBDA_MODEL=1.0 \
+sbatch slurm/planner_sweep.sbatch
+```
+
+The first deltas to inspect in `planner_sweep_deltas.json` are:
+
+```text
+gumbel_heuristic - beam_heuristic
+beam_guided - beam_heuristic
+gumbel_guided - gumbel_heuristic
+gumbel_guided - beam_guided
+```
+
+These are grouped by family, intended complexity, beam width, candidate count,
+tier-2 count, and expansion budget.
 
 ## Array Sweep
 

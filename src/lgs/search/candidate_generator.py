@@ -11,6 +11,12 @@ from lgs.env.circuit_state import CircuitState
 from lgs.env.problem_instance import ProblemInstance
 from lgs.poly.fast_poly import Polynomial, PolynomialDegreeError
 from lgs.poly.poly_utils import exact_divides, require_same_domain
+from lgs.poly.support_geometry import (
+    support_affine_dimension,
+    support_bounding_box_volume,
+    support_minkowski_coverage,
+    support_union_coverage,
+)
 from lgs.search.heuristic_score import score_tier1, score_tier2
 
 
@@ -106,6 +112,7 @@ def compute_tier1_features(
     features["residual_exists"] = float(residual.key() in state.node_keys)
     features["residual_support_size"] = float(len(residual_support))
     features["residual_target_overlap"] = float(len(residual_support & supp_f))
+    _add_support_geometry_features(instance, state, candidate)
 
     if features["equals_target"]:
         candidate.source_tags.add("exact_target")
@@ -113,6 +120,10 @@ def compute_tier1_features(
         candidate.source_tags.add("support_overlap")
     if features["residual_exists"]:
         candidate.source_tags.add("residual_exists")
+    if features["max_mul_support_coverage"] >= 0.8:
+        candidate.source_tags.add("support_mul_coverage")
+    if features["max_add_support_coverage"] >= 0.8:
+        candidate.source_tags.add("support_add_coverage")
     return features
 
 
@@ -166,6 +177,49 @@ def unique_by_result_polynomial(candidates: Iterable[Candidate]) -> list[Candida
         if existing is None or _dedupe_sort_key(candidate) < _dedupe_sort_key(existing):
             by_key[key] = candidate
     return list(by_key.values())
+
+
+def _add_support_geometry_features(
+    instance: ProblemInstance,
+    state: CircuitState,
+    candidate: Candidate,
+) -> None:
+    result_support = candidate.result_poly.support()
+    target_support = instance.target.support()
+    max_mul_coverage = 0.0
+    min_mul_outside = 1.0
+    max_add_coverage = 0.0
+    min_add_outside = 1.0
+
+    # Include the result itself so reusable intermediates like x+y can expose
+    # that (x+y)*(x+y) matches a square target before x+y is already a node.
+    for node in (*state.nodes, candidate.result_poly):
+        node_support = node.support()
+        mul_coverage, mul_outside = support_minkowski_coverage(
+            result_support,
+            node_support,
+            target_support,
+        )
+        add_coverage, add_outside = support_union_coverage(
+            result_support,
+            node_support,
+            target_support,
+        )
+        max_mul_coverage = max(max_mul_coverage, mul_coverage)
+        min_mul_outside = min(min_mul_outside, mul_outside)
+        max_add_coverage = max(max_add_coverage, add_coverage)
+        min_add_outside = min(min_add_outside, add_outside)
+
+    candidate.features["max_mul_support_coverage"] = float(max_mul_coverage)
+    candidate.features["min_mul_outside_fraction"] = float(min_mul_outside)
+    candidate.features["max_add_support_coverage"] = float(max_add_coverage)
+    candidate.features["min_add_outside_fraction"] = float(min_add_outside)
+    candidate.features["support_affine_dim_result"] = float(
+        support_affine_dimension(result_support)
+    )
+    candidate.features["support_bbox_volume_result"] = float(
+        support_bounding_box_volume(result_support)
+    )
 
 
 def _is_safely_filtered(
