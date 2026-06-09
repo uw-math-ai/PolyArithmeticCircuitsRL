@@ -35,6 +35,7 @@ def beam_search(
     stop_on_first_success: bool = False,
     noise_sigma: float = 0.0,
     noise_base_seed: int = 0,
+    expansion_budget: int | None = None,
 ) -> SearchHistory:
     _validate_inputs(
         instance=instance,
@@ -48,9 +49,16 @@ def beam_search(
         lambda_model=lambda_model,
         learned_only=learned_only,
         noise_sigma=noise_sigma,
+        noise_sigma=noise_sigma,
+        noise_base_seed=noise_base_seed,
+        expansion_budget=expansion_budget,
     )
     depth_limit = instance.op_budget if max_depth is None else max_depth
-    history = SearchHistory(instance=instance)
+    history = SearchHistory(
+        instance=instance,
+        num_expansions=0,
+        metadata=_initial_accounting_metadata(planner="beam"),
+    )
     initial_state = CircuitState.initial(instance)
     if initial_state.contains(instance.target):
         history.finished.append(initial_state)
@@ -59,8 +67,12 @@ def beam_search(
 
     beam: list[tuple[CircuitState, float]] = [(initial_state, 0.0)]
     for depth in range(depth_limit):
+        if _expansion_budget_exhausted(history, expansion_budget):
+            break
         scored_next_states: list[tuple[CircuitState, float]] = []
         for state, _ in beam:
+            if _expansion_budget_exhausted(history, expansion_budget):
+                break
             if state.remaining_budget() <= 0:
                 continue
             candidates = generate_candidates(
@@ -69,10 +81,12 @@ def beam_search(
                 K=candidate_k,
                 tier2_m=tier2_m,
             )
+            _record_candidate_generation(history, candidates)
             _score_candidates_with_model(
                 instance=instance,
                 state=state,
                 candidates=candidates,
+                history=history,
                 ranker=ranker,
                 encoder=encoder,
                 lambda_model=float(lambda_model),
@@ -82,6 +96,8 @@ def beam_search(
             )
             candidates = sorted(candidates, key=_candidate_sort_key)
             for candidate in candidates:
+                if _expansion_budget_exhausted(history, expansion_budget):
+                    break
                 try:
                     next_state = state.apply(candidate.action)
                 except PolynomialDegreeError:
@@ -98,6 +114,8 @@ def beam_search(
                         state_score=state_score,
                     )
                 )
+                history.num_expansions = history.num_expansions + 1
+                history.metadata["root_expansions"] += 1
                 if next_state.contains(instance.target):
                     history.finished.append(next_state)
                     if stop_on_first_success:
@@ -118,18 +136,27 @@ def recover_trace(state: CircuitState) -> list[Action]:
 def _score_next_state(candidate_score: float, next_state: CircuitState) -> float:
     return candidate_score - STATE_COST_ALPHA * next_state.num_ops()
 
-
 def _stable_seed(*parts: object, base: int = 0) -> int:
     text = "|".join(str(p) for p in parts)
     digest = hashlib.blake2b(text.encode(), digest_size=8).digest()
     return (int.from_bytes(digest, "little") + base) % (2 ** 32)
 
+def _expansion_budget_exhausted(
+    history: SearchHistory,
+    expansion_budget: int | None,
+) -> bool:
+    return (
+        expansion_budget is not None
+        and history.num_expansions is not None
+        and history.num_expansions >= expansion_budget
+    )
 
 def _score_candidates_with_model(
     *,
     instance: ProblemInstance,
     state: CircuitState,
     candidates: list[Candidate],
+    history: SearchHistory,
     ranker: Any | None,
     encoder: Any | None,
     lambda_model: float,
@@ -178,6 +205,27 @@ def _score_candidates_with_model(
             ranker.train()
 
 
+def _initial_accounting_metadata(*, planner: str) -> dict[str, int | str]:
+    return {
+        "planner": planner,
+        "candidate_generation_calls": 0,
+        "total_candidates_generated": 0,
+        "total_candidates_scored": 0,
+        "model_forward_calls": 0,
+        "root_expansions": 0,
+        "rollout_expansions": 0,
+    }
+
+
+def _record_candidate_generation(
+    history: SearchHistory,
+    candidates: list[Candidate],
+) -> None:
+    history.metadata["candidate_generation_calls"] += 1
+    history.metadata["total_candidates_generated"] += len(candidates)
+    history.metadata["total_candidates_scored"] += len(candidates)
+
+
 def _candidate_sort_key(candidate: Candidate) -> tuple[float, tuple[str, int, int], Hashable]:
     action_key = (candidate.action.op, candidate.action.i, candidate.action.j)
     return (-candidate.total_score, action_key, candidate.result_poly.key())
@@ -223,6 +271,8 @@ def _validate_inputs(
     lambda_model: float,
     learned_only: bool = False,
     noise_sigma: float = 0.0,
+    noise_base_seed: int = 0,
+    expansion_budget: int | None = None,
 ) -> None:
     if not isinstance(instance, ProblemInstance):
         raise TypeError("instance must be a ProblemInstance")
@@ -248,11 +298,19 @@ def _validate_inputs(
         raise ValueError("encoder is required when lambda_model > 0")
     if not isinstance(learned_only, bool):
         raise TypeError("learned_only must be a bool")
-    if learned_only and float(lambda_model) == 0.0:
-        raise ValueError("learned_only requires lambda_model > 0")
+    if learned_only and ranker is None:
+        raise ValueError("ranker is required when learned_only=True")
+    if learned_only and encoder is None:
+        raise ValueError("encoder is required when learned_only=True")
     if isinstance(noise_sigma, bool) or not isinstance(noise_sigma, (int, float)):
         raise ValueError("noise_sigma must be numeric")
     if float(noise_sigma) < 0.0:
-        raise ValueError("noise_sigma must be >= 0")
+        raise ValueError("noise_sigma must be non-negative")
+    if type(noise_base_seed) is not int:
+        raise ValueError("noise_base_seed must be an int")
+    if expansion_budget is not None and (
+        type(expansion_budget) is not int or expansion_budget < 0
+    ):
+        raise ValueError("expansion_budget must be None or a non-negative int")
     initial = CircuitState.initial(instance)
     require_same_domain(instance.target, initial.nodes[0])

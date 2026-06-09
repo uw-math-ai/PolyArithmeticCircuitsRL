@@ -55,13 +55,21 @@ The current pipeline is:
 ProblemInstance
   -> CircuitState
   -> CandidateGenerator
-  -> HeuristicScorer
-  -> CandidateRanker
-  -> BeamSearch
+  -> HeuristicScorer / CandidateRanker
+  -> BeamSearch / GumbelSearch
   -> ExactVerifier
   -> PreferenceExtractor
   -> BootstrapTrainer
 ```
+
+The central interface is the compact, target-conditioned `Candidate` set. The raw action set is all canonical add/mul pairs over existing nodes. The generated candidate set is the exact subset that survives capped arithmetic, safe filtering, deduplication, and heuristic top-K selection. Search planners operate over this generated set.
+
+Important diagnostics:
+
+- `candidate recall@K`: for a solved trace, the fraction of best-trace actions that appear in the generated candidate list within rank `K` at their source state.
+- `candidate rank`: the deterministic rank of a best-trace action inside the candidate list generated at that source state.
+- `expansion budget`: the number of exact applied candidate actions allowed during search. Evaluation should use `history_expansion_count(history)`, because some planners do internal rollout work that is not equivalent to just `len(history.records)`.
+- `exact verification`: success is only target containment by exact polynomial equality.
 
 ### Candidate Generation
 
@@ -84,6 +92,18 @@ Only safe hard filters are used:
 
 The generator intentionally does not filter out candidates solely because they have zero direct target-support overlap. Intermediates such as `x + y` for `(x + y)^2` are important even when they do not look like a target term.
 
+### Support Geometry
+
+Polynomial support is the set of exponent vectors with nonzero coefficients. The candidate generator uses this geometry to add target-conditioned features without changing exact arithmetic.
+
+For multiplication, the support of a product is constrained by a Minkowski-style sum of operand supports. This helps score candidates whose factors could plausibly compose target support, such as:
+
+- `x + y` for `(x + y)^2`
+- `a + b` and `c + d` for `(a + b)(c + d)`
+- reused `x + y` in `(x + y)^2 + z(x + y)`
+
+For addition, the relevant support operation is closer to union and residual coverage. The features remain diagnostic and heuristic; they do not certify correctness.
+
 ### Two-Tier Features
 
 Tier 1 computes cheap symbolic features for every surviving candidate:
@@ -94,6 +114,9 @@ Tier 1 computes cheap symbolic features for every surviving candidate:
 - support overlap
 - target coverage
 - residual existence in current nodes
+- multiplication support compatibility
+- addition support compatibility
+- support affine dimension and bounding-box volume
 
 Tier 2 computes more expensive exact features for top tier-1 candidates:
 
@@ -129,6 +152,31 @@ Beam search keeps a bounded set of states ranked by candidate score minus a smal
 - state score
 
 This makes preference extraction and debugging possible after search.
+
+### Gumbel / Sequential-Halving Search
+
+`gumbel_search` is an alternative planner, not a replacement for beam search. It operates over generated `Candidate` objects and uses:
+
+```text
+candidate.total_score
+```
+
+as the policy logit. Selection uses:
+
+```text
+sample_score = total_score + gumbel_scale * gumbel_noise
+```
+
+Gumbel noise affects which branches are explored. It never affects correctness. A finished state is accepted only if it contains the target exactly.
+
+The current implementation is intentionally not a full AlphaZero-style system:
+
+- no value head
+- no visit-count tree policy
+- no PPO/RL training
+- no learned candidate proposal
+
+It is a bounded Sequential-Halving style planner over exact symbolic candidates, with optional short greedy rollouts. Internal rollout expansions are counted through `SearchHistory.num_expansions` and planner comparisons should use `history_expansion_count(history)`.
 
 ### Learned Candidate Ranker
 
@@ -213,6 +261,8 @@ The model learns a scalar candidate scoring function. It consumes:
 
 The current learner is deliberately simple so benchmark results can isolate whether learned ranking helps at all before adding more expressive models.
 
+The current default feature schema has 49 features. Checkpoints save their feature names, but models trained under different default schemas should be retrained before comparison.
+
 ## What Is Not Yet Implemented
 
 - MCTS
@@ -220,5 +270,6 @@ The current learner is deliberately simple so benchmark results can isolate whet
 - Transformer or GNN ranker
 - local rewrite improvement
 - scalar penalties
+- learned candidate proposal or hybrid candidate-set quotas
 - model-aware candidate preselection beyond heuristic top-K
 - broad baseline comparisons against the older flat-RL path

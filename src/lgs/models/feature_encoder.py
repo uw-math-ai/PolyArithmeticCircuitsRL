@@ -59,7 +59,7 @@ class CandidateFeatureEncoder:
         }
         for feature_name in CANDIDATE_FEATURE_NAMES:
             values[f"feature_{feature_name}"] = float(
-                candidate.features.get(feature_name, 0.0)
+                candidate.features.get(feature_name, _candidate_feature_default(feature_name))
             )
 
         return [values[name] for name in self.feature_names]
@@ -67,6 +67,15 @@ class CandidateFeatureEncoder:
 
 def _tag(candidate: Candidate, tag: str) -> float:
     return float(tag in candidate.source_tags)
+
+
+def _candidate_feature_default(feature_name: str) -> float:
+    if feature_name in {
+        "min_mul_outside_fraction",
+        "min_add_outside_fraction",
+    }:
+        return 1.0
+    return 0.0
 
 
 CANDIDATE_FEATURE_NAMES = (
@@ -89,9 +98,18 @@ CANDIDATE_FEATURE_NAMES = (
     "quotient_support_size",
     "one_step_completion_add",
     "one_step_completion_mul",
+    "max_mul_support_coverage",
+    "min_mul_outside_fraction",
+    "max_add_support_coverage",
+    "min_add_outside_fraction",
+    "support_affine_dim_result",
+    "support_bbox_volume_result",
 )
 
 
+# TODO: Default feature schema changes are checkpoint-sensitive. load_ranker()
+# restores the saved encoder feature_names for old checkpoints; retrain before
+# comparing models across schema changes.
 FEATURE_NAMES = (
     "problem_num_variables",
     "target_degree",

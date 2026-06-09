@@ -9,7 +9,12 @@ from lgs.search.candidate_generator import (
     unique_by_result_polynomial,
 )
 from lgs.search.heuristic_score import score_tier1, score_tier2
-from lgs.search.search_history import ExpandedStateRecord, SearchHistory
+from lgs.search.gumbel_search import gumbel_search
+from lgs.search.search_history import (
+    ExpandedStateRecord,
+    SearchHistory,
+    history_expansion_count,
+)
 
 __all__ = [
     "ExpandedStateRecord",
@@ -19,6 +24,8 @@ __all__ = [
     "compute_tier2_features",
     "enumerate_basic_pair_candidates",
     "generate_candidates",
+    "gumbel_search",
+    "history_expansion_count",
     "recover_trace",
     "score_tier1",
     "score_tier2",

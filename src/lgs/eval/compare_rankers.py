@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from lgs.env.problem_instance import ProblemInstance
 from lgs.search.beam_search import beam_search
+from lgs.search.search_history import history_expansion_count
 
 
 @dataclass(frozen=True)
@@ -60,8 +61,8 @@ def compare_heuristic_vs_ranker(
                     heuristic_best.num_ops() if heuristic_best is not None else None
                 ),
                 guided_best_ops=guided_best.num_ops() if guided_best is not None else None,
-                heuristic_expansions=len(heuristic.records),
-                guided_expansions=len(guided.records),
+                heuristic_expansions=history_expansion_count(heuristic),
+                guided_expansions=history_expansion_count(guided),
             )
         )
     return results
