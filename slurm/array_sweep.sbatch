@@ -11,8 +11,15 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+if [[ -n "${REPO_ROOT:-}" ]]; then
+  REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
+elif [[ -n "${SLURM_SUBMIT_DIR:-}" && -d "${SLURM_SUBMIT_DIR}/slurm" ]]; then
+  REPO_ROOT="$(cd "${SLURM_SUBMIT_DIR}" && pwd)"
+else
+  SCRIPT_DIR_FALLBACK="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  REPO_ROOT="$(cd "${SCRIPT_DIR_FALLBACK}/.." && pwd)"
+fi
+SCRIPT_DIR="${REPO_ROOT}/slurm"
 cd "${REPO_ROOT}"
 
 MATRIX_FILE="${MATRIX_FILE:-slurm/sweep_matrix.tsv}"
