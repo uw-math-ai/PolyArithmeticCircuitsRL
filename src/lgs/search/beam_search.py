@@ -49,7 +49,6 @@ def beam_search(
         lambda_model=lambda_model,
         learned_only=learned_only,
         noise_sigma=noise_sigma,
-        noise_sigma=noise_sigma,
         noise_base_seed=noise_base_seed,
         expansion_budget=expansion_budget,
     )
@@ -135,6 +134,7 @@ def recover_trace(state: CircuitState) -> list[Action]:
 
 def _score_next_state(candidate_score: float, next_state: CircuitState) -> float:
     return candidate_score - STATE_COST_ALPHA * next_state.num_ops()
+
 
 def _stable_seed(*parts: object, base: int = 0) -> int:
     text = "|".join(str(p) for p in parts)
