@@ -1,0 +1,10 @@
+{
+  "checkpoint_dir": "/Users/rohanpandey/Desktop/Research_Projects/Math AI Lab/VSCode/PolyArithmeticCircuitsRL/models",
+  "search_sims": 32,
+  "models": [
+    "heuristic",
+    "PPO MCTS Final",
+    "SAC"
+  ],
+  "num_polynomials": 21
+}

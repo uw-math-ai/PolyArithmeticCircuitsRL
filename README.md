@@ -195,6 +195,40 @@ polynomials. Metrics appear in `metrics.jsonl` and W&B as `holdout_random/*`
 and `cycle_random/*`; tune it with `--random-rollouts-per-target`,
 `--random-rollout-max-steps`, and `--random-rollout-candidates`.
 
+## Interactive Demo
+
+There are two ways to explore the current best checkpoints in a browser.
+
+**Live server (full interactivity, needs Python + torch).** Runs real inference
+on demand and includes the human-vs-agent top-down game:
+
+```bash
+pip install flask
+python scripts/serve_ui.py --checkpoint-dir models
+# open http://127.0.0.1:8000
+```
+
+**Static snapshot (GitHub Pages, no server).** GitHub Pages only serves static
+files, so the live inference/search cannot run there. Instead,
+`scripts/build_static_snapshot.py` drives the same Flask app in-process via its
+test client, captures the real `/api/*` payloads, and writes them to
+`docs/data/*.json`. A small client-side shim (`docs/static-shim.js`) replays
+those payloads so the unmodified frontend runs entirely in the browser — the
+inference table, per-model summaries, tier colouring, and hover-able circuits
+are all genuine inference outputs. The interactive game is disabled in this
+build (it needs live server state).
+
+Rebuild the snapshot after training or changing checkpoints:
+
+```bash
+python scripts/build_static_snapshot.py --checkpoint-dir models --search-sims 32
+```
+
+Deployment is automated by `.github/workflows/pages.yml`, which uploads `docs/`
+to GitHub Pages on every push to `top-down-branch` that touches `docs/`. The
+published demo lives at
+`https://uw-math-ai.github.io/PolyArithmeticCircuitsRL/`.
+
 ## W&B Logging
 
 `scripts/run_full_experiment.py` logs to W&B when the `train` extra is installed

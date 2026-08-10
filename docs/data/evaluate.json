@@ -1,0 +1,7057 @@
+{
+  "search_sims": 32,
+  "events": [
+    {
+      "event": "session-start",
+      "data": {
+        "search_sims": 32,
+        "k_candidates": 16,
+        "models": [
+          "heuristic",
+          "PPO MCTS Final",
+          "SAC"
+        ],
+        "total_polys": 21
+      }
+    },
+    {
+      "event": "model-start",
+      "data": {
+        "label": "heuristic",
+        "info": {
+          "description": "Hand-crafted heuristic policy (no learned weights)",
+          "supported_primes": null,
+          "field_label": "all finite fields",
+          "field_source": "algorithmic baseline"
+        }
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 0,
+        "poly_name": "F3_xy  xy+x+y",
+        "optimal": 3,
+        "greedy_cost": 3,
+        "search_cost": 3,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "xy + y + x",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "x"
+            },
+            {
+              "op": "mul",
+              "latex": "xy + y",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "add",
+                  "latex": "x + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "xy + y + x",
+          "children": [
+            {
+              "op": "add",
+              "latex": "",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "xy",
+                  "scalar": null,
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                }
+              ]
+            },
+            {
+              "op": "leaf",
+              "latex": "x"
+            }
+          ]
+        },
+        "greedy_circuit_cost": 3,
+        "search_circuit_cost": 3,
+        "node_expansions": 4,
+        "transposition_hits": 60,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 459
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 1,
+        "poly_name": "F3_xy  x2y+xy2 [=xy(x+y)]",
+        "optimal": 3,
+        "greedy_cost": 3,
+        "search_cost": 3,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "mul",
+          "latex": "xy^{2} + x^{2}y",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "mul",
+          "latex": "xy^{2} + x^{2}y",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 3,
+        "search_circuit_cost": 3,
+        "node_expansions": 1,
+        "transposition_hits": 31,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 8
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 2,
+        "poly_name": "F3_xy  x2+2xy+y2 [=(x+y)^2]",
+        "optimal": 2,
+        "greedy_cost": 2,
+        "search_cost": 2,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "pow",
+          "exp": 2,
+          "latex": "y^{2} + 2xy + x^{2}",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "pow",
+          "exp": 2,
+          "latex": "y^{2} + 2xy + x^{2}",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 2,
+        "search_circuit_cost": 2,
+        "node_expansions": 1,
+        "transposition_hits": 31,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 5
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 3,
+        "poly_name": "F3_xy  x2y2+xy+1",
+        "optimal": 4,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "x^{2}y^{2} + xy + 1",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "1"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y^{2} + xy",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "xy + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "mul",
+                      "latex": "xy",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "x^{2}y^{2} + xy + 1",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "1"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y^{2} + xy",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "xy^{2} + y",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "xy^{2}",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "pow",
+                          "exp": 2,
+                          "latex": "y^{2}",
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "y"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 3,
+        "transposition_hits": 61,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 24
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 4,
+        "poly_name": "F3_xy  x2+xy+y2+x+y",
+        "optimal": 4,
+        "greedy_cost": 6,
+        "search_cost": 5,
+        "greedy_tier": 2,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "y^{2} + xy + x^{2} + y + x",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "y^{2} + y",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "add",
+                  "latex": "y + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xy + x^{2} + x",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "y + x + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "x + 1",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "1"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "y^{2} + xy + x^{2} + y + x",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "y^{2} + xy + x^{2}",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "2y + x",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "2y",
+                      "scalar": 2,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 6,
+        "search_circuit_cost": 5,
+        "node_expansions": 6,
+        "transposition_hits": 91,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 29
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 5,
+        "poly_name": "F3_xy  x3+y3 [sum of cubes]",
+        "optimal": 3,
+        "greedy_cost": 3,
+        "search_cost": 3,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "pow",
+          "exp": 3,
+          "latex": "y^{3} + x^{3}",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "pow",
+          "exp": 3,
+          "latex": "y^{3} + x^{3}",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 3,
+        "search_circuit_cost": 3,
+        "node_expansions": 1,
+        "transposition_hits": 31,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 5
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 6,
+        "poly_name": "F3_xy  x2y+xy+x+y",
+        "optimal": 5,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "x^{2}y + xy + y + x",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "x"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y + xy + y",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "x^{2} + x + 1",
+                  "children": [
+                    {
+                      "op": "add",
+                      "latex": "x + 2",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "2"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "x^{2}y + xy + y + x",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "x"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y + xy + y",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "x^{2} + x + 1",
+                  "children": [
+                    {
+                      "op": "add",
+                      "latex": "x + 2",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "2"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 4,
+        "transposition_hits": 61,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 19
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 7,
+        "poly_name": "F3_xy  x2y2+x2+y2",
+        "optimal": 5,
+        "greedy_cost": 6,
+        "search_cost": 6,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "x^{2}y^{2} + y^{2} + x^{2}",
+          "children": [
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "x^{2}",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y^{2} + y^{2}",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "y^{2}",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "x^{2} + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "pow",
+                      "exp": 2,
+                      "latex": "x^{2}",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "x^{2}y^{2} + y^{2} + x^{2}",
+          "children": [
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "y^{2}",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y^{2} + x^{2}",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "xy^{2} + x",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "xy^{2}",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "pow",
+                          "exp": 2,
+                          "latex": "y^{2}",
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "y"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 6,
+        "search_circuit_cost": 6,
+        "node_expansions": 4,
+        "transposition_hits": 60,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 20
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 8,
+        "poly_name": "F3_x   x4+x3+x2+x+1",
+        "optimal": 5,
+        "greedy_cost": 6,
+        "search_cost": 6,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "x^{4} + x^{3} + x^{2} + x + 1",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "1"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{4} + x^{3} + x^{2} + x",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "x + 1",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "1"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "x^{2} + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "pow",
+                      "exp": 2,
+                      "latex": "x^{2}",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "x^{4} + x^{3} + x^{2} + x + 1",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "1"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{4} + x^{3} + x^{2} + x",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "x + 1",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "1"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "x^{2} + 1",
+                  "children": [
+                    {
+                      "op": "pow",
+                      "exp": 2,
+                      "latex": "x^{2}",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 6,
+        "search_circuit_cost": 6,
+        "node_expansions": 3,
+        "transposition_hits": 93,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 11
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 9,
+        "poly_name": "F3_x   x4+2x2+1 [=(x2+1)^2]",
+        "optimal": 3,
+        "greedy_cost": 3,
+        "search_cost": 3,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "pow",
+          "exp": 2,
+          "latex": "x^{4} + 2x^{2} + 1",
+          "children": [
+            {
+              "op": "add",
+              "latex": "x^{2} + 1",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "1"
+                },
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "x^{2}",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "pow",
+          "exp": 2,
+          "latex": "x^{4} + 2x^{2} + 1",
+          "children": [
+            {
+              "op": "add",
+              "latex": "x^{2} + 1",
+              "children": [
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "x^{2}",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "1"
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 3,
+        "search_circuit_cost": 3,
+        "node_expansions": 1,
+        "transposition_hits": 31,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 2
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 10,
+        "poly_name": "F3_x   x3+2x2+2x+1",
+        "optimal": 4,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "mul",
+          "latex": "x^{3} + 2x^{2} + 2x + 1",
+          "scalar": null,
+          "children": [
+            {
+              "op": "add",
+              "latex": "x + 1",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "1"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "x^{2} + x + 1",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "x + 2",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "mul",
+          "latex": "x^{3} + 2x^{2} + 2x + 1",
+          "scalar": null,
+          "children": [
+            {
+              "op": "add",
+              "latex": "x + 1",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "1"
+                }
+              ]
+            },
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "x^{2} + x + 1",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "x + 2",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 2,
+        "transposition_hits": 62,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 5
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 11,
+        "poly_name": "F3_x   2x4+x3+x+2",
+        "optimal": 5,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "mul",
+          "latex": "2x^{4} + x^{3} + x + 2",
+          "scalar": 2,
+          "children": [
+            {
+              "op": "pow",
+              "exp": 4,
+              "latex": "x^{4} + 2x^{3} + 2x + 1",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "x + 2",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "mul",
+          "latex": "2x^{4} + x^{3} + x + 2",
+          "scalar": 2,
+          "children": [
+            {
+              "op": "pow",
+              "exp": 4,
+              "latex": "x^{4} + 2x^{3} + 2x + 1",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "x + 2",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 1,
+        "transposition_hits": 31,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 2
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 12,
+        "poly_name": "F3_xyz xy+xz+yz [e2]",
+        "optimal": 4,
+        "greedy_cost": 4,
+        "search_cost": 4,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "yz + xz + xy",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "yz",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "z"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xz + xy",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "z + y",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "z"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "yz + xz + xy",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "yz",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "z"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xz + xy",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "z + y",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "z"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 4,
+        "search_circuit_cost": 4,
+        "node_expansions": 4,
+        "transposition_hits": 60,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 55
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 13,
+        "poly_name": "F3_xyz xyz+xy+xz+yz",
+        "optimal": 5,
+        "greedy_cost": 6,
+        "search_cost": 6,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "xyz + yz + xz + xy",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "xy",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xyz + yz + xz",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "z"
+                },
+                {
+                  "op": "add",
+                  "latex": "xy + y + x",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "mul",
+                      "latex": "xy + y",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        },
+                        {
+                          "op": "add",
+                          "latex": "x + 1",
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "1"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "x"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "xyz + yz + xz + xy",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "yz",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "z"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xyz + xz + xy",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "yz + z + y",
+                  "children": [
+                    {
+                      "op": "add",
+                      "latex": "",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "yz",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "y"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "z"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "z"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 6,
+        "search_circuit_cost": 6,
+        "node_expansions": 10,
+        "transposition_hits": 86,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 75
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 14,
+        "poly_name": "F3_xyz x2+y2+z2+xy+xz+yz",
+        "optimal": 6,
+        "greedy_cost": 7,
+        "search_cost": 7,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "z^{2} + yz + y^{2} + xz + xy + x^{2}",
+          "children": [
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "z^{2} + yz + y^{2}",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "2z + y",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    },
+                    {
+                      "op": "mul",
+                      "latex": "2z",
+                      "scalar": 2,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "z"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xz + xy + x^{2}",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "z + y + x",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "z"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "y + x",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "z^{2} + yz + y^{2} + xz + xy + x^{2}",
+          "children": [
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "z^{2} + yz + y^{2}",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "2z + y",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "2z",
+                      "scalar": 2,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "z"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xz + xy + x^{2}",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "z + y + x",
+                  "children": [
+                    {
+                      "op": "add",
+                      "latex": "",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "z"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 7,
+        "search_circuit_cost": 7,
+        "node_expansions": 6,
+        "transposition_hits": 122,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 76
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 15,
+        "poly_name": "F3_xyz xyz+x+y+z",
+        "optimal": 5,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "xyz + z + y + x",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xyz + z",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "z"
+                },
+                {
+                  "op": "add",
+                  "latex": "xy + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "mul",
+                      "latex": "xy",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "xyz + z + y + x",
+          "children": [
+            {
+              "op": "add",
+              "latex": "",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "xyz",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "",
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "x"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "y"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "z"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "z"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                }
+              ]
+            },
+            {
+              "op": "leaf",
+              "latex": "x"
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 9,
+        "transposition_hits": 87,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 94
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 16,
+        "poly_name": "F3_perm3  3x3 permanent",
+        "optimal": 14,
+        "greedy_cost": 14,
+        "search_cost": 14,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "ceg + cdh + bfg + bdi + afh + aei",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "afh + aei",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "a"
+                },
+                {
+                  "op": "add",
+                  "latex": "fh + ei",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "fh",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "f"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "h"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "mul",
+                      "latex": "ei",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "e"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "i"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "ceg + cdh + bfg + bdi",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "ceg + cdh",
+                  "scalar": null,
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "c"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "eg + dh",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "eg",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "e"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "g"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "mul",
+                          "latex": "dh",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "d"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "h"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "op": "mul",
+                  "latex": "bfg + bdi",
+                  "scalar": null,
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "b"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "fg + di",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "fg",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "f"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "g"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "mul",
+                          "latex": "di",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "d"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "i"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "ceg + cdh + bfg + bdi + afh + aei",
+          "children": [
+            {
+              "op": "add",
+              "latex": "ceg + cdh + bfg + bdi",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "ceg + cdh",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "c"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "eg + dh",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "eg",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "e"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "g"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "mul",
+                          "latex": "dh",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "d"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "h"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "op": "mul",
+                  "latex": "bfg + bdi",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "b"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "fg + di",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "fg",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "f"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "g"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "mul",
+                          "latex": "di",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "d"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "i"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "afh + aei",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "a"
+                },
+                {
+                  "op": "add",
+                  "latex": "fh + ei",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "fh",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "f"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "h"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "mul",
+                      "latex": "ei",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "e"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "i"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 14,
+        "search_circuit_cost": 14,
+        "node_expansions": 8,
+        "transposition_hits": 2,
+        "search_sims_used": 2,
+        "k_candidates_used": 8,
+        "search_max_depth": 3,
+        "search_expand_top_k": 8,
+        "budget_capped": true,
+        "elapsed_ms": 484
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 17,
+        "poly_name": "F5_xy  x2+4y2 [=(x+y)(x+4y)]",
+        "optimal": 4,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "mul",
+          "latex": "4y^{2} + x^{2}",
+          "scalar": null,
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "4y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "mul",
+                  "latex": "4y",
+                  "scalar": 4,
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "mul",
+          "latex": "4y^{2} + x^{2}",
+          "scalar": null,
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "4y + x",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "4y",
+                  "scalar": 4,
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 2,
+        "transposition_hits": 62,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 31
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 18,
+        "poly_name": "F5_xy  x2y+xy2+x+y [=(x+y)(xy+1)]",
+        "optimal": 4,
+        "greedy_cost": 4,
+        "search_cost": 4,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "mul",
+          "latex": "xy^{2} + x^{2}y + y + x",
+          "scalar": null,
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "xy + 1",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "1"
+                },
+                {
+                  "op": "mul",
+                  "latex": "xy",
+                  "scalar": null,
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "mul",
+          "latex": "xy^{2} + x^{2}y + y + x",
+          "scalar": null,
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "xy + 1",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "xy",
+                  "scalar": null,
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "1"
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 4,
+        "search_circuit_cost": 4,
+        "node_expansions": 2,
+        "transposition_hits": 62,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 25
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 19,
+        "poly_name": "F5_xy  x2+xy+y2",
+        "optimal": 4,
+        "greedy_cost": 4,
+        "search_cost": 4,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "y^{2} + xy + x^{2}",
+          "children": [
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "y^{2}",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xy + x^{2}",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "y + x",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "y^{2} + xy + x^{2}",
+          "children": [
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "y^{2}",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xy + x^{2}",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "y + x",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 4,
+        "search_circuit_cost": 4,
+        "node_expansions": 4,
+        "transposition_hits": 61,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 37
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "heuristic",
+        "poly_index": 20,
+        "poly_name": "F5_xy  x3y+xy3 [=xy(x2+y2)]",
+        "optimal": 5,
+        "greedy_cost": 8,
+        "search_cost": 8,
+        "greedy_tier": 2,
+        "search_tier": 2,
+        "greedy_circuit": {
+          "op": "mul",
+          "latex": "xy^{3} + x^{3}y",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "2y + x",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "mul",
+                      "latex": "2y",
+                      "scalar": 2,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "3y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "mul",
+                  "latex": "3y",
+                  "scalar": 3,
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "mul",
+          "latex": "xy^{3} + x^{3}y",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "2y + x",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "2y",
+                      "scalar": 2,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "3y + x",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "3y",
+                  "scalar": 3,
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 8,
+        "search_circuit_cost": 8,
+        "node_expansions": 2,
+        "transposition_hits": 62,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 19
+      }
+    },
+    {
+      "event": "model-done",
+      "data": {
+        "label": "heuristic",
+        "elapsed_sec": 1.5
+      }
+    },
+    {
+      "event": "model-start",
+      "data": {
+        "label": "PPO MCTS Final",
+        "info": {
+          "cycle": null,
+          "stage": null,
+          "params": 37634,
+          "hidden_dim": 128,
+          "shared_layers": 3,
+          "value_layers": 2,
+          "saved_at": "",
+          "holdout_gain": null,
+          "supported_primes": [
+            3
+          ],
+          "field_label": "F3",
+          "field_source": "repo fixed-prime run record"
+        }
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 0,
+        "poly_name": "F3_xy  xy+x+y",
+        "optimal": 3,
+        "greedy_cost": 3,
+        "search_cost": 3,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "xy + y + x",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "x"
+            },
+            {
+              "op": "mul",
+              "latex": "xy + y",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "add",
+                  "latex": "x + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "xy + y + x",
+          "children": [
+            {
+              "op": "add",
+              "latex": "",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "xy",
+                  "scalar": null,
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                }
+              ]
+            },
+            {
+              "op": "leaf",
+              "latex": "x"
+            }
+          ]
+        },
+        "greedy_circuit_cost": 3,
+        "search_circuit_cost": 3,
+        "node_expansions": 3,
+        "transposition_hits": 61,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 31
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 1,
+        "poly_name": "F3_xy  x2y+xy2 [=xy(x+y)]",
+        "optimal": 3,
+        "greedy_cost": 3,
+        "search_cost": 3,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "mul",
+          "latex": "xy^{2} + x^{2}y",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "mul",
+          "latex": "xy^{2} + x^{2}y",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 3,
+        "search_circuit_cost": 3,
+        "node_expansions": 1,
+        "transposition_hits": 31,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 9
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 2,
+        "poly_name": "F3_xy  x2+2xy+y2 [=(x+y)^2]",
+        "optimal": 2,
+        "greedy_cost": 2,
+        "search_cost": 2,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "pow",
+          "exp": 2,
+          "latex": "y^{2} + 2xy + x^{2}",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "pow",
+          "exp": 2,
+          "latex": "y^{2} + 2xy + x^{2}",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 2,
+        "search_circuit_cost": 2,
+        "node_expansions": 1,
+        "transposition_hits": 31,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 5
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 3,
+        "poly_name": "F3_xy  x2y2+xy+1",
+        "optimal": 4,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "x^{2}y^{2} + xy + 1",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "1"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y^{2} + xy",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "xy + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "mul",
+                      "latex": "xy",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "x^{2}y^{2} + xy + 1",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "1"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y^{2} + xy",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "xy^{2} + y",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "xy^{2}",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "pow",
+                          "exp": 2,
+                          "latex": "y^{2}",
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "y"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 2,
+        "transposition_hits": 62,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 19
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 4,
+        "poly_name": "F3_xy  x2+xy+y2+x+y",
+        "optimal": 4,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "y^{2} + xy + x^{2} + y + x",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "x"
+            },
+            {
+              "op": "add",
+              "latex": "y^{2} + xy + x^{2} + y",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "y^{2} + xy + x^{2}",
+                  "children": [
+                    {
+                      "op": "add",
+                      "latex": "2y + x",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "mul",
+                          "latex": "2y",
+                          "scalar": 2,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "y"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "y^{2} + xy + x^{2} + y + x",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "x"
+            },
+            {
+              "op": "add",
+              "latex": "y^{2} + xy + x^{2} + y",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "y^{2} + xy + x^{2}",
+                  "children": [
+                    {
+                      "op": "add",
+                      "latex": "2y + x",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "2y",
+                          "scalar": 2,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "y"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 3,
+        "transposition_hits": 93,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 28
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 5,
+        "poly_name": "F3_xy  x3+y3 [sum of cubes]",
+        "optimal": 3,
+        "greedy_cost": 3,
+        "search_cost": 3,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "pow",
+          "exp": 3,
+          "latex": "y^{3} + x^{3}",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "pow",
+          "exp": 3,
+          "latex": "y^{3} + x^{3}",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 3,
+        "search_circuit_cost": 3,
+        "node_expansions": 1,
+        "transposition_hits": 31,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 6
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 6,
+        "poly_name": "F3_xy  x2y+xy+x+y",
+        "optimal": 5,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "x^{2}y + xy + y + x",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "x"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y + xy + y",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "x^{2} + x + 1",
+                  "children": [
+                    {
+                      "op": "add",
+                      "latex": "x + 2",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "2"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "x^{2}y + xy + y + x",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "x"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y + xy + y",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "x^{2} + x + 1",
+                  "children": [
+                    {
+                      "op": "add",
+                      "latex": "x + 2",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "2"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 4,
+        "transposition_hits": 63,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 20
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 7,
+        "poly_name": "F3_xy  x2y2+x2+y2",
+        "optimal": 5,
+        "greedy_cost": 6,
+        "search_cost": 6,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "x^{2}y^{2} + y^{2} + x^{2}",
+          "children": [
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "x^{2}",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y^{2} + y^{2}",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "y^{2}",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "x^{2} + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "pow",
+                      "exp": 2,
+                      "latex": "x^{2}",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "x^{2}y^{2} + y^{2} + x^{2}",
+          "children": [
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "y^{2}",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y^{2} + x^{2}",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "xy^{2} + x",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "xy^{2}",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "pow",
+                          "exp": 2,
+                          "latex": "y^{2}",
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "y"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 6,
+        "search_circuit_cost": 6,
+        "node_expansions": 3,
+        "transposition_hits": 61,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 20
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 8,
+        "poly_name": "F3_x   x4+x3+x2+x+1",
+        "optimal": 5,
+        "greedy_cost": 6,
+        "search_cost": 6,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "x^{4} + x^{3} + x^{2} + x + 1",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "1"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{4} + x^{3} + x^{2} + x",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "x + 1",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "1"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "x^{2} + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "pow",
+                      "exp": 2,
+                      "latex": "x^{2}",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "x^{4} + x^{3} + x^{2} + x + 1",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "1"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{4} + x^{3} + x^{2} + x",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "x + 1",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "1"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "x^{2} + 1",
+                  "children": [
+                    {
+                      "op": "pow",
+                      "exp": 2,
+                      "latex": "x^{2}",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 6,
+        "search_circuit_cost": 6,
+        "node_expansions": 3,
+        "transposition_hits": 93,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 10
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 9,
+        "poly_name": "F3_x   x4+2x2+1 [=(x2+1)^2]",
+        "optimal": 3,
+        "greedy_cost": 3,
+        "search_cost": 3,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "pow",
+          "exp": 2,
+          "latex": "x^{4} + 2x^{2} + 1",
+          "children": [
+            {
+              "op": "add",
+              "latex": "x^{2} + 1",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "1"
+                },
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "x^{2}",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "pow",
+          "exp": 2,
+          "latex": "x^{4} + 2x^{2} + 1",
+          "children": [
+            {
+              "op": "add",
+              "latex": "x^{2} + 1",
+              "children": [
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "x^{2}",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "1"
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 3,
+        "search_circuit_cost": 3,
+        "node_expansions": 1,
+        "transposition_hits": 31,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 2
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 10,
+        "poly_name": "F3_x   x3+2x2+2x+1",
+        "optimal": 4,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "mul",
+          "latex": "x^{3} + 2x^{2} + 2x + 1",
+          "scalar": null,
+          "children": [
+            {
+              "op": "add",
+              "latex": "x + 1",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "1"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "x^{2} + x + 1",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "x + 2",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "mul",
+          "latex": "x^{3} + 2x^{2} + 2x + 1",
+          "scalar": null,
+          "children": [
+            {
+              "op": "add",
+              "latex": "x + 1",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "1"
+                }
+              ]
+            },
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "x^{2} + x + 1",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "x + 2",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 2,
+        "transposition_hits": 62,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 4
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 11,
+        "poly_name": "F3_x   2x4+x3+x+2",
+        "optimal": 5,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "mul",
+          "latex": "2x^{4} + x^{3} + x + 2",
+          "scalar": 2,
+          "children": [
+            {
+              "op": "pow",
+              "exp": 4,
+              "latex": "x^{4} + 2x^{3} + 2x + 1",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "x + 2",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "mul",
+          "latex": "2x^{4} + x^{3} + x + 2",
+          "scalar": 2,
+          "children": [
+            {
+              "op": "pow",
+              "exp": 4,
+              "latex": "x^{4} + 2x^{3} + 2x + 1",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "x + 2",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 1,
+        "transposition_hits": 31,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 2
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 12,
+        "poly_name": "F3_xyz xy+xz+yz [e2]",
+        "optimal": 4,
+        "greedy_cost": 4,
+        "search_cost": 4,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "yz + xz + xy",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "yz",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "z"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xz + xy",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "z + y",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "z"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "yz + xz + xy",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "yz",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "z"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xz + xy",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "z + y",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "z"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 4,
+        "search_circuit_cost": 4,
+        "node_expansions": 4,
+        "transposition_hits": 60,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 58
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 13,
+        "poly_name": "F3_xyz xyz+xy+xz+yz",
+        "optimal": 5,
+        "greedy_cost": 6,
+        "search_cost": 6,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "xyz + yz + xz + xy",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "xy",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xyz + yz + xz",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "z"
+                },
+                {
+                  "op": "add",
+                  "latex": "xy + y + x",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "mul",
+                      "latex": "xy + y",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        },
+                        {
+                          "op": "add",
+                          "latex": "x + 1",
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "1"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "x"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "xyz + yz + xz + xy",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "yz",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "z"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xyz + xz + xy",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "yz + z + y",
+                  "children": [
+                    {
+                      "op": "add",
+                      "latex": "",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "yz",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "y"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "z"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "z"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 6,
+        "search_circuit_cost": 6,
+        "node_expansions": 7,
+        "transposition_hits": 89,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 109
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 14,
+        "poly_name": "F3_xyz x2+y2+z2+xy+xz+yz",
+        "optimal": 6,
+        "greedy_cost": 7,
+        "search_cost": 7,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "z^{2} + yz + y^{2} + xz + xy + x^{2}",
+          "children": [
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "z^{2}",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "z"
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "yz + y^{2} + xz + xy + x^{2}",
+              "children": [
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "x^{2}",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                },
+                {
+                  "op": "mul",
+                  "latex": "yz + y^{2} + xz + xy",
+                  "scalar": null,
+                  "children": [
+                    {
+                      "op": "add",
+                      "latex": "z + y",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "z"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "add",
+                      "latex": "y + x",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "z^{2} + yz + y^{2} + xz + xy + x^{2}",
+          "children": [
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "z^{2}",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "z"
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "yz + y^{2} + xz + xy + x^{2}",
+              "children": [
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "x^{2}",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                },
+                {
+                  "op": "mul",
+                  "latex": "yz + y^{2} + xz + xy",
+                  "scalar": null,
+                  "children": [
+                    {
+                      "op": "add",
+                      "latex": "z + y",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "z"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "add",
+                      "latex": "y + x",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 7,
+        "search_circuit_cost": 7,
+        "node_expansions": 6,
+        "transposition_hits": 122,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 879
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 15,
+        "poly_name": "F3_xyz xyz+x+y+z",
+        "optimal": 5,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "xyz + z + y + x",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "x"
+            },
+            {
+              "op": "add",
+              "latex": "xyz + z + y",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "xyz",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "z"
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "z + y",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "z"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "xyz + z + y + x",
+          "children": [
+            {
+              "op": "add",
+              "latex": "",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "xyz",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "",
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "x"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "y"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "z"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "z"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                }
+              ]
+            },
+            {
+              "op": "leaf",
+              "latex": "x"
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 6,
+        "transposition_hits": 90,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 223
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 16,
+        "poly_name": "F3_perm3  3x3 permanent",
+        "optimal": 14,
+        "greedy_cost": 16,
+        "search_cost": 14,
+        "greedy_tier": 2,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "ceg + cdh + bfg + bdi + afh + aei",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "ceg",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "c"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "e"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "g"
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "cdh + bfg + bdi + afh + aei",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "cdh",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "c"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "d"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "h"
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "bfg + bdi + afh + aei",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "bfg",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "",
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "b"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "f"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "g"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "add",
+                      "latex": "bdi + afh + aei",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "bdi",
+                          "children": [
+                            {
+                              "op": "mul",
+                              "latex": "",
+                              "children": [
+                                {
+                                  "op": "leaf",
+                                  "latex": "b"
+                                },
+                                {
+                                  "op": "leaf",
+                                  "latex": "d"
+                                }
+                              ]
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "i"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "mul",
+                          "latex": "afh + aei",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "a"
+                            },
+                            {
+                              "op": "add",
+                              "latex": "fh + ei",
+                              "children": [
+                                {
+                                  "op": "mul",
+                                  "latex": "fh",
+                                  "scalar": null,
+                                  "children": [
+                                    {
+                                      "op": "leaf",
+                                      "latex": "f"
+                                    },
+                                    {
+                                      "op": "leaf",
+                                      "latex": "h"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "op": "mul",
+                                  "latex": "ei",
+                                  "scalar": null,
+                                  "children": [
+                                    {
+                                      "op": "leaf",
+                                      "latex": "e"
+                                    },
+                                    {
+                                      "op": "leaf",
+                                      "latex": "i"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "ceg + cdh + bfg + bdi + afh + aei",
+          "children": [
+            {
+              "op": "add",
+              "latex": "ceg + cdh + bfg + bdi",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "ceg + cdh",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "c"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "eg + dh",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "eg",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "e"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "g"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "mul",
+                          "latex": "dh",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "d"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "h"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "op": "mul",
+                  "latex": "bfg + bdi",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "b"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "fg + di",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "fg",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "f"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "g"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "mul",
+                          "latex": "di",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "d"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "i"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "afh + aei",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "a"
+                },
+                {
+                  "op": "add",
+                  "latex": "fh + ei",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "fh",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "f"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "h"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "mul",
+                      "latex": "ei",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "e"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "i"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 16,
+        "search_circuit_cost": 14,
+        "node_expansions": 4,
+        "transposition_hits": 2,
+        "search_sims_used": 2,
+        "k_candidates_used": 8,
+        "search_max_depth": 3,
+        "search_expand_top_k": 8,
+        "budget_capped": true,
+        "elapsed_ms": 2306
+      }
+    },
+    {
+      "event": "skipped",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 17,
+        "poly_name": "F5_xy  x2+4y2 [=(x+y)(x+4y)]",
+        "prime": 5,
+        "supported_primes": [
+          3
+        ],
+        "reason": "checkpoint field support is F3; row is F5"
+      }
+    },
+    {
+      "event": "skipped",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 18,
+        "poly_name": "F5_xy  x2y+xy2+x+y [=(x+y)(xy+1)]",
+        "prime": 5,
+        "supported_primes": [
+          3
+        ],
+        "reason": "checkpoint field support is F3; row is F5"
+      }
+    },
+    {
+      "event": "skipped",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 19,
+        "poly_name": "F5_xy  x2+xy+y2",
+        "prime": 5,
+        "supported_primes": [
+          3
+        ],
+        "reason": "checkpoint field support is F3; row is F5"
+      }
+    },
+    {
+      "event": "skipped",
+      "data": {
+        "label": "PPO MCTS Final",
+        "poly_index": 20,
+        "poly_name": "F5_xy  x3y+xy3 [=xy(x2+y2)]",
+        "prime": 5,
+        "supported_primes": [
+          3
+        ],
+        "reason": "checkpoint field support is F3; row is F5"
+      }
+    },
+    {
+      "event": "model-done",
+      "data": {
+        "label": "PPO MCTS Final",
+        "elapsed_sec": 3.74
+      }
+    },
+    {
+      "event": "model-start",
+      "data": {
+        "label": "SAC",
+        "info": {
+          "cycle": null,
+          "stage": null,
+          "params": 37634,
+          "hidden_dim": 128,
+          "shared_layers": 3,
+          "value_layers": 2,
+          "saved_at": "",
+          "holdout_gain": null,
+          "supported_primes": [
+            3
+          ],
+          "field_label": "F3",
+          "field_source": "repo fixed-prime run record"
+        }
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 0,
+        "poly_name": "F3_xy  xy+x+y",
+        "optimal": 3,
+        "greedy_cost": 3,
+        "search_cost": 3,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "xy + y + x",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "x"
+            },
+            {
+              "op": "mul",
+              "latex": "xy + y",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "add",
+                  "latex": "x + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "xy + y + x",
+          "children": [
+            {
+              "op": "add",
+              "latex": "",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "xy",
+                  "scalar": null,
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                }
+              ]
+            },
+            {
+              "op": "leaf",
+              "latex": "x"
+            }
+          ]
+        },
+        "greedy_circuit_cost": 3,
+        "search_circuit_cost": 3,
+        "node_expansions": 4,
+        "transposition_hits": 60,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 74
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 1,
+        "poly_name": "F3_xy  x2y+xy2 [=xy(x+y)]",
+        "optimal": 3,
+        "greedy_cost": 3,
+        "search_cost": 3,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "mul",
+          "latex": "xy^{2} + x^{2}y",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "mul",
+          "latex": "xy^{2} + x^{2}y",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 3,
+        "search_circuit_cost": 3,
+        "node_expansions": 1,
+        "transposition_hits": 31,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 23
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 2,
+        "poly_name": "F3_xy  x2+2xy+y2 [=(x+y)^2]",
+        "optimal": 2,
+        "greedy_cost": 2,
+        "search_cost": 2,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "pow",
+          "exp": 2,
+          "latex": "y^{2} + 2xy + x^{2}",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "pow",
+          "exp": 2,
+          "latex": "y^{2} + 2xy + x^{2}",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 2,
+        "search_circuit_cost": 2,
+        "node_expansions": 1,
+        "transposition_hits": 31,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 13
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 3,
+        "poly_name": "F3_xy  x2y2+xy+1",
+        "optimal": 4,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "x^{2}y^{2} + xy + 1",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "1"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y^{2} + xy",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "xy + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "mul",
+                      "latex": "xy",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "x^{2}y^{2} + xy + 1",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "1"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y^{2} + xy",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "xy^{2} + y",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "xy^{2}",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "pow",
+                          "exp": 2,
+                          "latex": "y^{2}",
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "y"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 2,
+        "transposition_hits": 62,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 54
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 4,
+        "poly_name": "F3_xy  x2+xy+y2+x+y",
+        "optimal": 4,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "y^{2} + xy + x^{2} + y + x",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "y^{2} + xy + x^{2}",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "2y + x",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "mul",
+                      "latex": "2y",
+                      "scalar": 2,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "y^{2} + xy + x^{2} + y + x",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "y^{2} + xy + x^{2}",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "2y + x",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "2y",
+                      "scalar": 2,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 3,
+        "transposition_hits": 93,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 64
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 5,
+        "poly_name": "F3_xy  x3+y3 [sum of cubes]",
+        "optimal": 3,
+        "greedy_cost": 3,
+        "search_cost": 3,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "pow",
+          "exp": 3,
+          "latex": "y^{3} + x^{3}",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "pow",
+          "exp": 3,
+          "latex": "y^{3} + x^{3}",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 3,
+        "search_circuit_cost": 3,
+        "node_expansions": 1,
+        "transposition_hits": 31,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 33
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 6,
+        "poly_name": "F3_xy  x2y+xy+x+y",
+        "optimal": 5,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "x^{2}y + xy + y + x",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y + xy",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "x + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "x^{2}y + xy + y + x",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "x"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y + xy + y",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "x^{2} + x + 1",
+                  "children": [
+                    {
+                      "op": "add",
+                      "latex": "x + 2",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "2"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 5,
+        "transposition_hits": 64,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 130
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 7,
+        "poly_name": "F3_xy  x2y2+x2+y2",
+        "optimal": 5,
+        "greedy_cost": 6,
+        "search_cost": 6,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "x^{2}y^{2} + y^{2} + x^{2}",
+          "children": [
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "x^{2}",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y^{2} + y^{2}",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "y^{2}",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "x^{2} + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "pow",
+                      "exp": 2,
+                      "latex": "x^{2}",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "x^{2}y^{2} + y^{2} + x^{2}",
+          "children": [
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "y^{2}",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "x^{2}y^{2} + x^{2}",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "xy^{2} + x",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "xy^{2}",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "pow",
+                          "exp": 2,
+                          "latex": "y^{2}",
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "y"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 6,
+        "search_circuit_cost": 6,
+        "node_expansions": 3,
+        "transposition_hits": 61,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 49
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 8,
+        "poly_name": "F3_x   x4+x3+x2+x+1",
+        "optimal": 5,
+        "greedy_cost": 7,
+        "search_cost": 6,
+        "greedy_tier": 2,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "x^{4} + x^{3} + x^{2} + x + 1",
+          "children": [
+            {
+              "op": "add",
+              "latex": "x + 1",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "1"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "x^{4} + x^{3} + x^{2}",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "x^{2}",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                },
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "x^{2} + x + 1",
+                  "children": [
+                    {
+                      "op": "add",
+                      "latex": "x + 2",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "2"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "x^{4} + x^{3} + x^{2} + x + 1",
+          "children": [
+            {
+              "op": "leaf",
+              "latex": "1"
+            },
+            {
+              "op": "mul",
+              "latex": "x^{4} + x^{3} + x^{2} + x",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "x + 1",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "1"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "x^{2} + 1",
+                  "children": [
+                    {
+                      "op": "pow",
+                      "exp": 2,
+                      "latex": "x^{2}",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 7,
+        "search_circuit_cost": 6,
+        "node_expansions": 4,
+        "transposition_hits": 92,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 27
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 9,
+        "poly_name": "F3_x   x4+2x2+1 [=(x2+1)^2]",
+        "optimal": 3,
+        "greedy_cost": 3,
+        "search_cost": 3,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "pow",
+          "exp": 2,
+          "latex": "x^{4} + 2x^{2} + 1",
+          "children": [
+            {
+              "op": "add",
+              "latex": "x^{2} + 1",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "1"
+                },
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "x^{2}",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "pow",
+          "exp": 2,
+          "latex": "x^{4} + 2x^{2} + 1",
+          "children": [
+            {
+              "op": "add",
+              "latex": "x^{2} + 1",
+              "children": [
+                {
+                  "op": "pow",
+                  "exp": 2,
+                  "latex": "x^{2}",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "1"
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 3,
+        "search_circuit_cost": 3,
+        "node_expansions": 1,
+        "transposition_hits": 31,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 6
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 10,
+        "poly_name": "F3_x   x3+2x2+2x+1",
+        "optimal": 4,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "mul",
+          "latex": "x^{3} + 2x^{2} + 2x + 1",
+          "scalar": null,
+          "children": [
+            {
+              "op": "add",
+              "latex": "x + 1",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "1"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "x^{2} + x + 1",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "x + 2",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "mul",
+          "latex": "x^{3} + 2x^{2} + 2x + 1",
+          "scalar": null,
+          "children": [
+            {
+              "op": "add",
+              "latex": "x + 1",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "1"
+                }
+              ]
+            },
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "x^{2} + x + 1",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "x + 2",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 2,
+        "transposition_hits": 62,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 7
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 11,
+        "poly_name": "F3_x   2x4+x3+x+2",
+        "optimal": 5,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "mul",
+          "latex": "2x^{4} + x^{3} + x + 2",
+          "scalar": 2,
+          "children": [
+            {
+              "op": "pow",
+              "exp": 4,
+              "latex": "x^{4} + 2x^{3} + 2x + 1",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "x + 2",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "mul",
+          "latex": "2x^{4} + x^{3} + x + 2",
+          "scalar": 2,
+          "children": [
+            {
+              "op": "pow",
+              "exp": 4,
+              "latex": "x^{4} + 2x^{3} + 2x + 1",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "x + 2",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "2"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 1,
+        "transposition_hits": 31,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 6
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 12,
+        "poly_name": "F3_xyz xy+xz+yz [e2]",
+        "optimal": 4,
+        "greedy_cost": 4,
+        "search_cost": 4,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "yz + xz + xy",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "yz",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "z"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xz + xy",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "z + y",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "z"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "yz + xz + xy",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "yz",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "z"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xz + xy",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "z + y",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "z"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 4,
+        "search_circuit_cost": 4,
+        "node_expansions": 4,
+        "transposition_hits": 60,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 167
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 13,
+        "poly_name": "F3_xyz xyz+xy+xz+yz",
+        "optimal": 5,
+        "greedy_cost": 6,
+        "search_cost": 6,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "xyz + yz + xz + xy",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "xz + xy",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "z + y",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "z"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xyz + yz",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "z"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                },
+                {
+                  "op": "add",
+                  "latex": "x + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "xyz + yz + xz + xy",
+          "children": [
+            {
+              "op": "mul",
+              "latex": "yz",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "z"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xyz + xz + xy",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "yz + z + y",
+                  "children": [
+                    {
+                      "op": "add",
+                      "latex": "",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "yz",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "y"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "z"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "z"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 6,
+        "search_circuit_cost": 6,
+        "node_expansions": 7,
+        "transposition_hits": 89,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 546
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 14,
+        "poly_name": "F3_xyz x2+y2+z2+xy+xz+yz",
+        "optimal": 6,
+        "greedy_cost": 7,
+        "search_cost": 7,
+        "greedy_tier": 1,
+        "search_tier": 1,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "z^{2} + yz + y^{2} + xz + xy + x^{2}",
+          "children": [
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "z^{2} + yz + y^{2}",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "2z + y",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    },
+                    {
+                      "op": "mul",
+                      "latex": "2z",
+                      "scalar": 2,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "z"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xz + xy + x^{2}",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "z + y + x",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "z"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "y + x",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "z^{2} + yz + y^{2} + xz + xy + x^{2}",
+          "children": [
+            {
+              "op": "pow",
+              "exp": 2,
+              "latex": "z^{2} + yz + y^{2}",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "2z + y",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "2z",
+                      "scalar": 2,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "z"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "y"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xz + xy + x^{2}",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                },
+                {
+                  "op": "add",
+                  "latex": "z + y + x",
+                  "children": [
+                    {
+                      "op": "add",
+                      "latex": "",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "z"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 7,
+        "search_circuit_cost": 7,
+        "node_expansions": 6,
+        "transposition_hits": 122,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 990
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 15,
+        "poly_name": "F3_xyz xyz+x+y+z",
+        "optimal": 5,
+        "greedy_cost": 5,
+        "search_cost": 5,
+        "greedy_tier": 0,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "xyz + z + y + x",
+          "children": [
+            {
+              "op": "add",
+              "latex": "y + x",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                },
+                {
+                  "op": "leaf",
+                  "latex": "x"
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "xyz + z",
+              "scalar": null,
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "z"
+                },
+                {
+                  "op": "add",
+                  "latex": "xy + 1",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "1"
+                    },
+                    {
+                      "op": "mul",
+                      "latex": "xy",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "x"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "y"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "xyz + z + y + x",
+          "children": [
+            {
+              "op": "add",
+              "latex": "",
+              "children": [
+                {
+                  "op": "add",
+                  "latex": "",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "xyz",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "",
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "x"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "y"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "z"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "z"
+                    }
+                  ]
+                },
+                {
+                  "op": "leaf",
+                  "latex": "y"
+                }
+              ]
+            },
+            {
+              "op": "leaf",
+              "latex": "x"
+            }
+          ]
+        },
+        "greedy_circuit_cost": 5,
+        "search_circuit_cost": 5,
+        "node_expansions": 8,
+        "transposition_hits": 88,
+        "search_sims_used": 32,
+        "k_candidates_used": 16,
+        "search_max_depth": 8,
+        "search_expand_top_k": 32,
+        "budget_capped": false,
+        "elapsed_ms": 213
+      }
+    },
+    {
+      "event": "result",
+      "data": {
+        "label": "SAC",
+        "poly_index": 16,
+        "poly_name": "F3_perm3  3x3 permanent",
+        "optimal": 14,
+        "greedy_cost": 15,
+        "search_cost": 14,
+        "greedy_tier": 1,
+        "search_tier": 0,
+        "greedy_circuit": {
+          "op": "add",
+          "latex": "ceg + cdh + bfg + bdi + afh + aei",
+          "children": [
+            {
+              "op": "add",
+              "latex": "ceg + cdh + bfg",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "bfg",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "b"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "f"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "g"
+                    }
+                  ]
+                },
+                {
+                  "op": "mul",
+                  "latex": "ceg + cdh",
+                  "scalar": null,
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "c"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "eg + dh",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "eg",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "e"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "g"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "mul",
+                          "latex": "dh",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "d"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "h"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "add",
+              "latex": "bdi + afh + aei",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "bdi",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "",
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "b"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "d"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "leaf",
+                      "latex": "i"
+                    }
+                  ]
+                },
+                {
+                  "op": "mul",
+                  "latex": "afh + aei",
+                  "scalar": null,
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "a"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "fh + ei",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "fh",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "f"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "h"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "mul",
+                          "latex": "ei",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "e"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "i"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "search_circuit": {
+          "op": "add",
+          "latex": "ceg + cdh + bfg + bdi + afh + aei",
+          "children": [
+            {
+              "op": "add",
+              "latex": "ceg + cdh + bfg + bdi",
+              "children": [
+                {
+                  "op": "mul",
+                  "latex": "ceg + cdh",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "c"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "eg + dh",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "eg",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "e"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "g"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "mul",
+                          "latex": "dh",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "d"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "h"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "op": "mul",
+                  "latex": "bfg + bdi",
+                  "children": [
+                    {
+                      "op": "leaf",
+                      "latex": "b"
+                    },
+                    {
+                      "op": "add",
+                      "latex": "fg + di",
+                      "children": [
+                        {
+                          "op": "mul",
+                          "latex": "fg",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "f"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "g"
+                            }
+                          ]
+                        },
+                        {
+                          "op": "mul",
+                          "latex": "di",
+                          "scalar": null,
+                          "children": [
+                            {
+                              "op": "leaf",
+                              "latex": "d"
+                            },
+                            {
+                              "op": "leaf",
+                              "latex": "i"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "op": "mul",
+              "latex": "afh + aei",
+              "children": [
+                {
+                  "op": "leaf",
+                  "latex": "a"
+                },
+                {
+                  "op": "add",
+                  "latex": "fh + ei",
+                  "children": [
+                    {
+                      "op": "mul",
+                      "latex": "fh",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "f"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "h"
+                        }
+                      ]
+                    },
+                    {
+                      "op": "mul",
+                      "latex": "ei",
+                      "scalar": null,
+                      "children": [
+                        {
+                          "op": "leaf",
+                          "latex": "e"
+                        },
+                        {
+                          "op": "leaf",
+                          "latex": "i"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "greedy_circuit_cost": 15,
+        "search_circuit_cost": 14,
+        "node_expansions": 8,
+        "transposition_hits": 2,
+        "search_sims_used": 2,
+        "k_candidates_used": 8,
+        "search_max_depth": 3,
+        "search_expand_top_k": 8,
+        "budget_capped": true,
+        "elapsed_ms": 685
+      }
+    },
+    {
+      "event": "skipped",
+      "data": {
+        "label": "SAC",
+        "poly_index": 17,
+        "poly_name": "F5_xy  x2+4y2 [=(x+y)(x+4y)]",
+        "prime": 5,
+        "supported_primes": [
+          3
+        ],
+        "reason": "checkpoint field support is F3; row is F5"
+      }
+    },
+    {
+      "event": "skipped",
+      "data": {
+        "label": "SAC",
+        "poly_index": 18,
+        "poly_name": "F5_xy  x2y+xy2+x+y [=(x+y)(xy+1)]",
+        "prime": 5,
+        "supported_primes": [
+          3
+        ],
+        "reason": "checkpoint field support is F3; row is F5"
+      }
+    },
+    {
+      "event": "skipped",
+      "data": {
+        "label": "SAC",
+        "poly_index": 19,
+        "poly_name": "F5_xy  x2+xy+y2",
+        "prime": 5,
+        "supported_primes": [
+          3
+        ],
+        "reason": "checkpoint field support is F3; row is F5"
+      }
+    },
+    {
+      "event": "skipped",
+      "data": {
+        "label": "SAC",
+        "poly_index": 20,
+        "poly_name": "F5_xy  x3y+xy3 [=xy(x2+y2)]",
+        "prime": 5,
+        "supported_primes": [
+          3
+        ],
+        "reason": "checkpoint field support is F3; row is F5"
+      }
+    },
+    {
+      "event": "model-done",
+      "data": {
+        "label": "SAC",
+        "elapsed_sec": 3.1
+      }
+    },
+    {
+      "event": "session-complete",
+      "data": {}
+    }
+  ]
+}

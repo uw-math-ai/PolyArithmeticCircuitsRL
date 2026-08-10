@@ -1,0 +1,53 @@
+{
+  "checkpoint_dir": "/Users/rohanpandey/Desktop/Research_Projects/Math AI Lab/VSCode/PolyArithmeticCircuitsRL/models",
+  "models": [
+    {
+      "display": "Heuristic",
+      "exists": true,
+      "kind": "baseline",
+      "label": "heuristic",
+      "meta": {
+        "description": "Hand-crafted heuristic (no learned weights)",
+        "field_label": "all finite fields",
+        "field_source": "algorithmic baseline",
+        "supported_primes": null
+      }
+    },
+    {
+      "display": "PPO MCTS Final",
+      "exists": true,
+      "kind": "checkpoint",
+      "label": "PPO MCTS Final",
+      "meta": {
+        "cycle": null,
+        "field_label": "F3",
+        "field_source": "repo fixed-prime run record",
+        "holdout_gain": null,
+        "saved_at": "",
+        "stage": null,
+        "supported_primes": [
+          3
+        ]
+      },
+      "size_mb": 0.1
+    },
+    {
+      "display": "SAC",
+      "exists": true,
+      "kind": "checkpoint",
+      "label": "SAC",
+      "meta": {
+        "cycle": null,
+        "field_label": "F3",
+        "field_source": "repo fixed-prime run record",
+        "holdout_gain": null,
+        "saved_at": "",
+        "stage": null,
+        "supported_primes": [
+          3
+        ]
+      },
+      "size_mb": 0.1
+    }
+  ]
+}
